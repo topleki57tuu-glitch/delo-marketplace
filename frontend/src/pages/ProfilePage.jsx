@@ -1,6 +1,15 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useToast } from '../components/Toast';
 import CityInput from '../components/CityInput';
+import { PortfolioUploader } from '../components/ImageUploader';
+
+const TX_TYPE_NAMES = {
+  deposit: '💰 Пополнение',
+  escrow_hold: '🔒 Заморозка (эскроу)',
+  escrow_release: '💸 Выплата (эскроу)',
+  escrow_refund: '↩ Возврат (эскроу)',
+  purchase: '🛒 Покупка пакета',
+};
 
 export default function ProfilePage({ user, token, onUpdateUser, onLogout, onOpenAuth }) {
   const { addToast } = useToast();
@@ -19,6 +28,70 @@ export default function ProfilePage({ user, token, onUpdateUser, onLogout, onOpe
 
   // Monetization buy
   const [buyingPackage, setBuyingPackage] = useState(null);
+
+  // Transactions history
+  const [transactions, setTransactions] = useState([]);
+  const [showTransactions, setShowTransactions] = useState(false);
+  const [loadingTx, setLoadingTx] = useState(false);
+
+  useEffect(() => {
+    if (user && token && showTransactions) {
+      setLoadingTx(true);
+      fetch('/wallet/transactions', { headers: { Authorization: `Bearer ${token}` } })
+        .then((r) => (r.ok ? r.json() : []))
+        .then(setTransactions)
+        .catch(() => setTransactions([]))
+        .finally(() => setLoadingTx(false));
+    }
+  }, [user, token, showTransactions]);
+
+  const handleDownloadCsv = async () => {
+    try {
+      const res = await fetch('/wallet/transactions.csv', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error('Не удалось скачать отчёт');
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'delo_transactions.csv';
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      addToast(err.message, 'error');
+    }
+  };
+
+  // Portfolio
+  const parsePortfolio = () => {
+    try { return user?.portfolio ? JSON.parse(user.portfolio) : []; } catch (e) { return []; }
+  };
+
+  const savePortfolio = async (items) => {
+    try {
+      const res = await fetch('/users/me', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ portfolio: JSON.stringify(items) }),
+      });
+      if (!res.ok) throw new Error('Не удалось сохранить портфолио');
+      onUpdateUser();
+    } catch (err) {
+      addToast(err.message, 'error');
+    }
+  };
+
+  const handlePortfolioAdd = async (url) => {
+    await savePortfolio([...parsePortfolio(), url]);
+    addToast('Работа добавлена в портфолио', 'success');
+  };
+
+  const handlePortfolioDelete = async (idx) => {
+    const items = parsePortfolio().filter((_, i) => i !== idx);
+    await savePortfolio(items);
+    addToast('Работа удалена из портфолио', 'success');
+  };
 
   if (!user) {
     return (
@@ -310,6 +383,79 @@ export default function ProfilePage({ user, token, onUpdateUser, onLogout, onOpe
               При назначении специалиста средства резервируются на балансе заказа и перечисляются исполнителю только после того, как вы подтвердите успешный результат.
             </p>
           </div>
+        )}
+      </div>
+
+      {/* Portfolio (specialist only) */}
+      {isSpecialist && (
+        <div className="bg-white dark:bg-slate-800 p-6 sm:p-8 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm">
+          <PortfolioUploader
+            token={token}
+            portfolio={parsePortfolio()}
+            onUploadSuccess={handlePortfolioAdd}
+            onDelete={handlePortfolioDelete}
+          />
+        </div>
+      )}
+
+      {/* Transactions history */}
+      <div className="bg-white dark:bg-slate-800 p-6 sm:p-8 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h3 className="text-lg font-bold text-slate-900 dark:text-white">История операций</h3>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleDownloadCsv}
+              className="px-4 py-2 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-xs font-bold rounded-xl transition-all"
+            >
+              ⬇ Скачать CSV
+            </button>
+            <button
+              onClick={() => setShowTransactions(!showTransactions)}
+              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl transition-all"
+            >
+              {showTransactions ? 'Скрыть' : 'Показать'}
+            </button>
+          </div>
+        </div>
+
+        {showTransactions && (
+          loadingTx ? (
+            <div className="flex justify-center py-6">
+              <div className="w-8 h-8 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+            </div>
+          ) : transactions.length === 0 ? (
+            <p className="text-sm text-slate-400 text-center py-6">Операций пока не было.</p>
+          ) : (
+            <div className="space-y-2 max-h-80 overflow-y-auto">
+              {transactions.map((tx) => (
+                <div
+                  key={tx.id}
+                  className="flex items-center justify-between gap-3 p-3 rounded-xl bg-slate-50 dark:bg-slate-900 text-sm"
+                >
+                  <div className="min-w-0">
+                    <span className="font-semibold text-slate-800 dark:text-slate-200">
+                      {TX_TYPE_NAMES[tx.type] || tx.type}
+                    </span>
+                    {tx.task_title && (
+                      <span className="block text-xs text-slate-400 truncate">{tx.task_title}</span>
+                    )}
+                    <span className="block text-[10px] text-slate-400">
+                      {(tx.created_at || '').slice(0, 16).replace('T', ' ')}
+                    </span>
+                  </div>
+                  <span
+                    className={`font-extrabold shrink-0 ${
+                      tx.amount >= 0
+                        ? 'text-emerald-600 dark:text-emerald-400'
+                        : 'text-red-500 dark:text-red-400'
+                    }`}
+                  >
+                    {tx.amount >= 0 ? '+' : ''}{tx.amount.toLocaleString('ru-RU')} ₽
+                  </span>
+                </div>
+              ))}
+            </div>
+          )
         )}
       </div>
 

@@ -1,11 +1,14 @@
+import csv
+import io
 import json
 from datetime import datetime
 from typing import Optional, List
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.security import oauth2_scheme, decode_token
-from app.models import User, Review, Task, UserRole, TaskStatus
+from app.models import User, Review, Task, Transaction, UserRole, TaskStatus
 from app.schemas import ProfileUpdate
 
 router = APIRouter(tags=["Users"])
@@ -105,6 +108,122 @@ def switch_role(token: str = Depends(oauth2_scheme), db: Session = Depends(get_d
     user.role = new_role
     db.commit()
     return {"message": "Роль изменена", "role": new_role.value}
+
+@router.get("/specialists/")
+def list_specialists(
+    search: Optional[str] = None,
+    city: Optional[str] = None,
+    sort: str = Query("rating", pattern="^(rating|completed|reviews|newest)$"),
+    page: int = Query(1, ge=1),
+    per_page: int = Query(12, ge=1, le=50),
+    db: Session = Depends(get_db)
+):
+    """Каталог специалистов с поиском, фильтром по городу, сортировкой и пагинацией."""
+    query = db.query(User).filter(User.role == UserRole.specialist)
+    if search:
+        q = f"%{search}%"
+        query = query.filter(
+            User.name.ilike(q) | User.bio.ilike(q) | User.skills.ilike(q)
+        )
+    if city:
+        query = query.filter(User.city.ilike(f"%{city}%"))
+
+    specialists = query.all()
+    items = []
+    for u in specialists:
+        reviews = db.query(Review).filter(Review.specialist_id == u.id, Review.target == "specialist").all()
+        rating = round(sum(r.rating for r in reviews) / len(reviews), 1) if reviews else None
+        completed = db.query(Task).filter(
+            Task.executor_id == u.id, Task.status == TaskStatus.completed
+        ).count()
+        items.append({
+            "id": u.id,
+            "name": u.name,
+            "bio": u.bio,
+            "city": u.city,
+            "avatar": u.avatar,
+            "skills": u.skills,
+            "verified": bool(u.verified),
+            "is_pro": bool(u.is_pro),
+            "rating": rating,
+            "reviews_count": len(reviews),
+            "completed_tasks": completed,
+            "online": user_online(u),
+        })
+
+    if sort == "rating":
+        items.sort(key=lambda x: (not x["is_pro"], -(x["rating"] or 0), -x["reviews_count"]))
+    elif sort == "completed":
+        items.sort(key=lambda x: (not x["is_pro"], -x["completed_tasks"], -(x["rating"] or 0)))
+    elif sort == "reviews":
+        items.sort(key=lambda x: (not x["is_pro"], -x["reviews_count"]))
+    else:  # newest
+        items.sort(key=lambda x: -x["id"])
+
+    total = len(items)
+    pages = max(1, (total + per_page - 1) // per_page)
+    start = (page - 1) * per_page
+    return {
+        "items": items[start:start + per_page],
+        "total": total,
+        "page": page,
+        "pages": pages,
+        "per_page": per_page,
+    }
+
+@router.get("/wallet/transactions")
+def get_my_transactions(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+    """История транзакций текущего пользователя (новые сверху)."""
+    payload = decode_token_or_401(token)
+    user_id = int(payload.get("sub"))
+    txs = db.query(Transaction).filter(Transaction.user_id == user_id).order_by(Transaction.id.desc()).all()
+    task_ids = {t.task_id for t in txs if t.task_id}
+    tasks = {t.id: t.title for t in db.query(Task).filter(Task.id.in_(task_ids)).all()} if task_ids else {}
+    return [
+        {
+            "id": t.id,
+            "amount": t.amount,
+            "type": t.type.value if hasattr(t.type, "value") else str(t.type),
+            "task_id": t.task_id,
+            "task_title": tasks.get(t.task_id),
+            "created_at": t.created_at,
+        }
+        for t in txs
+    ]
+
+@router.get("/wallet/transactions.csv")
+def export_my_transactions_csv(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+    """Выгрузка истории транзакций в CSV (UTF-8 с BOM — открывается в Excel)."""
+    payload = decode_token_or_401(token)
+    user_id = int(payload.get("sub"))
+    txs = db.query(Transaction).filter(Transaction.user_id == user_id).order_by(Transaction.id.desc()).all()
+
+    type_names = {
+        "deposit": "Пополнение",
+        "escrow_hold": "Заморозка (эскроу)",
+        "escrow_release": "Выплата (эскроу)",
+        "escrow_refund": "Возврат (эскроу)",
+        "purchase": "Покупка пакета",
+    }
+    buf = io.StringIO()
+    buf.write("\ufeff")  # BOM для корректной кириллицы в Excel
+    writer = csv.writer(buf, delimiter=";")
+    writer.writerow(["ID", "Дата", "Тип", "Сумма (₽)", "ID заказа"])
+    for t in txs:
+        ttype = t.type.value if hasattr(t.type, "value") else str(t.type)
+        writer.writerow([
+            t.id,
+            (t.created_at or "")[:19].replace("T", " "),
+            type_names.get(ttype, ttype),
+            t.amount,
+            t.task_id or "",
+        ])
+    buf.seek(0)
+    return StreamingResponse(
+        iter([buf.getvalue()]),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": "attachment; filename=delo_transactions.csv"},
+    )
 
 @router.get("/users/{user_id}/public")
 def get_public_profile(user_id: int, db: Session = Depends(get_db)):

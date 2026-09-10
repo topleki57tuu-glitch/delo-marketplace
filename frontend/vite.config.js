@@ -20,6 +20,15 @@ export default defineConfig({
         },
       },
       '/users': 'http://localhost:8000',
+      '/specialists': {
+        target: 'http://localhost:8000',
+        bypass(req) {
+          // Браузерная навигация на /specialists → SPA index.html
+          if (req.headers.accept && req.headers.accept.includes('text/html')) return '/index.html';
+        },
+      },
+      '/admin': 'http://localhost:8000',
+      '/upload': 'http://localhost:8000',
       '/login': 'http://localhost:8000',
       '/register': 'http://localhost:8000',
       '/auth': 'http://localhost:8000',

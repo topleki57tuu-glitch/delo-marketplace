@@ -23,6 +23,7 @@ from app.core.security import hash_password
 from app.models import (
     User, Task, Response, Message, Review, Notification, Transaction,
     UserRole, TaskStatus, TaskCategory, TransactionType,
+    Dispute, DisputeStatus,
 )
 
 NOW = datetime.utcnow()
@@ -49,7 +50,8 @@ def main():
     # ---------- Очистка ----------
     tables = [
         "messages", "reviews", "responses", "notifications", "transactions",
-        "payment_records", "password_reset_tokens", "stored_files", "tasks", "users",
+        "payment_records", "password_reset_tokens", "stored_files", "disputes",
+        "tasks", "users",
     ]
     for t in tables:
         db.execute(text(f'DELETE FROM "{t}"'))
@@ -96,6 +98,10 @@ def main():
     add_user("olga", "olga@delo.ru", "Ольга Ковалёва", "customer",
              city="Казань", bio="Организую семейные праздники.",
              balance=10000, last_seen_min=180)
+    # Арбитр платформы (email входит в ADMIN_EMAILS в .env)
+    add_user("admin", "admin@delo.ru", "Арбитр ДЕЛО", "customer",
+             city="Москва", bio="Служба арбитража платформы. Рассматриваю споры по безопасным сделкам.",
+             balance=0, verified=True, last_seen_min=5)
 
     # Специалисты
     add_user("igor", "igor@delo.ru", "Игорь Волков", "specialist",
@@ -253,6 +259,16 @@ def main():
 
     db.flush()
 
+    # ---------- Демо-спор (арбитраж) ----------
+    # Заказ t13 (фотосъёмка каталога): исполнитель затягивает сдачу — заказчик открыл спор.
+    task_t13 = tasks["t13"]
+    task_t13.status = TaskStatus.disputed
+    db.add(Dispute(
+        task_id=task_t13.id,
+        opened_by=users["anna"].id,
+        reason="Исполнитель не выходит на связь третий день, материалы по первым 10 SKU не прислал, дедлайн срывается.",
+    ))
+
     # ---------- Отклики ----------
     def add_resp(task, spec, text, price=None, days_=None):
         db.add(Response(
@@ -336,8 +352,8 @@ def main():
     add_tx("dmitry", -150000, "escrow_hold", task="t12", days_ago=9)
     add_tx("anna", -20000, "escrow_hold", task="t13", days_ago=2)
     # Монетизация
-    add_tx("igor", -590, "deposit", days_ago=7)    # PRO на 1 месяц
-    add_tx("maria", -190, "deposit", days_ago=6)   # +10 откликов
+    add_tx("igor", -590, "purchase", days_ago=7)   # PRO на 1 месяц
+    add_tx("maria", -190, "purchase", days_ago=6)  # +10 откликов
 
     # ---------- Уведомления ----------
     def add_notif(user, type_, title, text_, task=None, read=False, hours_ago=1):
@@ -376,6 +392,9 @@ def main():
               task="t11", hours_ago=110, read=True)
     add_notif("igor", "review", "Новый отзыв о вашей работе",
               "Анна Смирнова оценила вашу работу на 5 ⭐", task="t10", hours_ago=139)
+    add_notif("sergey", "dispute", "Открыт спор по заказу",
+              "Анна Смирнова открыла спор по заказу «Предметная фотосъёмка для каталога одежды». Средства заморожены до решения арбитража.",
+              task="t13", hours_ago=6)
 
     db.commit()
 
@@ -385,7 +404,8 @@ def main():
     print(f"Задания: {db.query(Task).count()} "
           f"(open={db.query(Task).filter(Task.status == TaskStatus.open).count()}, "
           f"in_progress={db.query(Task).filter(Task.status == TaskStatus.in_progress).count()}, "
-          f"completed={db.query(Task).filter(Task.status == TaskStatus.completed).count()})")
+          f"completed={db.query(Task).filter(Task.status == TaskStatus.completed).count()}, "
+          f"disputed={db.query(Task).filter(Task.status == TaskStatus.disputed).count()})")
     print(f"Отклики: {db.query(Response).count()}")
     print(f"Сообщения: {db.query(Message).count()}")
     print(f"Отзывы: {db.query(Review).count()}")

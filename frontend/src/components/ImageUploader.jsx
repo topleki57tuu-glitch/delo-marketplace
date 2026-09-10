@@ -1,9 +1,7 @@
 import React, { useState } from 'react';
-import axios from 'axios';
 
-const API_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
-
-export const ImageUploader = ({ token, endpoint, onUploadSuccess, buttonText = "Загрузить фото", accept = "image/*" }) => {
+// Относительный путь — запросы уходят через Vite-прокси на backend
+export const ImageUploader = ({ token, endpoint = '/upload/image', onUploadSuccess, buttonText = "Загрузить фото", accept = "image/*" }) => {
     const [uploading, setUploading] = useState(false);
     const [error, setError] = useState('');
 
@@ -30,18 +28,19 @@ export const ImageUploader = ({ token, endpoint, onUploadSuccess, buttonText = "
             const formData = new FormData();
             formData.append('file', file);
 
-            const res = await axios.post(`${API_URL}${endpoint}`, formData, {
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'multipart/form-data'
-                }
+            const res = await fetch(endpoint, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}` },
+                body: formData,
             });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.detail || 'Ошибка загрузки файла');
 
             if (onUploadSuccess) {
-                onUploadSuccess(res.data.url);
+                onUploadSuccess(data.url);
             }
         } catch (err) {
-            setError(err.response?.data?.detail || 'Ошибка загрузки файла');
+            setError(err.message || 'Ошибка загрузки файла');
         } finally {
             setUploading(false);
             e.target.value = ''; // Reset input
@@ -50,7 +49,7 @@ export const ImageUploader = ({ token, endpoint, onUploadSuccess, buttonText = "
 
     return (
         <div className="inline-block">
-            <label className={`${uploading ? 'opacity-50 cursor-wait' : 'cursor-pointer'} inline-flex items-center gap-2 rounded-xl bg-accent text-white px-4 py-2.5 font-display text-[11px] uppercase tracking-wider transition hover:bg-accent-bright hover:glow-accent-sm`}>
+            <label className={`${uploading ? 'opacity-50 cursor-wait' : 'cursor-pointer'} inline-flex items-center gap-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2.5 text-xs font-bold shadow-md shadow-indigo-600/20 transition-all`}>
                 {uploading ? (
                     <>
                         <span className="animate-spin">⏳</span>
@@ -70,7 +69,7 @@ export const ImageUploader = ({ token, endpoint, onUploadSuccess, buttonText = "
                     className="hidden"
                 />
             </label>
-            {error && <p className="text-danger text-sm mt-2 font-bold">{error}</p>}
+            {error && <p className="text-red-600 dark:text-red-400 text-xs mt-2 font-semibold">{error}</p>}
         </div>
     );
 };
@@ -79,11 +78,11 @@ export const AvatarUploader = ({ token, currentAvatar, onUploadSuccess }) => {
     return (
         <div className="flex flex-col items-start gap-3">
             {currentAvatar && (
-                <img src={currentAvatar} alt="Avatar" className="w-32 h-32 object-cover rounded-xl border border-border" />
+                <img src={currentAvatar} alt="Avatar" className="w-32 h-32 object-cover rounded-xl border border-slate-200 dark:border-slate-700" />
             )}
             <ImageUploader
                 token={token}
-                endpoint="/upload/avatar"
+                endpoint="/upload/image"
                 onUploadSuccess={onUploadSuccess}
                 buttonText="Изменить аватар"
             />
@@ -91,14 +90,14 @@ export const AvatarUploader = ({ token, currentAvatar, onUploadSuccess }) => {
     );
 };
 
-export const PortfolioUploader = ({ token, portfolio = [], onUploadSuccess }) => {
+export const PortfolioUploader = ({ token, portfolio = [], onUploadSuccess, onDelete }) => {
     return (
         <div>
             <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
-                <h3 className="font-display font-bold uppercase text-sm">Портфолио</h3>
+                <h3 className="text-sm font-bold uppercase tracking-wider text-slate-400">Портфолио</h3>
                 <ImageUploader
                     token={token}
-                    endpoint="/upload/portfolio"
+                    endpoint="/upload/image"
                     onUploadSuccess={onUploadSuccess}
                     buttonText="Добавить работу"
                 />
@@ -106,20 +105,33 @@ export const PortfolioUploader = ({ token, portfolio = [], onUploadSuccess }) =>
 
             {portfolio.length > 0 ? (
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                    {portfolio.map((img, idx) => (
-                        <div key={idx} className="relative group">
-                            <img
-                                src={img}
-                                alt={`Portfolio ${idx + 1}`}
-                                className="w-full h-32 object-cover rounded-xl border border-border transition hover:border-accent/60 hover:glow-accent-sm cursor-pointer"
-                                onClick={() => window.open(img, '_blank')}
-                            />
-                        </div>
-                    ))}
+                    {portfolio.map((item, idx) => {
+                        const url = typeof item === 'string' ? item : item.image_url;
+                        return (
+                            <div key={idx} className="relative group">
+                                <img
+                                    src={url}
+                                    alt={`Portfolio ${idx + 1}`}
+                                    className="w-full h-32 object-cover rounded-xl border border-slate-200 dark:border-slate-700 cursor-pointer"
+                                    onClick={() => window.open(url, '_blank')}
+                                />
+                                {onDelete && (
+                                    <button
+                                        type="button"
+                                        onClick={() => onDelete(idx)}
+                                        title="Удалить из портфолио"
+                                        className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-slate-900/70 text-white text-xs opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600"
+                                    >
+                                        ✕
+                                    </button>
+                                )}
+                            </div>
+                        );
+                    })}
                 </div>
             ) : (
-                <div className="text-center py-8 rounded-xl bg-surface-2/60 border border-dashed border-border-bright/60">
-                    <p className="text-muted font-semibold">Портфолио пока пусто. Добавьте примеры своих работ!</p>
+                <div className="text-center py-8 rounded-xl bg-slate-50 dark:bg-slate-900 border border-dashed border-slate-300 dark:border-slate-600">
+                    <p className="text-slate-500 dark:text-slate-400 text-sm font-medium">Портфолио пока пусто. Добавьте примеры своих работ!</p>
                 </div>
             )}
         </div>

@@ -8,6 +8,7 @@ from app.api.payments import router as payments_router
 from app.api.files import router as files_router
 from app.api.notifications import router as notifications_router
 from app.api.ai import router as ai_router
+from app.api.disputes import router as disputes_router
 
 __all__ = [
     "auth_router",
@@ -19,5 +20,6 @@ __all__ = [
     "payments_router",
     "files_router",
     "notifications_router",
-    "ai_router"
+    "ai_router",
+    "disputes_router"
 ]

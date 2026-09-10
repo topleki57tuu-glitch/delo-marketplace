@@ -9,7 +9,9 @@ module.exports = {
       env: {
         DATABASE_URL: 'sqlite:///./marketplace_v3.db',
         ENV: 'development',
-        SECRET_KEY: 'marketplace_dev_secret_key'
+        SECRET_KEY: 'marketplace_dev_secret_key',
+        ADMIN_EMAILS: 'admin@delo.ru',
+        FRONTEND_URL: 'http://localhost:3000'
       },
       watch: false,
       instances: 1,

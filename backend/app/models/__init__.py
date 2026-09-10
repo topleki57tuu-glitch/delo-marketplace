@@ -15,6 +15,8 @@ class TaskStatus(str, PyEnum):
     open = "open"
     in_progress = "in_progress"
     completed = "completed"
+    disputed = "disputed"    # открыт спор (арбитраж)
+    cancelled = "cancelled"  # отменён (эскроу возвращён заказчику)
 
 class TaskCategory(str, PyEnum):
     design = "design"
@@ -34,6 +36,8 @@ class TransactionType(str, PyEnum):
     deposit = "deposit"
     escrow_hold = "escrow_hold"
     escrow_release = "escrow_release"
+    escrow_refund = "escrow_refund"  # возврат эскроу заказчику (отмена/арбитраж)
+    purchase = "purchase"            # покупка пакета откликов / PRO
 
 class User(Base):
     __tablename__ = "users"
@@ -136,6 +140,23 @@ class PasswordResetToken(Base):
     expires_at = Column(String)
     used = Column(Boolean, default=False)
     created_at = Column(String, default=lambda: datetime.utcnow().isoformat())
+
+class DisputeStatus(str, PyEnum):
+    open = "open"
+    resolved_customer = "resolved_customer"    # арбитраж: деньги заказчику
+    resolved_specialist = "resolved_specialist"  # арбитраж: деньги исполнителю
+    closed = "closed"  # спор отозван инициатором
+
+class Dispute(Base):
+    __tablename__ = "disputes"
+    id = Column(Integer, primary_key=True, index=True)
+    task_id = Column(Integer, index=True)
+    opened_by = Column(Integer)  # user_id инициатора
+    reason = Column(String)
+    status = Column(SqlaEnum(DisputeStatus), default=DisputeStatus.open)
+    resolution_comment = Column(String, nullable=True)
+    created_at = Column(String, default=lambda: datetime.utcnow().isoformat())
+    resolved_at = Column(String, nullable=True)
 
 class StoredFile(Base):
     __tablename__ = "stored_files"

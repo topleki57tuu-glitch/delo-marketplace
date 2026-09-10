@@ -68,6 +68,7 @@ def login(request: Request, form: OAuth2PasswordRequestForm = Depends(), db: Ses
 def forgot_password(req: ForgotPasswordRequest, request: Request, db: Session = Depends(get_db)):
     rate_limit(request, "forgot", limit=5, window_sec=3600)
     user = db.query(User).filter(User.email == req.email).first()
+    dev_reset_link = None
     if user:
         token = secrets.token_urlsafe(32)
         reset = PasswordResetToken(
@@ -88,8 +89,13 @@ def forgot_password(req: ForgotPasswordRequest, request: Request, db: Session = 
                 f"Если вы не запрашивали сброс — просто проигнорируйте это письмо."
             )
         except Exception:
-            pass
-    return {"message": "Если аккаунт существует, письмо со ссылкой отправлено"}
+            # В development без SMTP возвращаем ссылку в ответе, чтобы флоу можно было проверить.
+            if not settings.IS_PRODUCTION:
+                dev_reset_link = link
+    resp = {"message": "Если аккаунт существует, письмо со ссылкой отправлено"}
+    if dev_reset_link:
+        resp["dev_reset_link"] = dev_reset_link
+    return resp
 
 @router.post("/auth/reset-password")
 def reset_password(req: ResetPasswordRequest, db: Session = Depends(get_db)):

@@ -6,7 +6,7 @@ from app.core.database import get_db
 from app.core.security import oauth2_scheme, decode_token
 from app.models import (
     Task, User, Response, TaskCategory, TaskStatus, UserRole,
-    Notification, Transaction, TransactionType
+    Notification, Transaction, TransactionType, Dispute, DisputeStatus
 )
 from app.schemas import TaskCreate, TaskOut
 from geocoding import geocode_address
@@ -95,6 +95,9 @@ def get_task_detail(task_id: int, db: Session = Depends(get_db)):
         "customer_avatar": customer.avatar if customer else None,
         "executor_id": task.executor_id,
         "status": task.status.value if hasattr(task.status, "value") else str(task.status),
+        "has_open_dispute": db.query(Dispute).filter(
+            Dispute.task_id == task_id, Dispute.status == DisputeStatus.open
+        ).first() is not None,
         "city": task.city,
         "address": task.address,
         "latitude": task.latitude,
@@ -134,6 +137,10 @@ def complete_task(task_id: int, token: str = Depends(oauth2_scheme), db: Session
         raise HTTPException(403, "Завершить заказ может только его создатель")
     if task.status == TaskStatus.completed:
         raise HTTPException(400, "Заказ уже завершён")
+    if task.status == TaskStatus.cancelled:
+        raise HTTPException(400, "Заказ отменён")
+    if task.status == TaskStatus.disputed:
+        raise HTTPException(400, "По заказу открыт спор — дождитесь решения арбитража")
 
     task.status = TaskStatus.completed
 

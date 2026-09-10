@@ -67,7 +67,7 @@ def buy_package(req: BuyPackageRequest, token: str = Depends(oauth2_scheme), db:
         raise HTTPException(400, f"Недостаточно средств: нужно {pkg['price']} ₽. Пополните баланс.")
 
     user.balance -= pkg["price"]
-    tx = Transaction(user_id=user.id, amount=-pkg["price"], type=TransactionType.deposit)
+    tx = Transaction(user_id=user.id, amount=-pkg["price"], type=TransactionType.purchase)
     db.add(tx)
 
     if pkg["type"] == "responses":

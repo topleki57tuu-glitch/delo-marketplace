@@ -13,6 +13,9 @@ import TaskDetailPage from './pages/TaskDetailPage';
 import CreateTaskPage from './pages/CreateTaskPage';
 import ProfilePage from './pages/ProfilePage';
 import SpecialistProfilePage from './pages/SpecialistProfilePage';
+import SpecialistsPage from './pages/SpecialistsPage';
+import DisputesPage from './pages/DisputesPage';
+import ResetPasswordPage from './pages/ResetPasswordPage';
 import ChatsPage from './pages/ChatsPage';
 
 const API_URL = import.meta.env.VITE_API_URL || '';
@@ -45,6 +48,16 @@ function NavigationBar({ user, token, onOpenAuth, onOpenChatsDrawer, onLogout })
             }`}
           >
             Все задания
+          </Link>
+          <Link
+            to="/specialists"
+            className={`px-3.5 py-2 rounded-xl transition-colors ${
+              location.pathname === '/specialists'
+                ? 'bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400'
+                : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+            }`}
+          >
+            Специалисты
           </Link>
           <Link
             to="/create-task"
@@ -124,6 +137,9 @@ function NavigationBar({ user, token, onOpenAuth, onOpenChatsDrawer, onLogout })
 function AuthModal({ isOpen, mode, onClose, onLoginSuccess }) {
   const { addToast } = useToast();
   const [isLogin, setIsLogin] = useState(mode === 'login');
+  const [forgotMode, setForgotMode] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotLink, setForgotLink] = useState(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
@@ -132,9 +148,33 @@ function AuthModal({ isOpen, mode, onClose, onLoginSuccess }) {
 
   useEffect(() => {
     setIsLogin(mode === 'login');
-  }, [mode]);
+    setForgotMode(false);
+    setForgotLink(null);
+  }, [mode, isOpen]);
 
   if (!isOpen) return null;
+
+  const handleForgotPassword = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setForgotLink(null);
+    try {
+      const res = await fetch('/auth/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: forgotEmail.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Не удалось отправить письмо');
+      addToast(data.message || 'Письмо со ссылкой отправлено', 'success');
+      // В dev-режиме без SMTP бэкенд возвращает ссылку прямо в ответе
+      if (data.dev_reset_link) setForgotLink(data.dev_reset_link);
+    } catch (err) {
+      addToast(err.message, 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -195,13 +235,53 @@ function AuthModal({ isOpen, mode, onClose, onLoginSuccess }) {
       <div className="bg-white dark:bg-slate-800 max-w-md w-full p-6 sm:p-8 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-2xl space-y-6">
         <div className="flex items-center justify-between">
           <h2 className="text-2xl font-extrabold text-slate-900 dark:text-white">
-            {isLogin ? 'Вход в аккаунт' : 'Регистрация в ДЕЛО'}
+            {forgotMode ? 'Сброс пароля' : isLogin ? 'Вход в аккаунт' : 'Регистрация в ДЕЛО'}
           </h2>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl font-bold">
             ✕
           </button>
         </div>
 
+        {forgotMode ? (
+          <form onSubmit={handleForgotPassword} className="space-y-4">
+            <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+              Укажите email аккаунта — отправим ссылку для установки нового пароля (действует 1 час).
+            </p>
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 mb-1">Email</label>
+              <input
+                type="email"
+                placeholder="name@example.com"
+                value={forgotEmail}
+                onChange={(e) => setForgotEmail(e.target.value)}
+                className="w-full p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+                required
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full py-3.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-bold rounded-xl text-sm shadow-md transition-all"
+            >
+              {loading ? 'Отправка...' : 'Отправить ссылку'}
+            </button>
+            {forgotLink && (
+              <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl text-xs text-amber-700 dark:text-amber-300">
+                <p className="font-bold mb-1">Режим разработки: почта не настроена, ссылка на сброс:</p>
+                <a href={forgotLink} className="underline break-all font-semibold">{forgotLink}</a>
+              </div>
+            )}
+            <div className="text-center pt-2">
+              <button
+                type="button"
+                onClick={() => { setForgotMode(false); setForgotLink(null); }}
+                className="text-xs text-indigo-600 dark:text-indigo-400 font-semibold hover:underline"
+              >
+                ← Назад ко входу
+              </button>
+            </div>
+          </form>
+        ) : (
         <form onSubmit={handleSubmit} className="space-y-4">
           {!isLogin && (
             <>
@@ -278,8 +358,19 @@ function AuthModal({ isOpen, mode, onClose, onLoginSuccess }) {
             {loading ? 'Загрузка...' : isLogin ? 'Войти' : 'Зарегистрироваться'}
           </button>
         </form>
+        )}
 
-        <div className="text-center pt-2">
+        {!forgotMode && (
+        <div className="text-center pt-2 space-y-1">
+          {isLogin && (
+            <button
+              type="button"
+              onClick={() => { setForgotMode(true); setForgotEmail(email); }}
+              className="block w-full text-xs text-slate-400 hover:text-indigo-500 font-semibold hover:underline"
+            >
+              Забыли пароль?
+            </button>
+          )}
           <button
             type="button"
             onClick={() => setIsLogin(!isLogin)}
@@ -288,6 +379,7 @@ function AuthModal({ isOpen, mode, onClose, onLoginSuccess }) {
             {isLogin ? 'Нет аккаунта? Зарегистрируйтесь' : 'Уже есть аккаунт? Войти'}
           </button>
         </div>
+        )}
       </div>
     </div>
   );
@@ -431,6 +523,26 @@ export default function App() {
                 />
               }
             />
+            <Route
+              path="/specialists"
+              element={
+                <SpecialistsPage
+                  user={user}
+                  onOpenAuth={handleOpenAuth}
+                />
+              }
+            />
+            <Route
+              path="/disputes"
+              element={
+                <DisputesPage
+                  user={user}
+                  token={token}
+                  onOpenAuth={handleOpenAuth}
+                />
+              }
+            />
+            <Route path="/reset" element={<ResetPasswordPage />} />
             <Route
               path="/chats"
               element={

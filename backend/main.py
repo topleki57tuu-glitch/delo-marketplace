@@ -17,7 +17,8 @@ from app.api import (
     payments_router,
     files_router,
     notifications_router,
-    ai_router
+    ai_router,
+    disputes_router
 )
 from file_utils import UPLOAD_DIR
 from jose import jwt
@@ -113,6 +114,7 @@ app.include_router(payments_router)
 app.include_router(files_router)
 app.include_router(notifications_router)
 app.include_router(ai_router)
+app.include_router(disputes_router)
 
 @app.get("/")
 def root():

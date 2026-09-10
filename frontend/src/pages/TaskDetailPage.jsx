@@ -16,6 +16,13 @@ export default function TaskDetailPage({ user, token, onOpenAuth, onOpenChat, on
   const [submittingResponse, setSubmittingResponse] = useState(false);
   const [assigningId, setAssigningId] = useState(null);
   const [completing, setCompleting] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
+
+  // Dispute state
+  const [dispute, setDispute] = useState(null);
+  const [showDisputeModal, setShowDisputeModal] = useState(false);
+  const [disputeReason, setDisputeReason] = useState('');
+  const [openingDispute, setOpeningDispute] = useState(false);
 
   // Review modal state
   const [showReviewModal, setShowReviewModal] = useState(false);
@@ -37,6 +44,16 @@ export default function TaskDetailPage({ user, token, onOpenAuth, onOpenChat, on
         if (respRes.ok) {
           const respData = await respRes.json();
           setResponses(respData);
+        }
+        // Информация о споре (доступна участникам сделки и арбитрам)
+        const dispRes = await fetch(`/tasks/${taskId}/dispute`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (dispRes.ok) {
+          const dispData = await dispRes.json();
+          setDispute(dispData.dispute || null);
+        } else {
+          setDispute(null);
         }
       }
     } catch (err) {
@@ -138,6 +155,59 @@ export default function TaskDetailPage({ user, token, onOpenAuth, onOpenChat, on
     }
   };
 
+  const handleOpenDispute = async (e) => {
+    e.preventDefault();
+    if (disputeReason.trim().length < 5) {
+      addToast('Опишите причину спора (минимум 5 символов)', 'error');
+      return;
+    }
+    setOpeningDispute(true);
+    try {
+      const res = await fetch(`/tasks/${taskId}/dispute`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ reason: disputeReason.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Не удалось открыть спор');
+      addToast(data.message || 'Спор открыт', 'success');
+      setShowDisputeModal(false);
+      setDisputeReason('');
+      fetchTaskDetails();
+    } catch (err) {
+      addToast(err.message, 'error');
+    } finally {
+      setOpeningDispute(false);
+    }
+  };
+
+  const handleCancelTask = async () => {
+    const isMyDispute = dispute && dispute.status === 'open' && user && dispute.opened_by === user.id;
+    const confirmText = isMyDispute
+      ? 'Отозвать спор и отменить заказ? Замороженные средства вернутся заказчику.'
+      : 'Отменить заказ? Замороженные средства (эскроу) вернутся заказчику.';
+    if (!window.confirm(confirmText)) return;
+
+    setCancelling(true);
+    try {
+      const res = await fetch(`/tasks/${taskId}/cancel`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Не удалось отменить заказ');
+      addToast(data.message || 'Заказ отменён', 'success');
+      fetchTaskDetails();
+    } catch (err) {
+      addToast(err.message, 'error');
+    } finally {
+      setCancelling(false);
+    }
+  };
+
   const handleSendReview = async (e) => {
     e.preventDefault();
     try {
@@ -224,10 +294,18 @@ export default function TaskDetailPage({ user, token, onOpenAuth, onOpenChat, on
                       ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
                       : task.status === 'in_progress'
                       ? 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
+                      : task.status === 'disputed'
+                      ? 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300'
+                      : task.status === 'cancelled'
+                      ? 'bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-400 line-through'
                       : 'bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-300'
                   }`}
                 >
-                  {task.status === 'open' ? '🟢 Открыт' : task.status === 'in_progress' ? '🟡 В работе' : '✅ Завершен'}
+                  {task.status === 'open' ? '🟢 Открыт'
+                    : task.status === 'in_progress' ? '🟡 В работе'
+                    : task.status === 'disputed' ? '🔴 Арбитраж'
+                    : task.status === 'cancelled' ? 'Отменён'
+                    : '✅ Завершен'}
                 </span>
               </div>
 
@@ -313,15 +391,40 @@ export default function TaskDetailPage({ user, token, onOpenAuth, onOpenChat, on
               )}
             </div>
 
-            {isAuthor && task.status === 'in_progress' && (
-              <button
-                onClick={handleCompleteTask}
-                disabled={completing}
-                className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-sm shadow-md shadow-emerald-600/20 transition-all"
-              >
-                {completing ? 'Завершение...' : '✅ Подтвердить выполнение и выплатить'}
-              </button>
-            )}
+            <div className="flex flex-wrap items-center gap-2">
+              {isAuthor && task.status === 'in_progress' && (
+                <button
+                  onClick={handleCompleteTask}
+                  disabled={completing}
+                  className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-sm shadow-md shadow-emerald-600/20 transition-all"
+                >
+                  {completing ? 'Завершение...' : '✅ Подтвердить выполнение и выплатить'}
+                </button>
+              )}
+
+              {(isAuthor || isAssignedSpecialist) && task.status === 'in_progress' && !task.has_open_dispute && (
+                <button
+                  onClick={() => setShowDisputeModal(true)}
+                  className="px-4 py-2.5 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/40 font-bold rounded-xl text-sm border border-red-200 dark:border-red-800 transition-all"
+                >
+                  ⚠️ Открыть спор
+                </button>
+              )}
+
+              {(isAuthor || isAssignedSpecialist) && (task.status === 'in_progress' || task.status === 'disputed') && (
+                (task.status !== 'disputed' || (dispute && user && dispute.opened_by === user.id)) && (
+                  <button
+                    onClick={handleCancelTask}
+                    disabled={cancelling}
+                    className="px-4 py-2.5 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 font-semibold rounded-xl text-sm transition-all"
+                  >
+                    {cancelling
+                      ? 'Отмена...'
+                      : (task.status === 'disputed' ? 'Отозвать спор и отменить заказ' : 'Отменить заказ (возврат эскроу)')}
+                  </button>
+                )
+              )}
+            </div>
           </div>
         </div>
 
@@ -455,6 +558,74 @@ export default function TaskDetailPage({ user, token, onOpenAuth, onOpenChat, on
           )}
         </div>
       </div>
+
+      {/* Active dispute info banner */}
+      {dispute && dispute.status === 'open' && (
+        <div className="max-w-4xl mx-auto mt-6 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-2xl p-4 sm:p-5">
+          <div className="flex items-start gap-3">
+            <span className="text-xl">⚖️</span>
+            <div className="text-sm">
+              <p className="font-bold text-red-700 dark:text-red-300">Спор открыт — средства заморожены</p>
+              <p className="text-red-600 dark:text-red-400 mt-1">
+                {dispute.opened_by_name}: «{dispute.reason}»
+              </p>
+              <p className="text-xs text-red-500 dark:text-red-500 mt-1">
+                Арбитраж платформы рассмотрит спор и вынесет решение. Продолжайте общение в чате сделки.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+      {dispute && dispute.status !== 'open' && dispute.resolution_comment && (
+        <div className="max-w-4xl mx-auto mt-6 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 sm:p-5">
+          <div className="flex items-start gap-3">
+            <span className="text-xl">⚖️</span>
+            <div className="text-sm">
+              <p className="font-bold text-slate-700 dark:text-slate-200">Спор закрыт</p>
+              <p className="text-slate-500 dark:text-slate-400 mt-1">{dispute.resolution_comment}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Dispute Modal */}
+      {showDisputeModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-800 max-w-md w-full p-6 sm:p-8 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-2xl space-y-4">
+            <h3 className="text-xl font-bold text-slate-900 dark:text-white">Открыть спор</h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+              Замороженные средства (эскроу) останутся заблокированными, пока арбитраж платформы не вынесет решение:
+              вернуть деньги заказчику или выплатить исполнителю.
+            </p>
+            <form onSubmit={handleOpenDispute} className="space-y-4">
+              <textarea
+                rows={4}
+                placeholder="Опишите суть проблемы: что пошло не так, какие договорённости нарушены..."
+                value={disputeReason}
+                onChange={(e) => setDisputeReason(e.target.value)}
+                className="w-full p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm outline-none focus:ring-2 focus:ring-red-500"
+                required
+              />
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowDisputeModal(false)}
+                  className="px-4 py-2 text-sm text-slate-500 hover:text-slate-700"
+                >
+                  Отмена
+                </button>
+                <button
+                  type="submit"
+                  disabled={openingDispute}
+                  className="px-5 py-2.5 bg-red-600 hover:bg-red-500 text-white font-bold rounded-xl text-sm shadow-md disabled:opacity-50"
+                >
+                  {openingDispute ? 'Отправка...' : 'Открыть спор'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Review Modal */}
       {showReviewModal && (

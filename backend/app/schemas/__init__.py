@@ -134,6 +134,27 @@ class ReviewOut(BaseModel):
 class DepositRequest(BaseModel):
     amount: int
 
+class DisputeCreate(BaseModel):
+    reason: str = Field(min_length=5, max_length=2000)
+
+class DisputeResolve(BaseModel):
+    decision: str  # "refund_customer" | "pay_specialist"
+    comment: Optional[str] = None
+
+class SpecialistOut(BaseModel):
+    id: int
+    name: Optional[str] = None
+    bio: Optional[str] = None
+    city: Optional[str] = None
+    avatar: Optional[str] = None
+    skills: Optional[str] = None
+    verified: bool = False
+    is_pro: bool = False
+    rating: Optional[float] = None
+    reviews_count: int = 0
+    completed_tasks: int = 0
+    online: bool = False
+
 class AIChatRequest(BaseModel):
     prompt: str
     current_task: Optional[dict] = None
