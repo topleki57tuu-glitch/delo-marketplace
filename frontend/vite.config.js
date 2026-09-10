@@ -12,7 +12,13 @@ export default defineConfig({
     port: 3000,
     allowedHosts: true,
     proxy: {
-      '/tasks': 'http://localhost:8000',
+      '/tasks': {
+        target: 'http://localhost:8000',
+        bypass(req) {
+          // Браузерная навигация (не XHR/fetch) → отдаём SPA index.html
+          if (req.headers.accept && req.headers.accept.includes('text/html')) return '/index.html';
+        },
+      },
       '/users': 'http://localhost:8000',
       '/login': 'http://localhost:8000',
       '/register': 'http://localhost:8000',

@@ -281,7 +281,7 @@ export default function TaskDetailPage({ user, token, onOpenAuth, onOpenChat, on
               <div>
                 <span className="block text-slate-400 text-xs mb-0.5">Срок сдачи</span>
                 <span className="font-semibold text-slate-800 dark:text-slate-200">
-                  📅 {task.deadline}
+                  📅 {new Date(task.deadline).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })}
                 </span>
               </div>
             )}
