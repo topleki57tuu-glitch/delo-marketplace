@@ -1,0 +1,630 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>ДЕЛО — Руководство пользователя</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=Unbounded:wght@500;700;800&display=swap" rel="stylesheet">
+<style>
+  @page { size: 210mm 297mm; margin: 0; }
+  html, body { margin: 0; padding: 0; background: #F4F2ED; }
+  * { box-sizing: border-box; }
+
+  :root {
+    --ink: #141414;
+    --paper: #F4F2ED;
+    --paper2: #E9E6DF;
+    --red: #E8442E;
+    --muted: #6b675f;
+  }
+
+  body {
+    font-family: 'Manrope', 'Segoe UI', sans-serif;
+    color: var(--ink);
+    font-size: 10.5pt;
+    line-height: 1.55;
+  }
+
+  .page {
+    width: 210mm; height: 297mm;
+    page-break-after: always;
+    background: var(--paper);
+    padding: 16mm 15mm 18mm 15mm;
+    position: relative;
+    overflow: hidden;
+  }
+  .page:last-child { page-break-after: auto; }
+
+  .disp { font-family: 'Unbounded', 'Arial Black', sans-serif; }
+
+  /* ---------- Шапка/подвал страниц ---------- */
+  .phead {
+    display: flex; justify-content: space-between; align-items: center;
+    border-bottom: 2.5px solid var(--ink);
+    padding-bottom: 4mm; margin-bottom: 8mm;
+  }
+  .phead .logo { font-family: 'Unbounded', sans-serif; font-weight: 800; font-size: 13pt; }
+  .phead .logo em { color: var(--red); font-style: normal; }
+  .phead .sect { font-size: 8pt; font-weight: 800; letter-spacing: 0.22em; text-transform: uppercase; color: var(--muted); }
+
+  .pfoot {
+    position: absolute; bottom: 8mm; left: 15mm; right: 15mm;
+    display: flex; justify-content: space-between;
+    font-size: 8pt; font-weight: 700; color: var(--muted);
+    border-top: 1px solid #c9c4b8; padding-top: 3mm;
+    letter-spacing: 0.08em;
+  }
+
+  h1.sec {
+    font-family: 'Unbounded', sans-serif; font-weight: 800;
+    font-size: 21pt; text-transform: uppercase; line-height: 1.15;
+    margin: 0 0 3mm 0;
+  }
+  h1.sec em { color: var(--red); font-style: normal; }
+  .lead { font-size: 11pt; font-weight: 600; color: #3d3a34; margin: 0 0 6mm 0; max-width: 165mm; }
+
+  h2.sub {
+    font-family: 'Unbounded', sans-serif; font-weight: 700;
+    font-size: 12pt; text-transform: uppercase; margin: 7mm 0 3mm 0;
+  }
+
+  /* ---------- Шаги ---------- */
+  .steps { margin: 4mm 0; }
+  .step { display: flex; gap: 5mm; margin-bottom: 4.5mm; page-break-inside: avoid; }
+  .stepnum {
+    flex: 0 0 9mm; height: 9mm;
+    background: var(--ink); color: var(--paper);
+    font-family: 'Unbounded', sans-serif; font-weight: 700; font-size: 11pt;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .step b { display: block; margin-bottom: 0.5mm; }
+  .step p { margin: 0; color: #33302a; }
+
+  /* ---------- Скриншоты ---------- */
+  figure.shot { margin: 5mm 0; page-break-inside: avoid; }
+  figure.shot img {
+    width: 100%; display: block;
+    border: 2.5px solid var(--ink);
+    box-shadow: 5px 5px 0 var(--ink);
+  }
+  figure.shot img.mobile { width: 62mm; margin: 0 auto; }
+  figure.shot figcaption {
+    font-size: 8.5pt; font-weight: 700; color: var(--muted);
+    margin-top: 2.5mm; letter-spacing: 0.04em;
+  }
+
+  /* ---------- Плашки ---------- */
+  .tip {
+    border: 2px solid var(--ink); background: var(--paper2);
+    padding: 4mm 5mm; margin: 5mm 0; font-size: 9.5pt;
+    page-break-inside: avoid;
+  }
+  .tip b { text-transform: uppercase; letter-spacing: 0.12em; font-size: 8.5pt; }
+
+  .warn {
+    border: 2px solid var(--red); background: #fbe9e5;
+    padding: 4mm 5mm; margin: 5mm 0; font-size: 9.5pt;
+    page-break-inside: avoid;
+  }
+  .warn b { color: var(--red); text-transform: uppercase; letter-spacing: 0.12em; font-size: 8.5pt; }
+
+  .two { display: flex; gap: 6mm; }
+  .two > * { flex: 1; }
+
+  table.simple { width: 100%; border-collapse: collapse; margin: 4mm 0; font-size: 9.5pt; }
+  table.simple th {
+    background: var(--ink); color: var(--paper); text-align: left;
+    font-family: 'Unbounded', sans-serif; font-size: 8pt; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.08em; padding: 3mm 4mm;
+  }
+  table.simple td { border: 1.5px solid var(--ink); padding: 3mm 4mm; vertical-align: top; }
+  table.simple td.k { font-weight: 800; white-space: nowrap; }
+
+  .badge { display: inline-block; border: 2px solid var(--ink); padding: 0.5mm 2.5mm; font-size: 8pt; font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em; }
+  .badge.open { background: #fff; }
+  .badge.prog { background: var(--red); color: #fff; }
+  .badge.done { background: var(--ink); color: var(--paper); }
+
+  ul.list { margin: 2mm 0 4mm 0; padding-left: 6mm; }
+  ul.list li { margin-bottom: 1.6mm; }
+
+  /* ---------- Обложка ---------- */
+  .cover { padding: 0; }
+  .cover .top {
+    background: var(--ink); color: var(--paper);
+    padding: 12mm 15mm 10mm 15mm;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .cover .top .doc { font-size: 9pt; font-weight: 800; letter-spacing: 0.3em; text-transform: uppercase; }
+  .cover .hero { padding: 14mm 15mm 0 15mm; text-align: center; }
+  .cover .hero h1 {
+    font-family: 'Unbounded', sans-serif; font-weight: 800;
+    font-size: 58pt; margin: 0; line-height: 1; letter-spacing: -0.01em;
+  }
+  .cover .hero h1 em { color: var(--red); font-style: normal; }
+  .cover .hero .sub {
+    font-family: 'Unbounded', sans-serif; font-weight: 700;
+    font-size: 15pt; text-transform: uppercase; margin-top: 6mm;
+  }
+  .cover .hero .desc { font-size: 11pt; font-weight: 600; color: #3d3a34; max-width: 130mm; margin: 5mm auto 0 auto; }
+  .cover .art { text-align: center; margin-top: 10mm; }
+  .cover .art img { width: 92mm; border: 3px solid var(--ink); box-shadow: 7px 7px 0 var(--ink); }
+  .cover .meta {
+    position: absolute; bottom: 10mm; left: 15mm; right: 15mm;
+    display: flex; justify-content: space-between; align-items: flex-end;
+    border-top: 2.5px solid var(--ink); padding-top: 4mm;
+  }
+  .cover .meta .l { font-size: 9pt; font-weight: 700; }
+  .cover .meta .r { font-family: 'Unbounded', sans-serif; font-size: 8pt; font-weight: 700; letter-spacing: 0.15em; text-transform: uppercase; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<!-- ================= ОБЛОЖКА ================= -->
+<div class="page cover">
+  <div class="top">
+    <span class="doc">Руководство пользователя</span>
+    <span class="disp" style="font-weight:800; font-size:12pt;">ДЕЛО<em style="color:var(--red); font-style:normal;">.</em></span>
+  </div>
+  <div class="hero">
+    <h1>ДЕЛО<em>.</em></h1>
+    <div class="sub">Маркетплейс услуг</div>
+    <div class="desc">Полное руководство: как размещать заказы, откликаться на работу, вести чат с заказчиком, получать оплату и отзывы.</div>
+  </div>
+  <div class="art">
+    <img src="manual_shots/00_brand.jpg" alt="ДЕЛО">
+  </div>
+  <div class="meta">
+    <div class="l">Версия 1.0 · Август 2026<br>Сайт: delo-jhcy.onrender.com</div>
+    <div class="r">Сделай дело</div>
+  </div>
+</div>
+
+<!-- ================= 1. О ПРИЛОЖЕНИИ ================= -->
+<div class="page">
+  <div class="phead">
+    <span class="logo">ДЕЛО<em>.</em></span>
+    <span class="sect">О приложении</span>
+  </div>
+
+  <h1 class="sec">Что такое ДЕЛО<em>.</em></h1>
+  <p class="lead">ДЕЛО — это маркетплейс услуг: место, где заказчики находят исполнителей для любых задач, а специалисты получают заказы. Ремонт и уборка, дизайн и тексты, репетиторство и фото — 12 категорий, тысячи возможностей.</p>
+
+  <div class="two">
+    <div>
+      <h2 class="sub">Две роли</h2>
+      <table class="simple">
+        <tr><th>Роль</th><th>Что делает</th></tr>
+        <tr><td class="k">Заказчик</td><td>Публикует задания, выбирает исполнителя из откликов, оплачивает работу через безопасную сделку, оставляет отзыв.</td></tr>
+        <tr><td class="k">Специалист</td><td>Находит задания в ленте, отправляет отклики со своей ценой и сроком, выполняет работу и получает рейтинг.</td></tr>
+      </table>
+      <p>Роль выбирается при регистрации. Один аккаунт — одна роль.</p>
+    </div>
+    <div>
+      <h2 class="sub">Как это работает</h2>
+      <div class="steps">
+        <div class="step"><div class="stepnum">1</div><div><b>Заказчик размещает заказ</b><p>Описание, бюджет, категория, город или удалённая работа.</p></div></div>
+        <div class="step"><div class="stepnum">2</div><div><b>Специалисты откликаются</b><p>Каждый предлагает свою цену и сроки выполнения.</p></div></div>
+        <div class="step"><div class="stepnum">3</div><div><b>Выбор исполнителя</b><p>Заказчик назначает одного — сумма резервируется на счёте.</p></div></div>
+        <div class="step"><div class="stepnum">4</div><div><b>Работа и чат</b><p>Все договорённости — во встроенном чате рабочего области.</p></div></div>
+        <div class="step"><div class="stepnum">5</div><div><b>Завершение и отзыв</b><p>Оплата уходит исполнителю, заказчик ставит оценку.</p></div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="tip"><b>Совет</b><br>Заполните профиль сразу после регистрации: имя, город, навыки и портфолио. Заказчики в первую очередь выбирают тех, о ком всё понятно.</div>
+
+  <div class="pfoot"><span>ДЕЛО. Руководство пользователя</span><span>Стр. 2</span></div>
+</div>
+
+<!-- ================= 2. НАЧАЛО РАБОТЫ ================= -->
+<div class="page">
+  <div class="phead">
+    <span class="logo">ДЕЛО<em>.</em></span>
+    <span class="sect">Начало работы</span>
+  </div>
+
+  <h1 class="sec">Регистрация и вход</h1>
+  <p class="lead">Для полноценной работы нужен аккаунт. Просмотр ленты заказов доступен без регистрации.</p>
+
+  <div class="two">
+    <div>
+      <h2 class="sub">Как зарегистрироваться</h2>
+      <div class="steps">
+        <div class="step"><div class="stepnum">1</div><div><b>Нажмите «Войти»</b><p>Кнопка в правом верхнем углу главной страницы.</p></div></div>
+        <div class="step"><div class="stepnum">2</div><div><b>Перейдите в режим регистрации</b><p>Ссылка «Нет аккаунта? Зарегистрироваться» внизу формы.</p></div></div>
+        <div class="step"><div class="stepnum">3</div><div><b>Заполните форму</b><p>Имя, e-mail, пароль. Выберите роль: заказчик или специалист.</p></div></div>
+        <div class="step"><div class="stepnum">4</div><div><b>Войдите</b><p>После регистрации форма вернётся ко входу — введите e-mail и пароль.</p></div></div>
+      </div>
+    </div>
+    <div>
+      <figure class="shot">
+        <img src="manual_shots/04_auth_register.png" alt="Форма регистрации">
+        <figcaption>Форма регистрации: имя, e-mail, пароль и роль</figcaption>
+      </figure>
+    </div>
+  </div>
+
+  <h2 class="sub">Вход в приложение</h2>
+  <div class="two">
+    <div>
+      <figure class="shot">
+        <img src="manual_shots/03_auth_login.png" alt="Форма входа">
+        <figcaption>Форма входа</figcaption>
+      </figure>
+    </div>
+    <div>
+      <ul class="list">
+        <li>Введите e-mail и пароль, нажмите «Войти».</li>
+        <li>Сессия сохраняется — при следующем визите вход не потребуется.</li>
+        <li>Забыли пароль? Обратитесь к администратору сервиса для сброса.</li>
+        <li>Выйти из аккаунта можно кнопкой «Выйти» в шапке сайта.</li>
+      </ul>
+      <div class="tip"><b>Важно</b><br>При регистрации обязательно укажите имя — так вас будут видеть заказчики в откликах и чате.</div>
+    </div>
+  </div>
+
+  <div class="pfoot"><span>ДЕЛО. Руководство пользователя</span><span>Стр. 3</span></div>
+</div>
+
+<!-- ================= 3. ГЛАВНАЯ СТРАНИЦА ================= -->
+<div class="page">
+  <div class="phead">
+    <span class="logo">ДЕЛО<em>.</em></span>
+    <span class="sect">Главная страница</span>
+  </div>
+
+  <h1 class="sec">Обзор главной страницы</h1>
+  <p class="lead">Главная — это витрина сервиса: быстрый поиск, популярные категории и лента всех заказов.</p>
+
+  <figure class="shot">
+    <img src="manual_shots/01_main.png" alt="Главная страница ДЕЛО">
+    <figcaption>Главная страница: поиск, категории и лента заказов</figcaption>
+  </figure>
+
+  <div class="two">
+    <div>
+      <h2 class="sub">Элементы страницы</h2>
+      <ul class="list">
+        <li><b>Строка поиска</b> — введите, что нужно сделать (например, «мытьё окон»), и лента отфильтруется сама.</li>
+        <li><b>Чипы категорий</b> — быстрый переход: Дизайн, Разработка, Тексты, Ремонт, Уборка.</li>
+        <li><b>Панель фильтров</b> — категория, город, только удалённые заказы, сортировка.</li>
+        <li><b>Переключатель «Список / Карта»</b> — заказы на карте города.</li>
+      </ul>
+    </div>
+    <div>
+      <h2 class="sub">Сортировка</h2>
+      <ul class="list">
+        <li>По умолчанию — как выдал сервер;</li>
+        <li>Бюджет: сначала дороже / дешевле;</li>
+        <li>Сначала новые / старые.</li>
+      </ul>
+      <div class="tip"><b>Совет</b><br>Поиск срабатывает с небольшой задержкой после ввода — просто печатайте, страницу перезагружать не нужно.</div>
+    </div>
+  </div>
+
+  <div class="pfoot"><span>ДЕЛО. Руководство пользователя</span><span>Стр. 4</span></div>
+</div>
+
+<!-- ================= 4. ЛЕНТА ЗАКАЗОВ ================= -->
+<div class="page">
+  <div class="phead">
+    <span class="logo">ДЕЛО<em>.</em></span>
+    <span class="sect">Лента заказов</span>
+  </div>
+
+  <h1 class="sec">Лента заказов</h1>
+  <p class="lead">Каждый заказ — карточка со всей ключевой информацией: категория, статус, бюджет, город и срок.</p>
+
+  <figure class="shot">
+    <img src="manual_shots/06_feed.png" alt="Лента заказов">
+    <figcaption>Лента заказов: карточки с бюджетом, городом и статусами</figcaption>
+  </figure>
+
+  <div class="two">
+    <div>
+      <h2 class="sub">Статусы заказа</h2>
+      <table class="simple">
+        <tr><th>Статус</th><th>Что означает</th></tr>
+        <tr><td><span class="badge open">Открыт</span></td><td>Принимаются отклики специалистов.</td></tr>
+        <tr><td><span class="badge prog">В работе</span></td><td>Исполнитель назначен, идёт выполнение.</td></tr>
+        <tr><td><span class="badge done">Завершён</span></td><td>Работа выполнена и оплачена.</td></tr>
+      </table>
+    </div>
+    <div>
+      <h2 class="sub">Что видно в карточке</h2>
+      <ul class="list">
+        <li>Категория (чёрный штамп) и статус заказа;</li>
+        <li>Заголовок и краткое описание — кликните, чтобы открыть заказ целиком;</li>
+        <li>Бюджет крупным шрифтом, город или пометка «Удалённо», срок;</li>
+        <li>Фотографии задания, если заказчик их прикрепил.</li>
+      </ul>
+      <div class="tip"><b>Совет</b><br>Если заказов по фильтрам не нашлось, лента покажет «Пока пусто» — попробуйте ослабить условия: выбрать «Все города» или убрать категорию.</div>
+    </div>
+  </div>
+
+  <div class="pfoot"><span>ДЕЛО. Руководство пользователя</span><span>Стр. 5</span></div>
+</div>
+
+<!-- ================= 5. СОЗДАНИЕ ЗАКАЗА ================= -->
+<div class="page">
+  <div class="phead">
+    <span class="logo">ДЕЛО<em>.</em></span>
+    <span class="sect">Для заказчика</span>
+  </div>
+
+  <h1 class="sec">Как разместить заказ</h1>
+  <p class="lead">Кнопка «+ Создать заказ» доступна заказчику в верхней части ленты.</p>
+
+  <div class="steps">
+    <div class="step"><div class="stepnum">1</div><div><b>Нажмите «+ Создать заказ»</b><p>Откроется форма нового заказа.</p></div></div>
+    <div class="step"><div class="stepnum">2</div><div><b>Опишите задачу</b><p>Чёткий заголовок и подробное описание: что нужно сделать, какой результат хотите получить, особенности.</p></div></div>
+    <div class="step"><div class="stepnum">3</div><div><b>Укажите бюджет и категорию</b><p>Бюджет — ориентир для специалистов; категория помогает нужным людям найти заказ.</p></div></div>
+    <div class="step"><div class="stepnum">4</div><div><b>Место выполнения</b><p>Отметьте «Можно выполнить удалённо» или выберите город и укажите адрес.</p></div></div>
+    <div class="step"><div class="stepnum">5</div><div><b>Добавьте фото (до 5 штук)</b><p>Фото «до», примеры желаемого результата — повышают отклики в разы.</p></div></div>
+    <div class="step"><div class="stepnum">6</div><div><b>Нажмите «Создать заказ»</b><p>Заказ сразу появится в ленте и начнёт собирать отклики.</p></div></div>
+  </div>
+
+  <figure class="shot">
+    <img src="manual_shots/05_create_task.png" alt="Форма создания заказа">
+    <figcaption>Заполненная форма: описание, бюджет 8000 ₽, категория «Дизайн», удалённая работа</figcaption>
+  </figure>
+
+  <div class="pfoot"><span>ДЕЛО. Руководство пользователя</span><span>Стр. 6</span></div>
+</div>
+
+<!-- ================= 6. СТРАНИЦА ЗАКАЗА ================= -->
+<div class="page">
+  <div class="phead">
+    <span class="logo">ДЕЛО<em>.</em></span>
+    <span class="sect">Заказ</span>
+  </div>
+
+  <h1 class="sec">Страница заказа</h1>
+  <p class="lead">Кликните заголовок любого заказа — откроется его страница: полное описание, фото, карта и форма отклика.</p>
+
+  <figure class="shot">
+    <img src="manual_shots/07_task_page.png" alt="Страница заказа">
+    <figcaption>Страница заказа: бюджет, описание, карта района и заказчик</figcaption>
+  </figure>
+
+  <div class="two">
+    <div>
+      <h2 class="sub">Что на странице</h2>
+      <ul class="list">
+        <li>Категория, статус и количество откликов;</li>
+        <li>Бюджет и полное описание задачи;</li>
+        <li>Фотографии — клик открывает полноэкранный просмотр;</li>
+        <li>Карта с меткой, если указан адрес;</li>
+        <li>Карточка заказчика со ссылкой на его профиль.</li>
+      </ul>
+    </div>
+    <div>
+      <h2 class="sub">Форма отклика</h2>
+      <p>Внизу страницы заказа специалисты видят форму: сопроводительное письмо, своя цена и срок в днях.</p>
+      <div class="tip"><b>Совет</b><br>В письме ответьте на три вопроса: какой у вас опыт, как решите задачу и когда готовы приступить. Это резко повышает шансы.</div>
+    </div>
+  </div>
+
+  <div class="pfoot"><span>ДЕЛО. Руководство пользователя</span><span>Стр. 7</span></div>
+</div>
+
+<!-- ================= 7. ОТКЛИК СПЕЦИАЛИСТА ================= -->
+<div class="page">
+  <div class="phead">
+    <span class="logo">ДЕЛО<em>.</em></span>
+    <span class="sect">Для специалиста</span>
+  </div>
+
+  <h1 class="sec">Как откликнуться на заказ</h1>
+  <p class="lead">Специалист может откликнуться двумя способами: кнопкой «Откликнуться» в карточке или через форму на странице заказа.</p>
+
+  <figure class="shot">
+    <img src="manual_shots/08_respond.png" alt="Форма отклика">
+    <figcaption>Заполненный отклик: письмо заказчику, цена 2800 ₽ и срок 1 день</figcaption>
+  </figure>
+
+  <div class="two">
+    <div>
+      <h2 class="sub">Из чего состоит отклик</h2>
+      <ul class="list">
+        <li><b>Письмо</b> — коротко о вас и о том, как решите задачу;</li>
+        <li><b>Ваша цена</b> — можно предложить бюджет заказчика или свой;</li>
+        <li><b>Срок</b> — за сколько дней выполните.</li>
+      </ul>
+      <div class="warn"><b>Важно</b><br>На один заказ можно отправить только один отклик. Обдумайте цену до отправки.</div>
+    </div>
+    <div>
+      <h2 class="sub">После отправки</h2>
+      <ul class="list">
+        <li>Заказчик получит уведомление о вашем отклике;</li>
+        <li>Если выберут вас — придёт уведомление и откроется рабочий чат;</li>
+        <li>Следите за колокольчиком в шапке — там все события.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="pfoot"><span>ДЕЛО. Руководство пользователя</span><span>Стр. 8</span></div>
+</div>
+
+<!-- ================= 8. ВЫБОР ИСПОЛНИТЕЛЯ ================= -->
+<div class="page">
+  <div class="phead">
+    <span class="logo">ДЕЛО<em>.</em></span>
+    <span class="sect">Безопасная сделка</span>
+  </div>
+
+  <h1 class="sec">Выбор исполнителя</h1>
+  <p class="lead">Когда отклики собраны, заказчик нажимает «Смотреть отклики» в карточке заказа и выбирает лучшего.</p>
+
+  <figure class="shot">
+    <img src="manual_shots/09_responses.png" alt="Список откликов">
+    <figcaption>Отклики: имя специалиста, рейтинг, город, цена, срок и письмо</figcaption>
+  </figure>
+
+  <div class="two">
+    <div>
+      <h2 class="sub">Как выбрать</h2>
+      <div class="steps">
+        <div class="step"><div class="stepnum">1</div><div><b>Сравните отклики</b><p>Рейтинг, число выполненных заказов, цена и сроки.</p></div></div>
+        <div class="step"><div class="stepnum">2</div><div><b>Нажмите «Назначить»</b><p>Сумма заказа резервируется на вашем балансе.</p></div></div>
+        <div class="step"><div class="stepnum">3</div><div><b>Откройте чат</b><p>Кнопка «Перейти в чат» появится в карточке заказа.</p></div></div>
+      </div>
+    </div>
+    <div>
+      <h2 class="sub">Безопасная сделка</h2>
+      <p>При назначении исполнителя бюджет заказа резервируется на счёте сервиса и хранится там до завершения работы. Исполнитель уверен, что оплата гарантирована, а заказчик — что деньги уйдут только за выполненную работу.</p>
+      <div class="warn"><b>Важно</b><br>Если на балансе недостаточно средств, система попросит пополнить счёт в профиле.</div>
+    </div>
+  </div>
+
+  <div class="pfoot"><span>ДЕЛО. Руководство пользователя</span><span>Стр. 9</span></div>
+</div>
+
+<!-- ================= 9. ЧАТ ================= -->
+<div class="page">
+  <div class="phead">
+    <span class="logo">ДЕЛО<em>.</em></span>
+    <span class="sect">Рабочая область</span>
+  </div>
+
+  <h1 class="sec">Чат с исполнителем</h1>
+  <p class="lead">«Рабочая область» — чат заказа, доступный обеим сторонам после назначения исполнителя. Заказчик открывает его кнопкой «Перейти в чат», специалист — «Рабочая область».</p>
+
+  <figure class="shot">
+    <img src="manual_shots/10_chat.png" alt="Чат заказа">
+    <figcaption>Рабочая область: сообщения доставляются мгновенно</figcaption>
+  </figure>
+
+  <div class="two">
+    <div>
+      <h2 class="sub">Возможности чата</h2>
+      <ul class="list">
+        <li>Сообщения доставляются мгновенно, без перезагрузки;</li>
+        <li>Свои сообщения — чёрные, собеседника — светлые;</li>
+        <li>Заказчик может завершить заказ прямо из чата;</li>
+        <li>История переписки сохраняется за заказом.</li>
+      </ul>
+    </div>
+    <div>
+      <h2 class="sub">Уведомления</h2>
+      <p>Колокольчик в шапке показывает число непрочитанных событий: новые отклики, назначение, сообщения, завершение и отзывы.</p>
+      <div class="tip"><b>Совет</b><br>Все договорённости (цена, сроки, детали) фиксируйте в чате — это история вашего заказа.</div>
+    </div>
+  </div>
+
+  <div class="pfoot"><span>ДЕЛО. Руководство пользователя</span><span>Стр. 10</span></div>
+</div>
+
+<!-- ================= 10. ЗАВЕРШЕНИЕ И ОТЗЫВ ================= -->
+<div class="page">
+  <div class="phead">
+    <span class="logo">ДЕЛО<em>.</em></span>
+    <span class="sect">Завершение</span>
+  </div>
+
+  <h1 class="sec">Завершение заказа и отзыв</h1>
+  <p class="lead">Когда работа принята, заказчик нажимает «Завершить заказ» в чате, подтверждает решение и оценивает специалиста.</p>
+
+  <figure class="shot">
+    <img src="manual_shots/14_review.png" alt="Оценка исполнителя">
+    <figcaption>Оценка: выберите число звёзд и напишите пару слов о работе</figcaption>
+  </figure>
+
+  <div class="two">
+    <div>
+      <h2 class="sub">Что происходит после</h2>
+      <div class="steps">
+        <div class="step"><div class="stepnum">1</div><div><b>Оплата исполнителю</b><p>Зарезервированная сумма уходит на счёт специалиста.</p></div></div>
+        <div class="step"><div class="stepnum">2</div><div><b>Отзыв публикуется</b><p>Оценка и комментарий появятся в профиле специалиста.</p></div></div>
+        <div class="step"><div class="stepnum">3</div><div><b>Рейтинг пересчитывается</b><p>Средняя оценка по всем отзывам — на виду у заказчиков.</p></div></div>
+      </div>
+    </div>
+    <div>
+      <h2 class="sub">Публичный профиль</h2>
+      <p>Профиль специалиста показывает рейтинг, число выполненных заказов, город, навыки, портфолио и все отзывы со ссылками на заказы.</p>
+      <figure class="shot">
+        <img src="manual_shots/12_public_profile.png" alt="Публичный профиль">
+        <figcaption>Профиль: аватар, роль, город и отзывы</figcaption>
+      </figure>
+    </div>
+  </div>
+
+  <div class="pfoot"><span>ДЕЛО. Руководство пользователя</span><span>Стр. 11</span></div>
+</div>
+
+<!-- ================= 11. ПРОФИЛЬ И БАЛАНС ================= -->
+<div class="page">
+  <div class="phead">
+    <span class="logo">ДЕЛО<em>.</em></span>
+    <span class="sect">Профиль</span>
+  </div>
+
+  <h1 class="sec">Профиль и баланс</h1>
+  <p class="lead">Раздел «Профиль» (ссылка в шапке) — ваш рабочий кабинет: данные, аватар, портфолио и кошелёк.</p>
+
+  <figure class="shot">
+    <img src="manual_shots/11_profile.png" alt="Профиль специалиста">
+    <figcaption>Профиль специалиста: баланс, аватар, портфолио и форма данных</figcaption>
+  </figure>
+
+  <div class="two">
+    <div>
+      <h2 class="sub">Что заполнить</h2>
+      <ul class="list">
+        <li><b>Имя</b> — его видят заказчики;</li>
+        <li><b>Город и телефон</b> — для связи;</li>
+        <li><b>Навыки</b> — через запятую, станут штампами в профиле;</li>
+        <li><b>О себе</b> — пара предложений об опыте;</li>
+        <li><b>Аватар и портфолио</b> — фото работ загружаются файлами.</li>
+      </ul>
+    </div>
+    <div>
+      <h2 class="sub">Баланс и оплата</h2>
+      <p>Баланс нужен заказчикам для безопасной сделки: при назначении исполнителя сумма резервируется. Пополнение — кнопка «+» рядом с балансом: выберите сумму или введите свою.</p>
+      <div class="tip"><b>Специалистам</b><br>Заработанное автоматически зачисляется на баланс после завершения заказа.</div>
+    </div>
+  </div>
+
+  <div class="pfoot"><span>ДЕЛО. Руководство пользователя</span><span>Стр. 12</span></div>
+</div>
+
+<!-- ================= 12. МОБИЛЬНАЯ ВЕРСИЯ + FAQ ================= -->
+<div class="page">
+  <div class="phead">
+    <span class="logo">ДЕЛО<em>.</em></span>
+    <span class="sect">Мобильная версия · Вопросы</span>
+  </div>
+
+  <h1 class="sec">На телефоне и частые вопросы</h1>
+
+  <div class="two">
+    <div>
+      <figure class="shot">
+        <img src="manual_shots/02_mobile_main.png" class="mobile" alt="Мобильная версия">
+        <figcaption>Мобильная версия: всё то же, в один столбец</figcaption>
+      </figure>
+      <p>Сайт полностью адаптивен: поиск, фильтры, отклики, чат и профиль работают со смартфона без установки приложений.</p>
+    </div>
+    <div>
+      <h2 class="sub">Частые вопросы</h2>
+      <table class="simple">
+        <tr><th>Вопрос</th><th>Ответ</th></tr>
+        <tr><td class="k">Сколько стоит?</td><td>Регистрация и отклики бесплатны. Комиссия сервиса не взимается.</td></tr>
+        <tr><td class="k">Как поменять роль?</td><td>Роль задаётся при регистрации. Для смены создайте новый аккаунт.</td></tr>
+        <tr><td class="k">Почему лента пуста?</td><td>Слишком строгие фильтры или заказов пока нет. Сбросьте фильтры.</td></tr>
+        <tr><td class="k">Где мои уведомления?</td><td>Колокольчик в шапке сайта.</td></tr>
+        <tr><td class="k">Забыл пароль</td><td>Обратитесь к администратору сервиса для сброса пароля.</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <h2 class="sub">Поддержка</h2>
+  <p>Вопросы и предложения — администратору сервиса. Приятной работы! Сделай дело.</p>
+
+  <div class="pfoot"><span>ДЕЛО. Руководство пользователя · Версия 1.0</span><span>Стр. 13</span></div>
+</div>
+
+</body>
+</html>

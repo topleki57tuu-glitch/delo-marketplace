@@ -1,0 +1,11 @@
+fastapi==0.129.0
+uvicorn==0.41.0
+sqlalchemy==2.0.46
+passlib[bcrypt]==1.7.4
+python-jose[cryptography]==3.5.0
+pydantic[email]==2.12.5
+python-multipart==0.0.22
+websockets==16.0
+requests==2.32.5
+psycopg2-binary==2.9.11
+bcrypt==5.0.0

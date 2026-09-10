@@ -1,0 +1,1 @@
+web: pnpm dlx serve -s dist

@@ -1,0 +1,124 @@
+@import "tailwindcss";
+
+@theme {
+    --font-display: "Unbounded", "Arial Black", sans-serif;
+    --font-sans: "Manrope", system-ui, sans-serif;
+
+    /* Dark modern palette */
+    --color-base: #0A0E17;
+    --color-surface: #111827;
+    --color-surface-2: #1A2332;
+    --color-elevated: #202B3D;
+    --color-border: #2A3648;
+    --color-border-bright: #3D4C63;
+
+    --color-ink: #E8ECF4;
+    --color-muted: #8B95A7;
+
+    --color-accent: #7C6CFF;
+    --color-accent-bright: #9D8DFF;
+    --color-accent-glow: rgba(124, 108, 255, 0.35);
+    --color-success: #34D399;
+    --color-danger: #F87171;
+    --color-star: #FBBF24;
+}
+
+/* Soft elevation shadows with a hint of glow */
+@utility shadow-card {
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.35);
+}
+
+@utility shadow-pop {
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45), 0 0 0 1px var(--color-border);
+}
+
+@utility glow-accent {
+    box-shadow: 0 0 24px var(--color-accent-glow);
+}
+
+@utility glow-accent-sm {
+    box-shadow: 0 0 14px var(--color-accent-glow);
+}
+
+/* Glassmorphism panel */
+@utility glass {
+    background: rgba(26, 35, 50, 0.72);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border: 1px solid var(--color-border);
+}
+
+/* Subtle dot-grid background */
+@utility dot-grid {
+    background-image: radial-gradient(circle, rgba(139, 149, 167, 0.14) 1px, transparent 1px);
+    background-size: 26px 26px;
+}
+
+/* Aurora gradient hero backdrop */
+@utility aurora {
+    background:
+        radial-gradient(ellipse 60% 50% at 20% 0%, rgba(124, 108, 255, 0.18), transparent),
+        radial-gradient(ellipse 50% 40% at 85% 20%, rgba(56, 189, 248, 0.12), transparent),
+        radial-gradient(ellipse 70% 60% at 50% 100%, rgba(124, 108, 255, 0.08), transparent);
+}
+
+/* Utility to hide scrollbars while maintaining scroll functionality */
+.no-scrollbar::-webkit-scrollbar {
+    display: none;
+}
+.no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+}
+
+/* Mobile tap touch target optimizations */
+button, a, input, select, textarea {
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+}
+
+/* Body & Safe area styling */
+body {
+    background-color: var(--color-base);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    min-height: 100vh;
+    min-height: 100dvh;
+}
+
+::selection {
+    background-color: var(--color-accent);
+    color: #fff;
+}
+
+/* Scrollbars */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--color-base);
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--color-border);
+    border-radius: 8px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--color-border-bright);
+}
+
+/* Inputs: dark autofill */
+input, select, textarea {
+    color-scheme: dark;
+}
+
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus {
+    -webkit-text-fill-color: var(--color-ink);
+    -webkit-box-shadow: 0 0 0 1000px var(--color-surface-2) inset;
+    transition: background-color 5000s ease-in-out 0s;
+}
