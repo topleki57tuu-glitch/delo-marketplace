@@ -10,6 +10,7 @@ export default defineConfig({
   server: {
     host: '0.0.0.0',
     port: 3000,
+    allowedHosts: true,
     proxy: {
       '/tasks': 'http://localhost:8000',
       '/users': 'http://localhost:8000',
