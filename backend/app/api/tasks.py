@@ -4,7 +4,10 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.security import oauth2_scheme, decode_token
-from app.models import Task, User, Response, TaskCategory, TaskStatus, UserRole
+from app.models import (
+    Task, User, Response, TaskCategory, TaskStatus, UserRole,
+    Notification, Transaction, TransactionType
+)
 from app.schemas import TaskCreate, TaskOut
 from geocoding import geocode_address
 from pydantic import BaseModel
@@ -129,6 +132,38 @@ def complete_task(task_id: int, token: str = Depends(oauth2_scheme), db: Session
         raise HTTPException(404, "Заказ не найден")
     if task.customer_id != user_id:
         raise HTTPException(403, "Завершить заказ может только его создатель")
+    if task.status == TaskStatus.completed:
+        raise HTTPException(400, "Заказ уже завершён")
+
     task.status = TaskStatus.completed
+
+    # Безопасная сделка: переводим замороженные (эскроу) средства исполнителю
+    budget = task.budget or 0
+    released = 0
+    if budget > 0 and task.executor_id:
+        executor = db.query(User).filter(User.id == task.executor_id).first()
+        if executor:
+            executor.balance += budget
+            released = budget
+            db.add(Transaction(
+                user_id=executor.id,
+                amount=budget,
+                type=TransactionType.escrow_release,
+                task_id=task.id
+            ))
+
+    if task.executor_id:
+        payout_note = f" {budget} ₽ переведены на ваш баланс." if released else ""
+        db.add(Notification(
+            user_id=task.executor_id,
+            type="completed",
+            title="Заказ завершён!",
+            text=f"Заказчик подтвердил выполнение «{task.title}».{payout_note}",
+            task_id=task.id
+        ))
+
     db.commit()
-    return {"message": "Заказ успешно завершён"}
+    return {
+        "message": "Заказ успешно завершён" + (f", исполнителю переведено {released} ₽" if released else ""),
+        "released": released
+    }

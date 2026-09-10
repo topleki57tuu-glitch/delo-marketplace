@@ -31,3 +31,21 @@ lerna-debug.log*
 
 # misc
 .DS_Store
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# ---- SQLite runtime (генерируется: python3 backend/seed_demo.py) ----
+*.db
+*.db-shm
+*.db-wal
+
+# ---- Runtime данные ----
+backend/uploads/
+uploads/
+bot/subscriptions.json*
+bot/subs.json*

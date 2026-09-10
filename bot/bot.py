@@ -202,7 +202,8 @@ def notify_matching(task):
         budget_str = "Договорная"
         
     task_id = task.get('id', 0)
-    task_url = f"{FRONTEND_URL}/task/{task_id}"
+    # Маршрут фронтенда: /tasks/:taskId (React Router)
+    task_url = f"{FRONTEND_URL}/tasks/{task_id}"
 
     text = (
         f"🎯 <b>Новый заказ на ДЕЛО</b>\n\n"

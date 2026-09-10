@@ -1,21 +1,136 @@
-```txt
+# Платформа «ДЕЛО» — маркетплейс специалистов и заказчиков
+
+## Обзор проекта
+
+- **Название**: ДЕЛО (DELO)
+- **Цель**: маркетплейс, где заказчики публикуют задания, а специалисты откликаются, работают через чат и безопасную сделку (эскроу), получают оплату и отзывы
+- **Стек**: FastAPI (Python) + React (Vite) + SQLAlchemy + SQLite (dev) / PostgreSQL (prod) + WebSocket-чат + Telegram-бот «Радар заказов»
+
+## Запуск в песочнице (текущее окружение)
+
+Сервисы уже запущены через PM2:
+
+| Сервис | Адрес | Описание |
+|---|---|---|
+| Frontend (Vite dev) | `http://localhost:3000` | SPA + прокси `/api` на бэкенд |
+| Backend (FastAPI) | `http://localhost:8000` | REST API + WebSocket + Swagger (`/docs`) |
+
+```bash
+# перезапуск
+pm2 restart backend frontend
+
+# логи
+pm2 logs backend --nostream
+```
+
+## Локальный запуск (вне песочницы)
+
+```bash
+# 1. Backend
+cd backend
+pip install -r requirements.txt
+uvicorn main:app --reload --port 8000          # SQLite по умолчанию
+
+# 2. Демо-данные (пароль у всех: demo123)
+python3 seed_demo.py
+
+# 3. Frontend
+cd ../frontend
 npm install
-npm run dev
+npm run dev                                    # http://localhost:3000
+
+# 4. Telegram-бот (опционально)
+cd ../bot
+TG_BOT_TOKEN=... API_URL=http://localhost:8000 FRONTEND_URL=http://localhost:3000 python bot.py
 ```
 
-```txt
-npm run deploy
+## Docker / продакшн
+
+```bash
+docker compose up --build
+# frontend:80 (nginx, проксирует API) | backend:8000 | postgres | redis | bot
 ```
 
-[For generating/synchronizing types based on your Worker configuration run](https://developers.cloudflare.com/workers/wrangler/commands/#types):
+- `render.yaml` — деплой на Render (backend python + static frontend + postgres)
+- `backend/Dockerfile`, `frontend/Dockerfile`, `bot/Dockerfile` — готовые образы
+- Переменные окружения: см. `.env.example` (секреты хранить в `.env`, он в `.gitignore`)
 
-```txt
-npm run cf-typegen
+## Демо-аккаунты (пароль у всех: `demo123`)
+
+| Email | Роль | Особенности |
+|---|---|---|
+| anna@delo.ru | Заказчик | баланс 47 000 ₽, 3 активных заказа, история сделок |
+| dmitry@delo.ru | Заказчик | сделка «в работе» (эскроу 150 000 ₽ заморожен) |
+| olga@delo.ru | Заказчик | 3 открытых заказа |
+| igor@delo.ru | Специалист PRO ★ | рейтинг 5.0, верифицирован, выполнен 1 заказ |
+| maria@delo.ru | Специалист | рейтинг 5.0, верифицирована, 15 откликов |
+| alexey@delo.ru | Специалист | исполнитель по ремонту кухни (в работе) |
+| elena@delo.ru | Специалист | клининг |
+| sergey@delo.ru | Специалист PRO ★ | фотосъёмка каталога (в работе) |
+
+Сценарий для демо: войдите как `igor@delo.ru` → «Все задания» → откликнитесь → войдите как `anna@delo.ru` → откройте её заказ → назначьте исполнителя (эскроу) → чат → «Подтвердить выполнение» → выплата + отзыв.
+
+## Архитектура данных
+
+- **Модели** (`backend/app/models/`): User, Task, Response, Message, Review, Notification, Transaction, PaymentRecord, PasswordResetToken, StoredFile
+- **Хранилище**: SQLite (dev, `backend/marketplace_v3.db`, генерируется сидером) / PostgreSQL (prod через `DATABASE_URL`); картинки — в БД (`stored_files`, отдаются через `/files/{id}`)
+- **Состояния заказа**: `open` → `in_progress` (назначен исполнитель, бюджет в эскроу) → `completed` (выплата исполнителю + взаимные отзывы)
+- **Монетизация**: пакеты откликов (`resp_10/50`) и подписка PRO (`pro_1/3/12`) — PRO даёт безлимит откликов и приоритет в списке откликов; оплата через ЮKassa (`payments.py`, опционально) или демо-пополнение
+
+## API (основное)
+
+| Метод и путь | Описание |
+|---|---|
+| `POST /register/`, `POST /login` | регистрация / вход (JWT, 7 дней) |
+| `POST /auth/forgot-password`, `/auth/reset-password` | сброс пароля (нужен SMTP) |
+| `GET/PUT /users/me` | мой профиль (рейтинг, баланс, PRO) |
+| `POST /users/me/switch-role` | переключить роль заказчик ⇄ специалист |
+| `GET /users/{id}/public`, `GET /users/{id}/reviews` | публичный профиль, отзывы |
+| `GET/POST /tasks/` | лента заказов (фильтры: category, search, city, is_remote) / создание (только заказчик) |
+| `GET /tasks/{id}` | карточка заказа |
+| `POST /tasks/{id}/responses` | отклик (списание 1 кредита, PRO — безлимит) |
+| `GET /tasks/{id}/responses` | список откликов (PRO сверху) |
+| `PUT /tasks/{id}/assign?specialist_id=` | назначить исполнителя (эскроу-холд бюджета) |
+| `PUT /tasks/{id}/complete` | завершить + выплата эскроу исполнителю (повтор → 400) |
+| `POST /tasks/{id}/review` | отзыв после завершения (взаимный, 1 на заказ) |
+| `GET/POST /tasks/{id}/messages`, `WS /ws/tasks/{id}` | чат сделки (REST + realtime) |
+| `GET /notifications/`, `POST /notifications/read-all` | уведомления |
+| `POST /wallet/deposit` | демо-пополнение (до 100 000 ₽, только dev) |
+| `GET /monetization/packages`, `POST /monetization/buy` | пакеты и покупка |
+| `POST /upload/image`, `GET /files/{id}` | загрузка/выдача картинок (magic-bytes валидация) |
+| `POST /ai/task-helper` | ИИ-помощник оформления заказа (без внешних API) |
+
+## Тесты
+
+```bash
+python3 tests/e2e_api_test.py   # 47 проверок: полный цикл сделки, эскроу, PRO, WS
 ```
 
-Pass the `CloudflareBindings` as generics when instantiation `Hono`:
+Покрывает: регистрацию/вход, роли, создание заказа, отклик и кредиты, эскроу (холд и выплата), чат (REST + WebSocket broadcast), уведомления, отзывы, монетизацию, защиту от двойной выплаты.
 
-```ts
-// src/index.ts
-const app = new Hono<{ Bindings: CloudflareBindings }>()
+## Структура репозитория
+
 ```
+backend/          FastAPI-приложение (app/api, app/core, app/models, app/schemas)
+  seed_demo.py    демо-данные (очищает dev-базу и наполняет её заново)
+bot/              Telegram-бот «Радар заказов» (подписки, фильтры, уведомления)
+frontend/         React SPA (страницы: лента, заказ, чаты, профиль, создание заказа)
+docs/             Руководство пользователя (PDF/HTML + скриншоты)
+tests/            E2E-тест API
+docker-compose.yml, render.yaml, Dockerfile×3, Procfile×3
+```
+
+## Статус и планы
+
+- **Backend API**: готов (полный цикл сделки с эскроу протестирован E2E)
+- **Frontend**: готов (все страницы, тёмная тема, мобильная навигация, WS-чат)
+- **Деплой**: конфиги Docker/Render готовы; продакшн-инстанс не поднят из песочницы (требует хостинга с WebSocket: Railway/Render/Fly)
+- **Не реализовано / следующие шаги**:
+  - SMTP для писем сброса пароля (код есть, нужны переменные `SMTP_*`)
+  - ЮKassa: код есть (`payments.py`), нужны `YOOKASSA_*` ключи
+  - выгрузка транзакций в CSV/Excel в профиле
+  - споры по сделкам (арбитраж) и отмена назначения с возвратом эскроу
+  - поиск специалистов с пагинацией и сортировкой по рейтингу
+  - загрузка файлов портфолио через UI (API готов)
+
+*Последнее обновление: 2026-09-10*

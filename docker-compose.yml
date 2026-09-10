@@ -71,8 +71,10 @@ services:
     depends_on:
       - backend
     environment:
-      BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
-      API_BASE_URL: http://backend:8000
+      # bot.py читает TG_BOT_TOKEN / API_URL / FRONTEND_URL
+      TG_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      API_URL: http://backend:8000
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
 
 volumes:
   postgres_data:
