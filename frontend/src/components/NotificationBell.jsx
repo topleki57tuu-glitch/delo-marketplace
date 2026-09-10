@@ -1,8 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import axios from 'axios';
 
-const API_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
-
+// Используем относительные пути (проксируются vite → backend:8000)
 const TYPE_ICONS = {
     new_response: '💬',
     assigned:     '🎉',
@@ -12,29 +10,29 @@ const TYPE_ICONS = {
 };
 
 export const NotificationBell = ({ token }) => {
-    const [count, setCount]             = useState(0);
-    const [notifications, setNotifs]    = useState([]);
-    const [open, setOpen]               = useState(false);
-    const panelRef                      = useRef(null);
+    const [count, setCount]          = useState(0);
+    const [notifications, setNotifs] = useState([]);
+    const [open, setOpen]            = useState(false);
+    const panelRef                   = useRef(null);
 
     const headers = { Authorization: `Bearer ${token}` };
 
-    const fetchCount = () => {
-        axios.get(`${API_URL}/notifications/unread-count`, { headers })
-            .then(r => setCount(r.data.count))
-            .catch(() => {});
-    };
-
-    const fetchAll = () => {
-        axios.get(`${API_URL}/notifications`, { headers })
-            .then(r => setNotifs(r.data))
+    const fetchNotifications = () => {
+        // GET /notifications/ → { notifications: [...], unread_count: N }
+        fetch('/notifications/', { headers })
+            .then(r => r.ok ? r.json() : null)
+            .then(data => {
+                if (!data) return;
+                setNotifs(data.notifications || []);
+                setCount(data.unread_count || 0);
+            })
             .catch(() => {});
     };
 
     useEffect(() => {
         if (!token) return;
-        fetchCount();
-        const interval = setInterval(fetchCount, 15000);
+        fetchNotifications();
+        const interval = setInterval(fetchNotifications, 15000);
         return () => clearInterval(interval);
     }, [token]);
 
@@ -49,18 +47,21 @@ export const NotificationBell = ({ token }) => {
     }, []);
 
     const handleOpen = () => {
-        setOpen(o => !o);
-        if (!open) fetchAll();
+        const next = !open;
+        setOpen(next);
+        if (next) fetchNotifications();
     };
 
     const markAllRead = async () => {
-        await axios.put(`${API_URL}/notifications/read-all`, {}, { headers });
+        // POST /notifications/read-all
+        await fetch('/notifications/read-all', { method: 'POST', headers });
         setCount(0);
         setNotifs(n => n.map(x => ({ ...x, is_read: true })));
     };
 
     const markRead = async (id) => {
-        await axios.put(`${API_URL}/notifications/${id}/read`, {}, { headers });
+        // PUT /notifications/{id}/read
+        await fetch(`/notifications/${id}/read`, { method: 'PUT', headers });
         setNotifs(n => n.map(x => x.id === id ? { ...x, is_read: true } : x));
         setCount(c => Math.max(0, c - 1));
     };

@@ -1,9 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import axios from 'axios';
 import { useAuthStore } from '../store/authStore';
 import { useNavStore } from '../store/navStore';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+// Используем относительные пути: Vite proxies /tasks → backend:8000
 
 export const ChatsDrawer = ({ isOpen, onClose, onSelectTask }) => {
     const { token, role, isAuth } = useAuthStore();
@@ -18,14 +17,10 @@ export const ChatsDrawer = ({ isOpen, onClose, onSelectTask }) => {
         setLoading(true);
         setError(null);
 
-        // Fetch user tasks to find all active dialogues
-        axios.get(`${API_URL}/tasks/`, {
-            headers: { Authorization: `Bearer ${token}` }
-        })
-        .then(res => {
-            const allTasks = res.data || [];
-            setTasks(allTasks);
-        })
+        // Fetch user tasks to find all active dialogues (relative path via Vite proxy)
+        fetch('/tasks/', { headers: { Authorization: `Bearer ${token}` } })
+        .then(r => r.ok ? r.json() : Promise.reject(r.status))
+        .then(data => setTasks(data || []))
         .catch(err => {
             console.error('Failed to load chats:', err);
             setError('Не удалось загрузить диалоги');
