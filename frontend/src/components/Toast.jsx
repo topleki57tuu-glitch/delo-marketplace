@@ -17,11 +17,18 @@ export const ToastProvider = ({ children }) => {
         setTimeout(() => dismiss(id), 4500);
     }, [dismiss]);
 
-    const toast = useMemo(() => ({
-        success: (text) => push('success', text),
-        error: (text) => push('error', text),
-        info: (text) => push('info', text),
-    }), [push]);
+    const toast = useMemo(() => {
+        const add = (text, type = 'info') => {
+            push(type === 'error' ? 'error' : type === 'success' ? 'success' : 'info', text);
+        };
+        return {
+            success: (text) => push('success', text),
+            error: (text) => push('error', text),
+            info: (text) => push('info', text),
+            addToast: add,
+            showToast: add,
+        };
+    }, [push]);
 
     return (
         <ToastContext.Provider value={toast}>
