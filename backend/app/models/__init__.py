@@ -120,6 +120,7 @@ class Message(Base):
     task_id = Column(Integer, index=True)
     sender_id = Column(Integer)
     text = Column(String)
+    is_read = Column(Boolean, default=False)
     created_at = Column(String, default=lambda: datetime.utcnow().isoformat())
 
 class Review(Base):

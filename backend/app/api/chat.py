@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisco
 from sqlalchemy.orm import Session
 from app.core.database import get_db, SessionLocal
 from app.core.security import oauth2_scheme, decode_token
-from app.models import Message, Task, User, Notification
+from app.models import Message, Task, User, Notification, TaskStatus
 from app.schemas import MessageCreate
 from app.services.websocket_manager import manager
 
@@ -13,6 +13,48 @@ router = APIRouter(tags=["Chat"])
 
 def decode_token_or_401(token: str) -> dict:
     return decode_token(token)
+
+@router.get("/chats")
+def get_user_chats(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+    """
+    Возвращает список всех активных диалогов текущего пользователя (заказчика или исполнителя)
+    с метаданными задачи, собеседника, последним сообщением и количеством непрочитанных.
+    """
+    payload = decode_token_or_401(token)
+    user_id = int(payload.get("sub"))
+
+    tasks = db.query(Task).filter(
+        (Task.customer_id == user_id) | (Task.executor_id == user_id)
+    ).order_by(Task.id.desc()).all()
+
+    dialogs = []
+    for t in tasks:
+        other_user_id = t.executor_id if t.customer_id == user_id else t.customer_id
+        other_user = db.query(User).filter(User.id == other_user_id).first() if other_user_id else None
+
+        last_msg = db.query(Message).filter(Message.task_id == t.id).order_by(Message.id.desc()).first()
+        unread_count = db.query(Message).filter(
+            Message.task_id == t.id,
+            Message.sender_id != user_id,
+            Message.is_read == False
+        ).count()
+
+        dialogs.append({
+            "task_id": t.id,
+            "task_title": t.title,
+            "task_status": t.status.value if hasattr(t.status, "value") else str(t.status),
+            "task_budget": t.budget,
+            "other_user_id": other_user_id,
+            "other_user_name": (other_user.name or other_user.email) if other_user else "Собеседник",
+            "other_user_avatar": other_user.avatar if other_user else None,
+            "other_user_role": "Исполнитель" if other_user and other_user.id == t.executor_id else "Заказчик",
+            "last_message": last_msg.text if last_msg else None,
+            "last_message_time": last_msg.created_at if last_msg else None,
+            "unread_count": unread_count
+        })
+
+    dialogs.sort(key=lambda d: d["last_message_time"] or "", reverse=True)
+    return dialogs
 
 @router.get("/tasks/{task_id}/messages")
 def get_messages(task_id: int, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
@@ -29,6 +71,14 @@ def get_messages(task_id: int, token: str = Depends(oauth2_scheme), db: Session 
     if role == "specialist" and task.executor_id != user_id:
         raise HTTPException(403, "Нет доступа")
 
+    # Автоматически отмечаем прочитанными входящие сообщения при открытии чата
+    db.query(Message).filter(
+        Message.task_id == task_id,
+        Message.sender_id != user_id,
+        Message.is_read == False
+    ).update({"is_read": True})
+    db.commit()
+
     messages = db.query(Message).filter(Message.task_id == task_id).order_by(Message.id).all()
     result = []
     for m in messages:
@@ -38,10 +88,28 @@ def get_messages(task_id: int, token: str = Depends(oauth2_scheme), db: Session 
             "task_id": m.task_id,
             "sender_id": m.sender_id,
             "text": m.text,
+            "is_read": bool(m.is_read),
             "created_at": m.created_at,
             "sender_name": sender.name or sender.email if sender else "Unknown"
         })
     return result
+
+@router.put("/tasks/{task_id}/messages/read")
+def mark_messages_read(task_id: int, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+    payload = decode_token_or_401(token)
+    user_id = int(payload.get("sub"))
+
+    task = db.query(Task).filter(Task.id == task_id).first()
+    if not task:
+        raise HTTPException(404, "Заказ не найден")
+
+    updated = db.query(Message).filter(
+        Message.task_id == task_id,
+        Message.sender_id != user_id,
+        Message.is_read == False
+    ).update({"is_read": True})
+    db.commit()
+    return {"message": "Сообщения прочитаны", "updated_count": updated}
 
 @router.post("/tasks/{task_id}/messages")
 async def post_message(task_id: int, message: MessageCreate, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
@@ -58,7 +126,7 @@ async def post_message(task_id: int, message: MessageCreate, token: str = Depend
     if role == "specialist" and task.executor_id != user_id:
         raise HTTPException(403, "Нет доступа")
 
-    new_message = Message(task_id=task_id, sender_id=user_id, text=message.text)
+    new_message = Message(task_id=task_id, sender_id=user_id, text=message.text, is_read=False)
     db.add(new_message)
     db.commit()
     db.refresh(new_message)
@@ -80,6 +148,7 @@ async def post_message(task_id: int, message: MessageCreate, token: str = Depend
         "task_id": task_id,
         "sender_id": user_id,
         "text": message.text,
+        "is_read": False,
         "created_at": new_message.created_at,
         "sender_name": sender.name or sender.email if sender else "Unknown"
     }

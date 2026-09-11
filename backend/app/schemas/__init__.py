@@ -107,11 +107,25 @@ class MessageOut(BaseModel):
     task_id: int
     sender_id: int
     text: str
+    is_read: bool = False
     created_at: str
     sender_name: Optional[str] = None
 
     class Config:
         from_attributes = True
+
+class ChatDialogOut(BaseModel):
+    task_id: int
+    task_title: str
+    task_status: str
+    task_budget: Optional[int] = None
+    other_user_id: Optional[int] = None
+    other_user_name: Optional[str] = None
+    other_user_avatar: Optional[str] = None
+    other_user_role: Optional[str] = None
+    last_message: Optional[str] = None
+    last_message_time: Optional[str] = None
+    unread_count: int = 0
 
 class ReviewCreate(BaseModel):
     rating: int = Field(ge=1, le=5)
