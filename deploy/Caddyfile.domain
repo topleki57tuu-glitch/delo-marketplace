@@ -1,0 +1,5 @@
+# Вариант для домена: Caddy сам выпустит и продлит Let's Encrypt сертификат.
+# В docker-compose.prod.yml в environment сервиса caddy передаётся DOMAIN.
+{$DOMAIN} {
+	reverse_proxy frontend:80
+}
