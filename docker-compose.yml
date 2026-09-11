@@ -39,9 +39,12 @@ services:
         condition: service_healthy
     environment:
       DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-marketplace}:${POSTGRES_PASSWORD:-marketplace_secret}@postgres:5432/${POSTGRES_DB:-marketplace_db}
-      SECRET_KEY: ${SECRET_KEY:-your_super_secret_jwt_key_here}
+      # Без реального SECRET_KEY backend в production не стартует (см. app/core/config.py)
+      SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY in .env (see .env.example)}
       ENV: ${ENV:-production}
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost,http://localhost:80,http://localhost:3000,http://localhost:5173}
+      # В проде бэкенд требует явного списка источников (или FRONTEND_URL)
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
+      FRONTEND_URL: ${FRONTEND_URL:-}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       API_HOST: 0.0.0.0
       API_PORT: 8000

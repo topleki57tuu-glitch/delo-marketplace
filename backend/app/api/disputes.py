@@ -17,7 +17,8 @@ def decode_token_or_401(token: str) -> dict:
 
 def _is_admin(user: User) -> bool:
     """Арбитрами выступают пользователи, чьи email перечислены в ADMIN_EMAILS (через запятую)."""
-    raw = os.environ.get("ADMIN_EMAILS", "")
+    # Дефолт согласован с seed_demo.py и verification.py: арбитр admin@delo.ru
+    raw = os.environ.get("ADMIN_EMAILS", "admin@delo.ru")
     admins = [e.strip().lower() for e in raw.split(",") if e.strip()]
     return bool(user and user.email and user.email.lower() in admins)
 
@@ -201,9 +202,15 @@ def resolve_dispute(dispute_id: int, req: DisputeResolve, token: str = Depends(o
         if budget > 0 and task.executor_id:
             executor = db.query(User).filter(User.id == task.executor_id).first()
             if executor:
-                executor.balance += budget
-                db.add(Transaction(user_id=executor.id, amount=budget,
-                                   type=TransactionType.escrow_release, task_id=task.id))
+                # Та же комиссия, что и при обычном завершении сделки:
+                # 5% сервиса, для PRO-специалистов — 0%
+                fee_percent = 0 if executor.is_pro else 5
+                fee = round(budget * fee_percent / 100)
+                payout = budget - fee
+                executor.balance += payout
+                db.add(Transaction(user_id=executor.id, amount=payout,
+                                   type=TransactionType.escrow_release, task_id=task.id,
+                                   fee=fee))
         verdict = "Средства выплачены исполнителю"
     else:
         raise HTTPException(400, "decision должен быть refund_customer или pay_specialist")

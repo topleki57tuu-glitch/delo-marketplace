@@ -20,9 +20,11 @@ def decode_token_or_401(token: str) -> dict:
     return decode_token(token)
 
 def _is_admin(user: User) -> bool:
+    # Только строгое совпадение email из ADMIN_EMAILS: substring-проверка
+    # ("admin" in email) выдавала бы права модератора любому admin-vasya@x.com
     raw = os.environ.get("ADMIN_EMAILS", "admin@delo.ru")
     admins = [e.strip().lower() for e in raw.split(",") if e.strip()]
-    return bool(user and user.email and (user.email.lower() in admins or "admin" in user.email.lower()))
+    return bool(user and user.email and user.email.lower() in admins)
 
 @router.post("/submit", response_model=VerificationRequestOut)
 def submit_verification(

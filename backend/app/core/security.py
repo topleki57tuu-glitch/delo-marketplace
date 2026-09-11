@@ -42,16 +42,27 @@ def decode_token(token: str) -> dict:
 # In-memory Rate Limiter
 _rate_buckets: Dict[str, List[float]] = {}
 
+def _client_ip(request: Request) -> str:
+    import ipaddress
+    client_host = request.client.host if request.client else "unknown"
+    # X-Forwarded-For доверяем только когда запрос пришёл с приватного адреса —
+    # т.е. с нашего собственного reverse-proxy. Иначе клиент подделает заголовок
+    # и обойдёт лимит. Берём последнюю запись — её добавил ближайший прокси.
+    forwarded = request.headers.get("x-forwarded-for")
+    try:
+        is_private = ipaddress.ip_address(client_host).is_private
+    except ValueError:
+        is_private = False
+    if forwarded and is_private:
+        return forwarded.split(",")[-1].strip()
+    return request.headers.get("x-real-ip") or client_host
+
 def rate_limit(request: Request, bucket: str, limit: int = 60, window_sec: int = 60):
     # In development/sandbox or for localhost, allow higher rate limit to prevent blocking tests and users
     if not settings.IS_PRODUCTION:
         return
-    forwarded = request.headers.get("x-forwarded-for")
-    if forwarded:
-        ip = forwarded.split(",")[0].strip()
-    else:
-        ip = request.headers.get("x-real-ip") or (request.client.host if request.client else "unknown")
-    
+    ip = _client_ip(request)
+
     key = f"{bucket}:{ip}"
     now = time.time()
     hits = [t for t in _rate_buckets.get(key, []) if now - t < window_sec]

@@ -60,15 +60,14 @@ def get_user_chats(token: str = Depends(oauth2_scheme), db: Session = Depends(ge
 def get_messages(task_id: int, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
     payload = decode_token_or_401(token)
     user_id = int(payload.get("sub"))
-    role = payload.get("role")
 
     task = db.query(Task).filter(Task.id == task_id).first()
     if not task:
         raise HTTPException(404, "Заказ не найден")
 
-    if role == "customer" and task.customer_id != user_id:
-        raise HTTPException(403, "Нет доступа")
-    if role == "specialist" and task.executor_id != user_id:
+    # Доступ по участию в сделке, а не по роли из JWT: после переключения роли
+    # токен ещё до 7 дней несёт прежнюю роль и ложно отвергал участника
+    if user_id not in (task.customer_id, task.executor_id):
         raise HTTPException(403, "Нет доступа")
 
     # Автоматически отмечаем прочитанными входящие сообщения при открытии чата
@@ -115,15 +114,13 @@ def mark_messages_read(task_id: int, token: str = Depends(oauth2_scheme), db: Se
 async def post_message(task_id: int, message: MessageCreate, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
     payload = decode_token_or_401(token)
     user_id = int(payload.get("sub"))
-    role = payload.get("role")
 
     task = db.query(Task).filter(Task.id == task_id).first()
     if not task:
         raise HTTPException(404, "Заказ не найден")
 
-    if role == "customer" and task.customer_id != user_id:
-        raise HTTPException(403, "Нет доступа")
-    if role == "specialist" and task.executor_id != user_id:
+    # Доступ по участию в сделке (роль из JWT может быть устаревшей)
+    if user_id not in (task.customer_id, task.executor_id):
         raise HTTPException(403, "Нет доступа")
 
     new_message = Message(task_id=task_id, sender_id=user_id, text=message.text, is_read=False)
@@ -132,7 +129,7 @@ async def post_message(task_id: int, message: MessageCreate, token: str = Depend
     db.refresh(new_message)
 
     sender = db.query(User).filter(User.id == user_id).first()
-    recipient_id = task.executor_id if role == "customer" else task.customer_id
+    recipient_id = task.executor_id if task.customer_id == user_id else task.customer_id
     if recipient_id:
         db.add(Notification(
             user_id=recipient_id,
@@ -179,7 +176,6 @@ async def websocket_endpoint(websocket: WebSocket, task_id: int, token: Optional
         return
 
     user_id = int(payload.get("sub"))
-    role = payload.get("role")
 
     db = SessionLocal()
     task = db.query(Task).filter(Task.id == task_id).first()
@@ -187,11 +183,8 @@ async def websocket_endpoint(websocket: WebSocket, task_id: int, token: Optional
         db.close()
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return
-    if role == "customer" and task.customer_id != user_id:
-        db.close()
-        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
-        return
-    if role == "specialist" and task.executor_id != user_id:
+    # Доступ по участию в сделке (роль из JWT может быть устаревшей)
+    if user_id not in (task.customer_id, task.executor_id):
         db.close()
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return

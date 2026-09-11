@@ -258,10 +258,14 @@ def main():
     check("PUT /tasks/{id}/complete", r.status_code == 200, r.text[:90])
 
     r = requests.get(f"{BASE}/users/me", headers=auth(spec_tok), timeout=15)
+    # Монетизация: при завершении платформа удерживает 5% (PRO — 0%;
+    # PRO покупается ниже по ходу теста, здесь исполнитель ещё обычный)
+    expected_fee = round(task_data["budget"] * 0.05)
+    expected_payout = task_data["budget"] - expected_fee
     check(
-        "Эскроу: бюджет переведён исполнителю",
-        r.json()["balance"] == spec_balance_before + task_data["budget"],
-        f"{spec_balance_before} -> {r.json()['balance']}",
+        "Эскроу: бюджет переведён исполнителю за вычетом комиссии 5%",
+        r.json()["balance"] == spec_balance_before + expected_payout,
+        f"{spec_balance_before} -> {r.json()['balance']} (комиссия {expected_fee})",
     )
 
     r = requests.get(f"{BASE}/notifications/", headers=auth(spec_tok), timeout=15)

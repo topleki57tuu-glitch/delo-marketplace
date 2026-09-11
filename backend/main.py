@@ -57,11 +57,12 @@ app = FastAPI(
     version="2.0.0"
 )
 
-# CORS middleware - allow all origins
+# CORS middleware - только явно разрешённые источники (см. app/core/config.py).
+# Раньше был allow_origins=["*"] + allow_origin_regex=".*" + credentials —
+# для API с деньгами это недопустимо широко.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_origin_regex=r".*",
+    allow_origins=settings.CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

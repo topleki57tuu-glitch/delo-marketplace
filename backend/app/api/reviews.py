@@ -92,7 +92,6 @@ def get_task_reviews(task_id: int, token: Optional[str] = Depends(oauth2_scheme)
 def create_review(task_id: int, review: ReviewCreate, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
     payload = decode_token_or_401(token)
     user_id = int(payload.get("sub"))
-    role = payload.get("role")
 
     task = db.query(Task).filter(Task.id == task_id).first()
     if not task:
@@ -101,11 +100,15 @@ def create_review(task_id: int, review: ReviewCreate, token: str = Depends(oauth
     if task.status != TaskStatus.completed:
         raise HTTPException(400, "Можно оставлять отзывы только на завершенные заказы")
 
-    if role == "customer" and task.customer_id == user_id:
+    # Роль берём из БД: в JWT она может оставаться прежней после switch-role
+    me = db.query(User).filter(User.id == user_id).first()
+    role = me.role if me else None
+
+    if role == UserRole.customer and task.customer_id == user_id:
         if not task.executor_id:
             raise HTTPException(400, "У заказа нет исполнителя")
         reviewee_id, target = task.executor_id, "specialist"
-    elif role == "specialist" and task.executor_id == user_id:
+    elif role == UserRole.specialist and task.executor_id == user_id:
         reviewee_id, target = task.customer_id, "customer"
     else:
         raise HTTPException(403, "Отзыв доступен только участникам заказа")

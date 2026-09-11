@@ -23,13 +23,13 @@ def user_online(user: User) -> bool:
 @router.post("/tasks/{task_id}/responses")
 def create_response(task_id: int, response: ResponseCreate, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
     payload = decode_token_or_401(token)
-    if payload.get("role") != "specialist":
-        raise HTTPException(403, "Откликаться могут только специалисты")
-    
     specialist_id = int(payload.get("sub"))
     specialist = db.query(User).filter(User.id == specialist_id).first()
     if not specialist:
         raise HTTPException(404, "Специалист не найден")
+    # Роль проверяем по БД, а не по JWT (токен может нести устаревшую роль)
+    if specialist.role != UserRole.specialist:
+        raise HTTPException(403, "Откликаться могут только специалисты")
 
     # Монетизация: PRO — безлимит, иначе списываем 1 отклик
     if not specialist.is_pro:

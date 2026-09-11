@@ -23,7 +23,10 @@ class TaskImagesDeleteRequest(BaseModel):
 @router.post("/")
 def create_task(task: TaskCreate, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
     payload = decode_token_or_401(token)
-    if payload.get("role") != "customer":
+    # Роль берём из БД, а не из JWT: в токене роль остаётся прежней до 7 дней
+    # после переключения роли
+    user = db.query(User).filter(User.id == int(payload.get("sub"))).first()
+    if not user or user.role != UserRole.customer:
         raise HTTPException(403, "Создавать задания могут только заказчики")
 
     latitude = task.latitude
@@ -60,6 +63,8 @@ def get_tasks(
     city: Optional[str] = None,
     is_remote: Optional[bool] = None,
     status_filter: Optional[str] = None,
+    page: Optional[int] = None,
+    per_page: int = 20,
     db: Session = Depends(get_db)
 ):
     query = db.query(Task)
@@ -73,9 +78,25 @@ def get_tasks(
         query = query.filter(Task.is_remote == is_remote)
     if status_filter:
         query = query.filter(Task.status == status_filter)
-    
-    tasks = query.order_by(Task.id.desc()).all()
-    return tasks
+
+    query = query.order_by(Task.id.desc())
+
+    # Опциональная пагинация: с параметром page возвращается объект с метаданными,
+    # без него — прежний полный список (обратная совместимость фронта/тестов)
+    if page is not None:
+        page = max(1, page)
+        per_page = min(max(1, per_page), 50)
+        total = query.count()
+        tasks = query.offset((page - 1) * per_page).limit(per_page).all()
+        return {
+            "tasks": tasks,
+            "page": page,
+            "per_page": per_page,
+            "total": total,
+            "pages": (total + per_page - 1) // per_page,
+        }
+
+    return query.all()
 
 @router.get("/{task_id}")
 def get_task_detail(task_id: int, db: Session = Depends(get_db)):
