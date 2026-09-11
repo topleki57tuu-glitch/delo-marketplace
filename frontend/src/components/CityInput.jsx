@@ -1,9 +1,11 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 
-// Популярные города России и СНГ для быстрых подсказок
+// Обширная база городов России по всем федеральным округам и ключевым регионам
 export const POPULAR_CITIES = [
+    // Города федерального значения и миллионники
     "Москва",
     "Санкт-Петербург",
+    "Севастополь",
     "Новосибирск",
     "Екатеринбург",
     "Казань",
@@ -18,6 +20,7 @@ export const POPULAR_CITIES = [
     "Воронеж",
     "Пермь",
     "Волгоград",
+    // Крупные областные и краевые центры
     "Саратов",
     "Тюмень",
     "Тольятти",
@@ -27,8 +30,6 @@ export const POPULAR_CITIES = [
     "Иркутск",
     "Владивосток",
     "Ярославль",
-    "Севастополь",
-    "Ставрополь",
     "Хабаровск",
     "Махачкала",
     "Оренбург",
@@ -50,9 +51,8 @@ export const POPULAR_CITIES = [
     "Магнитогорск",
     "Улан-Удэ",
     "Тверь",
+    "Ставрополь",
     "Сочи",
-    "Сургут",
-    "Нижний Тагил",
     "Белгород",
     "Архангельск",
     "Владимир",
@@ -78,6 +78,7 @@ export const POPULAR_CITIES = [
     "Комсомольск-на-Амуре",
     "Сыктывкар",
     "Нальчик",
+    "Нижний Тагил",
     "Шахты",
     "Дзержинск",
     "Орск",
@@ -87,11 +88,8 @@ export const POPULAR_CITIES = [
     "Благовещенск",
     "Старый Оскол",
     "Великий Новгород",
-    "Королёв",
     "Псков",
-    "Мытищи",
     "Бийск",
-    "Люберцы",
     "Прокопьевск",
     "Южно-Сахалинск",
     "Армавир",
@@ -107,47 +105,110 @@ export const POPULAR_CITIES = [
     "Каменск-Уральский",
     "Новочеркасск",
     "Златоуст",
+    "Альметьевск",
+    "Элиста",
+    "Майкоп",
+    "Черкесск",
+    "Кызыл",
+    "Горно-Алтайск",
+    "Анапа",
+    "Геленджик",
+    "Ессентуки",
+    "Кисловодск",
+    "Пятигорск",
+    "Минеральные Воды",
+    "Дербент",
+    "Каспийск",
+    "Хасавюрт",
+    "Муром",
+    "Ковров",
+    "Великие Луки",
+    "Выборг",
+    "Гатчина",
+    "Всеволожск",
+    "Кингисепп",
+    "Тихвин",
+    "Тосно",
+    "Кронштадт",
+    "Колпино",
+    "Петергоф",
+    "Пушкин",
     "Красногорск",
     "Химки",
     "Балашиха",
     "Подольск",
     "Одинцово",
     "Домодедово",
-    "Минск",
-    "Алматы",
-    "Астана",
-    "Ташкент",
-    "Ереван",
-    "Баку",
-    "Тбилиси",
-    "Бишкек"
+    "Люберцы",
+    "Мытищи",
+    "Королёв",
+    "Коломна",
+    "Сергиев Посад",
+    "Электросталь",
+    "Щёлково",
+    "Орехово-Зуево",
+    "Раменское",
+    "Жуковский",
+    "Пушкино",
+    "Долгопрудный",
+    "Реутов",
+    "Лобня",
+    "Видное",
+    "Ступино",
+    "Наро-Фоминск",
+    "Дмитров",
+    "Чехов",
+    "Клин",
+    "Дубна",
+    "Егорьевск",
+    "Павловский Посад",
+    "Солнечногорск",
+    "Истра",
+    "Сургут",
+    "Ханты-Мансийск",
+    "Нефтеюганск",
+    "Новый Уренгой",
+    "Ноябрьск",
+    "Салехард",
+    "Якутск",
+    "Мирный",
+    "Нерюнгри",
+    "Магадан",
+    "Анадырь",
+    // Города Крыма
+    "Симферополь",
+    "Ялта",
+    "Евпатория",
+    "Керчь",
+    "Феодосия",
+    "Алушта",
+    "Бахчисарай"
 ];
 
 /**
  * Универсальный компонент выбора/ввода города:
- * 1. Можно ввести абсолютно любой город вручную
- * 2. При вводе появляются подходящие подсказки из базы городов
- * 3. Поддерживает быстрый выбор из выпадающего меню
- * 4. Кнопка быстрой очистки
+ * 1. Позволяет ввести АБСОЛЮТНО ЛЮБОЙ город или населенный пункт РФ вручную.
+ * 2. Предлагает быстрые подсказки из обширной базы городов.
+ * 3. Если введенного города нет в списке, позволяет сохранить его в 1 клик.
+ * 4. Полностью поддерживает очистку и сброс.
  */
 export default function CityInput({
     value = '',
     onChange,
-    placeholder = 'Введите или выберите город...',
+    placeholder = 'Любой город России (Москва, Казань, Сочи...)',
     className = '',
     allowClear = true,
     showPopularDropdown = true
 }) {
     const [isOpen, setIsOpen] = useState(false);
-    const [searchTerm, setSearchTerm] = useState(value || '');
+    const [searchTerm, setSearchTerm] = useState(typeof value === 'object' && value ? value.name : (value || ''));
     const wrapperRef = useRef(null);
 
-    // Синхронизация внешнего значения
     useEffect(() => {
-        setSearchTerm(value || '');
+        const valStr = typeof value === 'object' && value ? value.name : (value || '');
+        setSearchTerm(valStr);
     }, [value]);
 
-    // Закрытие выпадающего списка при клике вне компонента
     useEffect(() => {
         function handleClickOutside(event) {
             if (wrapperRef.current && !wrapperRef.current.contains(event.target)) {
@@ -158,108 +219,106 @@ export default function CityInput({
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
+    const filteredCities = useMemo(() => {
+        if (!searchTerm.trim()) {
+            return POPULAR_CITIES.slice(0, 18);
+        }
+        const term = searchTerm.toLowerCase().trim();
+        return POPULAR_CITIES.filter(city => city.toLowerCase().includes(term)).slice(0, 18);
+    }, [searchTerm]);
+
+    const isExactMatch = useMemo(() => {
+        if (!searchTerm.trim()) return true;
+        return POPULAR_CITIES.some(c => c.toLowerCase() === searchTerm.toLowerCase().trim());
+    }, [searchTerm]);
+
     const handleInputChange = (e) => {
         const val = e.target.value;
         setSearchTerm(val);
-        onChange(val);
+        if (onChange) onChange(val);
         setIsOpen(true);
     };
 
     const handleSelectCity = (city) => {
         setSearchTerm(city);
-        onChange(city);
+        if (onChange) onChange(city);
         setIsOpen(false);
     };
 
     const handleClear = (e) => {
         e.stopPropagation();
         setSearchTerm('');
-        onChange('');
+        if (onChange) onChange('');
         setIsOpen(false);
     };
 
-    // Фильтрация вариантов по введенному тексту
-    const query = (searchTerm || '').trim().toLowerCase();
-    const filteredCities = query
-        ? POPULAR_CITIES.filter(c => c.toLowerCase().includes(query))
-        : POPULAR_CITIES.slice(0, 15);
-
-    const isCustomValue = query && !POPULAR_CITIES.some(c => c.toLowerCase() === query);
-
     return (
-        <div ref={wrapperRef} className="relative w-full">
+        <div className={`relative ${className}`} ref={wrapperRef}>
             <div className="relative flex items-center">
+                <span className="absolute left-3.5 text-slate-400 text-sm select-none">
+                    📍
+                </span>
                 <input
                     type="text"
                     value={searchTerm}
                     onChange={handleInputChange}
                     onFocus={() => setIsOpen(true)}
                     placeholder={placeholder}
-                    className={`${className} pr-14`}
-                    autoComplete="off"
+                    className="w-full pl-9 pr-10 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-medium text-slate-900 dark:text-white"
                 />
-                <div className="absolute right-2.5 flex items-center gap-1">
-                    {allowClear && searchTerm && (
-                        <button
-                            type="button"
-                            onClick={handleClear}
-                            className="p-1 text-ink-muted hover:text-ink transition rounded-md text-xs"
-                            title="Очистить"
-                        >
-                            ✕
-                        </button>
-                    )}
-                    {showPopularDropdown && (
-                        <button
-                            type="button"
-                            onClick={() => setIsOpen(!isOpen)}
-                            className="p-1 text-ink-muted hover:text-accent transition rounded-md"
-                            title="Показать варианты"
-                        >
-                            <svg className={`w-3.5 h-3.5 transition-transform ${isOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                            </svg>
-                        </button>
-                    )}
-                </div>
+                {allowClear && searchTerm && (
+                    <button
+                        type="button"
+                        onClick={handleClear}
+                        className="absolute right-3 w-5 h-5 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-500 hover:text-slate-700 dark:hover:text-white flex items-center justify-center text-xs font-bold transition-colors"
+                        title="Очистить"
+                    >
+                        ✕
+                    </button>
+                )}
             </div>
 
-            {/* Выпадающий список вариантов */}
+            {/* Выпадающий список подсказок */}
             {isOpen && (
-                <div className="absolute left-0 right-0 top-full mt-1.5 max-h-60 overflow-y-auto z-50 rounded-xl bg-surface-1 border border-border/80 shadow-2xl backdrop-blur-xl py-1.5 animate-in fade-in zoom-in-95 duration-150">
-                    {isCustomValue && (
+                <div className="absolute top-full left-0 right-0 mt-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-xl z-50 max-h-72 overflow-y-auto overflow-x-hidden p-1.5 animate-in fade-in zoom-in-95 duration-100">
+                    {/* Кастомный ввод, если город не в стандартном списке */}
+                    {searchTerm.trim() && !isExactMatch && (
                         <button
                             type="button"
                             onClick={() => handleSelectCity(searchTerm.trim())}
-                            className="w-full text-left px-3.5 py-2 text-xs font-semibold text-accent hover:bg-accent/10 border-b border-border/50 flex items-center justify-between transition"
+                            className="w-full text-left px-3.5 py-2.5 rounded-xl text-xs font-bold bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 transition-colors flex items-center justify-between mb-1"
                         >
-                            <span>📍 Использовать: <b>«{searchTerm.trim()}»</b></span>
-                            <span className="text-[10px] text-ink-muted font-normal">Свой город</span>
+                            <span>➕ Использовать: «{searchTerm.trim()}»</span>
+                            <span className="text-[10px] opacity-75">Любой населенный пункт РФ</span>
                         </button>
                     )}
 
+                    <div className="px-3 py-1.5 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                        {searchTerm.trim() ? 'Найденные города РФ:' : 'Популярные города России:'}
+                    </div>
+
                     {filteredCities.length > 0 ? (
-                        <>
-                            <div className="px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-ink-muted">
-                                {query ? 'Подходящие города' : 'Популярные города'}
-                            </div>
-                            {filteredCities.map((city) => (
+                        filteredCities.map((city) => {
+                            const isSelected = city.toLowerCase() === searchTerm.toLowerCase().trim();
+                            return (
                                 <button
                                     key={city}
                                     type="button"
                                     onClick={() => handleSelectCity(city)}
-                                    className={`w-full text-left px-3.5 py-2 text-xs flex items-center justify-between transition hover:bg-surface-2 ${
-                                        searchTerm === city ? 'bg-accent/15 text-accent font-bold' : 'text-ink'
+                                    className={`w-full text-left px-3 py-2 rounded-xl text-sm font-medium transition-colors flex items-center justify-between ${
+                                        isSelected
+                                            ? 'bg-indigo-600 text-white font-semibold'
+                                            : 'text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700/60'
                                     }`}
                                 >
-                                    <span>📍 {city}</span>
-                                    {searchTerm === city && <span className="text-accent text-xs">✓</span>}
+                                    <span>{city}</span>
+                                    {isSelected && <span>✓</span>}
                                 </button>
-                            ))}
-                        </>
+                            );
+                        })
                     ) : (
-                        <div className="px-3.5 py-3 text-xs text-ink-muted text-center">
-                            Город <b>«{searchTerm}»</b> не в списке, но вы можете использовать его — просто нажмите Enter или оставьте в поле.
+                        <div className="p-3 text-center text-xs text-slate-400">
+                            Город не найден в быстром списке, но вы можете использовать «{searchTerm.trim()}»
                         </div>
                     )}
                 </div>

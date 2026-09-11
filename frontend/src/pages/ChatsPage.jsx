@@ -107,6 +107,14 @@ export default function ChatsPage({ user, token, onOpenAuth }) {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  const QUICK_TEMPLATES = [
+    'Здравствуйте! Готов обсудить детали задачи.',
+    'Подскажите, пожалуйста, какие сроки для вас в приоритете?',
+    'Уточните, пожалуйста, есть ли готовое ТЗ или примеры?',
+    'Всё понятно, приступаю к выполнению работы!',
+    'Отправил предварительные результаты на согласование.'
+  ];
+
   const handleSendMessage = async (e) => {
     e.preventDefault();
     if (!messageText.trim() || !activeTaskId) return;
@@ -249,6 +257,21 @@ export default function ChatsPage({ user, token, onOpenAuth }) {
                   })
                 )}
                 <div ref={messagesEndRef} />
+              </div>
+
+              {/* Quick response templates */}
+              <div className="px-4 py-2 border-t border-slate-100 dark:border-slate-700/40 bg-slate-50/60 dark:bg-slate-900/40 flex items-center gap-2 overflow-x-auto no-scrollbar">
+                <span className="text-[11px] font-bold text-slate-400 whitespace-nowrap">Быстрый ответ:</span>
+                {QUICK_TEMPLATES.map((tmpl, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => setMessageText(tmpl)}
+                    className="text-xs px-2.5 py-1 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-indigo-500 text-slate-600 dark:text-slate-300 whitespace-nowrap transition-colors shadow-2xs"
+                  >
+                    {tmpl}
+                  </button>
+                ))}
               </div>
 
               {/* Input Area */}

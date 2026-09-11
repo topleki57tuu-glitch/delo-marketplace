@@ -123,7 +123,7 @@ export default function ProfilePage({ user, token, onUpdateUser, onLogout, onOpe
         body: JSON.stringify({
           name: name.trim() || null,
           bio: bio.trim() || null,
-          city: city ? city.name : null,
+          city: city ? (typeof city === 'object' ? city.name : city) : null,
           phone: phone.trim() || null,
         }),
       });
@@ -290,8 +290,8 @@ export default function ProfilePage({ user, token, onUpdateUser, onLogout, onOpe
             </div>
           </div>
           <div>
-            <label className="block text-xs font-semibold text-slate-500 mb-1">Город</label>
-            <CityInput selectedCity={city} onSelectCity={(c) => setCity(c)} placeholder="Ваш город" />
+            <label className="block text-xs font-semibold text-slate-500 mb-1">Город (любой населенный пункт России)</label>
+            <CityInput value={city ? (typeof city === 'object' ? city.name : city) : ''} onChange={(c) => setCity(c)} placeholder="Введите любой город РФ (Москва, Казань, Сочи, Анапа...)" />
           </div>
           <div>
             <label className="block text-xs font-semibold text-slate-500 mb-1">О себе</label>
