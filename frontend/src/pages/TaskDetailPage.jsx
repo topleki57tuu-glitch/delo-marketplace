@@ -24,10 +24,13 @@ export default function TaskDetailPage({ user, token, onOpenAuth, onOpenChat, on
   const [disputeReason, setDisputeReason] = useState('');
   const [openingDispute, setOpeningDispute] = useState(false);
 
-  // Review modal state
+  // Review state
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [reviewRating, setReviewRating] = useState(5);
   const [reviewComment, setReviewComment] = useState('');
+  const [taskReviews, setTaskReviews] = useState([]);
+  const [canReview, setCanReview] = useState(false);
+  const [hasMyReview, setHasMyReview] = useState(false);
 
   const fetchTaskDetails = async () => {
     try {
@@ -228,6 +231,8 @@ export default function TaskDetailPage({ user, token, onOpenAuth, onOpenChat, on
 
       addToast('Спасибо за ваш отзыв!', 'success');
       setShowReviewModal(false);
+      setReviewComment('');
+      fetchTaskDetails();
     } catch (err) {
       addToast(err.message, 'error');
     }
