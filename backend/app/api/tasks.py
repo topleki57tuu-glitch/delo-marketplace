@@ -144,23 +144,37 @@ def complete_task(task_id: int, token: str = Depends(oauth2_scheme), db: Session
 
     task.status = TaskStatus.completed
 
-    # Безопасная сделка: переводим замороженные (эскроу) средства исполнителю
+    # Безопасная сделка (эскроу): переводим средства исполнителю с учётом комиссии платформы
     budget = task.budget or 0
-    released = 0
+    payout = 0
+    fee = 0
     if budget > 0 and task.executor_id:
         executor = db.query(User).filter(User.id == task.executor_id).first()
         if executor:
-            executor.balance += budget
-            released = budget
+            # Монетизация: 0% комиссия для пользователей со статусом PRO, иначе стандартные 5%
+            is_pro = bool(executor.is_pro)
+            fee_percent = 0 if is_pro else 5
+            fee = round(budget * fee_percent / 100)
+            payout = budget - fee
+
+            executor.balance += payout
             db.add(Transaction(
                 user_id=executor.id,
-                amount=budget,
+                amount=payout,
                 type=TransactionType.escrow_release,
-                task_id=task.id
+                task_id=task.id,
+                fee=fee
             ))
 
     if task.executor_id:
-        payout_note = f" {budget} ₽ переведены на ваш баланс." if released else ""
+        if payout > 0:
+            if fee > 0:
+                payout_note = f" {payout} ₽ переведены на ваш баланс (комиссия платформы 5%: {fee} ₽. С подпиской PRO комиссия 0%!)."
+            else:
+                payout_note = f" {payout} ₽ переведены на ваш баланс (0% комиссия для PRO-специалиста!)."
+        else:
+            payout_note = ""
+
         db.add(Notification(
             user_id=task.executor_id,
             type="completed",
@@ -171,6 +185,8 @@ def complete_task(task_id: int, token: str = Depends(oauth2_scheme), db: Session
 
     db.commit()
     return {
-        "message": "Заказ успешно завершён" + (f", исполнителю переведено {released} ₽" if released else ""),
-        "released": released
+        "message": "Заказ успешно завершён" + (f", исполнителю выплачено {payout} ₽" if payout else ""),
+        "released": payout,
+        "fee": fee,
+        "is_pro_exempt": fee == 0 and budget > 0
     }

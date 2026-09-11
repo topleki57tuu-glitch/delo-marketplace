@@ -29,10 +29,61 @@ export default function ProfilePage({ user, token, onUpdateUser, onLogout, onOpe
   // Monetization buy
   const [buyingPackage, setBuyingPackage] = useState(null);
 
+  // Verification request modal & state
+  const [showVerifyModal, setShowVerifyModal] = useState(false);
+  const [verificationData, setVerificationData] = useState(null);
+  const [loadingVerification, setLoadingVerification] = useState(false);
+  const [verFullName, setVerFullName] = useState(user?.name || '');
+  const [verDocType, setVerDocType] = useState('passport');
+  const [verDocNumber, setVerDocNumber] = useState('');
+  const [submittingVer, setSubmittingVer] = useState(false);
+
+  // Admin moderation tab/state (if admin)
+  const isAdmin = user?.email && (user.email.toLowerCase() === 'admin@delo.ru' || user.email.toLowerCase().includes('admin'));
+  const [adminVerifications, setAdminVerifications] = useState([]);
+  const [showAdminVerifications, setShowAdminVerifications] = useState(false);
+  const [processingAdminId, setProcessingAdminId] = useState(null);
+
   // Transactions history
   const [transactions, setTransactions] = useState([]);
   const [showTransactions, setShowTransactions] = useState(false);
   const [loadingTx, setLoadingTx] = useState(false);
+
+  useEffect(() => {
+    if (user && token) {
+      loadVerificationStatus();
+    }
+  }, [user, token]);
+
+  const loadVerificationStatus = () => {
+    if (!token) return;
+    setLoadingVerification(true);
+    fetch('/verification/status', {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data) setVerificationData(data);
+      })
+      .catch(() => {})
+      .finally(() => setLoadingVerification(false));
+  };
+
+  const loadAdminVerifications = () => {
+    if (!token || !isAdmin) return;
+    fetch('/verification/admin/list', {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+      .then((r) => (r.ok ? r.json() : []))
+      .then(setAdminVerifications)
+      .catch(() => setAdminVerifications([]));
+  };
+
+  useEffect(() => {
+    if (showAdminVerifications && isAdmin) {
+      loadAdminVerifications();
+    }
+  }, [showAdminVerifications, isAdmin]);
 
   useEffect(() => {
     if (user && token && showTransactions) {
@@ -91,6 +142,64 @@ export default function ProfilePage({ user, token, onUpdateUser, onLogout, onOpe
     const items = parsePortfolio().filter((_, i) => i !== idx);
     await savePortfolio(items);
     addToast('Работа удалена из портфолио', 'success');
+  };
+
+  const handleVerificationSubmit = async (e) => {
+    e.preventDefault();
+    if (!verFullName.trim()) {
+      addToast('Укажите ФИО полностью', 'error');
+      return;
+    }
+    setSubmittingVer(true);
+    try {
+      const res = await fetch('/verification/submit', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          full_name: verFullName.trim(),
+          document_type: verDocType,
+          document_number: verDocNumber.trim() || null,
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Ошибка отправки заявки');
+
+      addToast('Заявка на верификацию успешно отправлена!', 'success');
+      setShowVerifyModal(false);
+      loadVerificationStatus();
+      onUpdateUser();
+    } catch (err) {
+      addToast(err.message, 'error');
+    } finally {
+      setSubmittingVer(false);
+    }
+  };
+
+  const handleAdminReview = async (requestId, action, reason = '') => {
+    setProcessingAdminId(requestId);
+    try {
+      const res = await fetch(`/verification/admin/${requestId}/review`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ action, reason })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Ошибка рассмотрения');
+
+      addToast(action === 'approve' ? 'Специалист успешно верифицирован!' : 'Заявка отклонена', 'success');
+      loadAdminVerifications();
+      onUpdateUser();
+    } catch (err) {
+      addToast(err.message, 'error');
+    } finally {
+      setProcessingAdminId(null);
+    }
   };
 
   if (!user) {
@@ -211,34 +320,54 @@ export default function ProfilePage({ user, token, onUpdateUser, onLogout, onOpe
   };
 
   const isSpecialist = user.role === 'specialist';
+  const reqStatus = verificationData?.request?.status;
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 py-8 px-4 sm:px-6 lg:px-8 max-w-5xl mx-auto space-y-6">
       {/* Header Card */}
       <div className="bg-white dark:bg-slate-800 p-6 sm:p-8 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
         <div className="flex items-center gap-5">
-          <div className="w-20 h-20 rounded-2xl bg-gradient-to-tr from-indigo-500 to-purple-600 text-white font-extrabold text-3xl flex items-center justify-center shadow-lg shadow-indigo-500/20 shrink-0">
-            {user.name ? user.name[0].toUpperCase() : user.email[0].toUpperCase()}
+          <div className="relative shrink-0">
+            <div className="w-20 h-20 rounded-2xl bg-gradient-to-tr from-indigo-500 to-purple-600 text-white font-extrabold text-3xl flex items-center justify-center shadow-lg shadow-indigo-500/20">
+              {user.name ? user.name[0].toUpperCase() : user.email[0].toUpperCase()}
+            </div>
+            {user.verified && (
+              <span className="absolute -bottom-1 -right-1 bg-emerald-500 text-white p-1 rounded-full shadow-md text-xs font-bold" title="Документы проверены">
+                ✓
+              </span>
+            )}
           </div>
+
           <div className="space-y-1">
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <h1 className="text-2xl font-bold text-slate-900 dark:text-white">
                 {user.name || 'Пользователь'}
               </h1>
+              {user.verified && (
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 flex items-center gap-1 border border-emerald-300 dark:border-emerald-700">
+                  <span>✓</span> Проверен
+                </span>
+              )}
               {user.is_pro && (
-                <span className="px-2.5 py-0.5 rounded-full text-xs font-black bg-gradient-to-r from-amber-400 to-orange-500 text-slate-950">
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-black bg-gradient-to-r from-amber-400 to-orange-500 text-slate-950 shadow-sm">
                   PRO
                 </span>
               )}
             </div>
             <p className="text-sm text-slate-500 dark:text-slate-400">{user.email}</p>
-            <div className="flex items-center gap-3 text-xs pt-1">
+            <div className="flex flex-wrap items-center gap-3 text-xs pt-1">
               <span className="px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-700 font-medium">
                 {isSpecialist ? '🛠️ Специалист' : '💼 Заказчик'}
               </span>
               <span>⭐ Рейтинг: {user.rating || '5.0'}</span>
               <span>•</span>
               <span>Завершено: {user.completed_tasks || 0}</span>
+              {user.city && (
+                <>
+                  <span>•</span>
+                  <span>📍 {user.city}</span>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -264,6 +393,128 @@ export default function ProfilePage({ user, token, onUpdateUser, onLogout, onOpe
           </button>
         </div>
       </div>
+
+      {/* Trust & Verification Status Banner */}
+      <div className="bg-gradient-to-r from-slate-900 to-indigo-950 text-white p-6 sm:p-7 rounded-3xl shadow-md border border-indigo-900/50 flex flex-col md:flex-row items-start md:items-center justify-between gap-5">
+        <div className="space-y-2 max-w-2xl">
+          <div className="flex items-center gap-2">
+            <span className="text-xl">🛡️</span>
+            <h2 className="text-lg font-bold text-white">Безопасность и доверие сервиса «ДЕЛО»</h2>
+          </div>
+          <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
+            {user.verified
+              ? 'Ваша личность подтверждена. Все ваши сделки защищены сервисом безопасных платежей (эскроу). В каталоге ваши отклики отображаются выше.'
+              : reqStatus === 'pending'
+              ? 'Ваша заявка на верификацию находится на рассмотрении у модератора. Обычно проверка занимает до 2 часов.'
+              : reqStatus === 'rejected'
+              ? `Предыдущая заявка была отклонена: «${verificationData?.request?.rejection_reason || 'уточните данные'}». Подайте заявку повторно.`
+              : 'Пройдите быструю верификацию (паспорт или статус самозанятого), чтобы получить зелёный бейдж доверия, поднять анкету в топе поиска и получать крупные заказы с гарантией выплаты.'}
+          </p>
+        </div>
+
+        <div className="shrink-0 flex items-center gap-3">
+          {user.verified ? (
+            <div className="px-4 py-2 rounded-xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 font-bold text-xs flex items-center gap-2">
+              <span>✓</span> Документы подтверждены
+            </div>
+          ) : reqStatus === 'pending' ? (
+            <div className="px-4 py-2 rounded-xl bg-amber-500/20 border border-amber-500/40 text-amber-300 font-bold text-xs flex items-center gap-2">
+              <span className="animate-spin">⏳</span> На проверке
+            </div>
+          ) : (
+            <button
+              onClick={() => setShowVerifyModal(true)}
+              className="px-5 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs sm:text-sm rounded-xl shadow-lg shadow-emerald-500/20 transition-all flex items-center gap-2"
+            >
+              <span>🛡️</span> Пройти верификацию
+            </button>
+          )}
+
+          {isAdmin && (
+            <button
+              onClick={() => setShowAdminVerifications(!showAdminVerifications)}
+              className="px-4 py-2 bg-indigo-800/80 hover:bg-indigo-700 text-indigo-100 text-xs font-semibold rounded-xl border border-indigo-600 transition-all"
+            >
+              👑 Модерация заявок
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Admin Verification Management Center */}
+      {isAdmin && showAdminVerifications && (
+        <div className="bg-white dark:bg-slate-800 p-6 sm:p-8 rounded-3xl border border-amber-300 dark:border-amber-700/60 shadow-lg space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+              <span>👑</span> Панель модератора: Заявки на верификацию
+            </h3>
+            <button
+              onClick={loadAdminVerifications}
+              className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline"
+            >
+              🔄 Обновить
+            </button>
+          </div>
+
+          {adminVerifications.length === 0 ? (
+            <p className="text-xs text-slate-500 py-4 text-center">Заявок на проверку пока нет.</p>
+          ) : (
+            <div className="space-y-3 max-h-96 overflow-y-auto">
+              {adminVerifications.map((item) => (
+                <div
+                  key={item.id}
+                  className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-700 flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+                >
+                  <div className="space-y-1 text-xs">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-sm text-slate-900 dark:text-white">{item.full_name}</span>
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                        item.status === 'approved' ? 'bg-emerald-100 text-emerald-800' :
+                        item.status === 'rejected' ? 'bg-red-100 text-red-800' : 'bg-amber-100 text-amber-800'
+                      }`}>
+                        {item.status === 'approved' ? 'Одобрено' : item.status === 'rejected' ? 'Отклонено' : 'Ожидает'}
+                      </span>
+                    </div>
+                    <div className="text-slate-500">
+                      ID: {item.user_id} • Email: {item.user_email} • Тип: {item.document_type === 'passport' ? 'Паспорт РФ' : 'Самозанятый / ИНН'}
+                    </div>
+                    {item.document_number && (
+                      <div className="font-mono text-slate-700 dark:text-slate-300">
+                        Номер документа: {item.document_number}
+                      </div>
+                    )}
+                    <div className="text-[10px] text-slate-400">
+                      Подано: {(item.created_at || '').slice(0, 16).replace('T', ' ')}
+                    </div>
+                  </div>
+
+                  {item.status === 'pending' && (
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        onClick={() => handleAdminReview(item.id, 'approve')}
+                        disabled={processingAdminId === item.id}
+                        className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-sm transition-all"
+                      >
+                        ✓ Одобрить
+                      </button>
+                      <button
+                        onClick={() => {
+                          const reason = prompt('Укажите причину отклонения:', 'Нечеткое фото или неверные реквизиты');
+                          if (reason !== null) handleAdminReview(item.id, 'reject', reason);
+                        }}
+                        disabled={processingAdminId === item.id}
+                        className="px-3.5 py-1.5 bg-red-600 hover:bg-red-500 text-white font-bold text-xs rounded-xl shadow-sm transition-all"
+                      >
+                        ✕ Отклонить
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Edit Profile Form */}
       {isEditing && (
@@ -331,7 +582,7 @@ export default function ProfilePage({ user, token, onUpdateUser, onLogout, onOpe
               {(user.balance || 0).toLocaleString('ru-RU')} ₽
             </div>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">
-              Баланс используется для безопасных сделок (эскроу) и покупки пакетов откликов.
+              Баланс используется для безопасных сделок (эскроу-депонирование) и мгновенных выплат.
             </p>
           </div>
           <div className="pt-4 border-t border-slate-100 dark:border-slate-700">
@@ -348,14 +599,21 @@ export default function ProfilePage({ user, token, onUpdateUser, onLogout, onOpe
         {isSpecialist ? (
           <div className="bg-white dark:bg-slate-800 p-6 sm:p-8 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm space-y-4 flex flex-col justify-between">
             <div>
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Статус откликов</span>
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Монетизация и статус</span>
+                {user.is_pro && (
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800">
+                    0% комиссия платформы
+                  </span>
+                )}
+              </div>
               <div className="text-2xl sm:text-3xl font-extrabold text-indigo-600 dark:text-indigo-400 mt-1">
-                {user.is_pro ? 'Безлимит (PRO)' : `${user.response_credits || 0} откликов`}
+                {user.is_pro ? 'PRO-аккаунт (0% комиссия)' : `${user.response_credits || 0} откликов`}
               </div>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">
                 {user.is_pro
-                  ? `PRO-статус активен до ${user.pro_until ? user.pro_until.slice(0, 10) : 'конца периода'}.`
-                  : 'С каждого отклика на задание списывается 1 кредит.'}
+                  ? `Подписка активна до ${user.pro_until ? user.pro_until.slice(0, 10) : 'конца периода'}. Вы получаете 100% выплаты по заказам без комиссии платформы.`
+                  : 'Стандартная комиссия безопасной сделки: 5%. С подпиской PRO комиссия 0% и безлимитные отклики.'}
               </p>
             </div>
             <div className="grid grid-cols-2 gap-2 pt-4 border-t border-slate-100 dark:border-slate-700">
@@ -371,20 +629,81 @@ export default function ProfilePage({ user, token, onUpdateUser, onLogout, onOpe
                 disabled={buyingPackage === 'pro_1'}
                 className="py-2.5 px-3 bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 font-bold text-xs rounded-xl shadow-md transition-all text-center"
               >
-                PRO на 1 мес. (590 ₽)
+                PRO на месяц (590 ₽)
               </button>
             </div>
           </div>
         ) : (
           <div className="bg-white dark:bg-slate-800 p-6 sm:p-8 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm space-y-4">
             <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Безопасная сделка</span>
-            <h4 className="text-lg font-bold text-slate-900 dark:text-white">Гарантия выполнения</h4>
+            <h4 className="text-lg font-bold text-slate-900 dark:text-white">100% гарантия сохранности</h4>
             <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-              При назначении специалиста средства резервируются на балансе заказа и перечисляются исполнителю только после того, как вы подтвердите успешный результат.
+              При назначении специалиста средства депонируются на эскроу-счете заказа. Исполнитель получает деньги только после того, как вы лично подтвердите выполнение задачи или через арбитраж.
             </p>
           </div>
         )}
       </div>
+
+      {/* Monetization Showcase for Specialists */}
+      {isSpecialist && (
+        <div className="bg-gradient-to-br from-indigo-50 to-purple-50 dark:from-slate-800 dark:to-slate-800/60 p-6 sm:p-8 rounded-3xl border border-indigo-100 dark:border-slate-700 shadow-sm space-y-6">
+          <div>
+            <h3 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+              <span>🚀</span> Выгодная монетизация для специалистов
+            </h3>
+            <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 mt-1">
+              Сравните условия работы: окупите подписку PRO уже с первого заказа благодаря отсутствию 5% комиссии!
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-3">
+              <span className="text-xs font-bold uppercase text-slate-400">Пакет откликов</span>
+              <div className="text-xl font-black text-slate-900 dark:text-white">10 откликов</div>
+              <p className="text-xs text-slate-500">19 ₽ за отклик. Базовый старт для начинающих специалистов.</p>
+              <div className="text-lg font-bold text-indigo-600">190 ₽</div>
+              <button
+                onClick={() => handleBuyPackage('resp_10')}
+                disabled={buyingPackage === 'resp_10'}
+                className="w-full py-2.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-xs font-bold rounded-xl transition-all"
+              >
+                Купить пакет
+              </button>
+            </div>
+
+            <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border-2 border-indigo-500 shadow-md space-y-3 relative overflow-hidden">
+              <div className="absolute top-2 right-2 bg-indigo-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
+                Популярный
+              </div>
+              <span className="text-xs font-bold uppercase text-indigo-500">PRO Месяц</span>
+              <div className="text-xl font-black text-slate-900 dark:text-white">0% комиссия + Безлимит</div>
+              <p className="text-xs text-slate-500">Экономия до 5 000 ₽ на комиссии эскроу при выполнении заказов.</p>
+              <div className="text-lg font-bold text-indigo-600">590 ₽ / мес.</div>
+              <button
+                onClick={() => handleBuyPackage('pro_1')}
+                disabled={buyingPackage === 'pro_1'}
+                className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl shadow-md transition-all"
+              >
+                Подключить PRO
+              </button>
+            </div>
+
+            <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-amber-300 dark:border-amber-700 space-y-3">
+              <span className="text-xs font-bold uppercase text-amber-500">PRO на 3 месяца</span>
+              <div className="text-xl font-black text-slate-900 dark:text-white">Максимальная выгода</div>
+              <p className="text-xs text-slate-500">90 дней без комиссии и с приоритетом в откликах заказчикам.</p>
+              <div className="text-lg font-bold text-amber-600">1 490 ₽</div>
+              <button
+                onClick={() => handleBuyPackage('pro_3')}
+                disabled={buyingPackage === 'pro_3'}
+                className="w-full py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold rounded-xl shadow-md transition-all"
+              >
+                Купить на 3 мес.
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Portfolio (specialist only) */}
       {isSpecialist && (
@@ -401,7 +720,10 @@ export default function ProfilePage({ user, token, onUpdateUser, onLogout, onOpe
       {/* Transactions history */}
       <div className="bg-white dark:bg-slate-800 p-6 sm:p-8 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h3 className="text-lg font-bold text-slate-900 dark:text-white">История операций</h3>
+          <div>
+            <h3 className="text-lg font-bold text-slate-900 dark:text-white">История операций</h3>
+            <p className="text-xs text-slate-400">Все движения средств, эскроу-депонирование и покупки</p>
+          </div>
           <div className="flex items-center gap-2">
             <button
               onClick={handleDownloadCsv}
@@ -439,6 +761,9 @@ export default function ProfilePage({ user, token, onUpdateUser, onLogout, onOpe
                     {tx.task_title && (
                       <span className="block text-xs text-slate-400 truncate">{tx.task_title}</span>
                     )}
+                    {tx.fee > 0 && (
+                      <span className="block text-[11px] text-amber-500">Комиссия сервиса 5%: -{tx.fee} ₽</span>
+                    )}
                     <span className="block text-[10px] text-slate-400">
                       {(tx.created_at || '').slice(0, 16).replace('T', ' ')}
                     </span>
@@ -458,6 +783,89 @@ export default function ProfilePage({ user, token, onUpdateUser, onLogout, onOpe
           )
         )}
       </div>
+
+      {/* Verification Request Modal */}
+      {showVerifyModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-800 max-w-md w-full p-6 sm:p-8 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                <span>🛡️</span> Верификация специалиста
+              </h3>
+              <button
+                onClick={() => setShowVerifyModal(false)}
+                className="text-slate-400 hover:text-slate-600 text-lg"
+              >
+                ✕
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-500 leading-relaxed">
+              Подтверждение личности повышает доверие заказчиков на 85% и даёт специальный знак отличия в анкете.
+            </p>
+
+            <form onSubmit={handleVerificationSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 mb-1">ФИО (по паспорту)</label>
+                <input
+                  type="text"
+                  value={verFullName}
+                  onChange={(e) => setVerFullName(e.target.value)}
+                  placeholder="Иванов Иван Иванович"
+                  required
+                  className="w-full p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 mb-1">Тип подтверждения</label>
+                <select
+                  value={verDocType}
+                  onChange={(e) => setVerDocType(e.target.value)}
+                  className="w-full p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm outline-none"
+                >
+                  <option value="passport">Паспорт гражданина РФ</option>
+                  <option value="inn_self_employed">ИНН / Справка о самозанятости</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 mb-1">
+                  {verDocType === 'passport' ? 'Серия и номер паспорта' : 'Номер ИНН (12 цифр)'}
+                </label>
+                <input
+                  type="text"
+                  value={verDocNumber}
+                  onChange={(e) => setVerDocNumber(e.target.value)}
+                  placeholder={verDocType === 'passport' ? '4515 123456' : '770123456789'}
+                  className="w-full p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm outline-none"
+                />
+              </div>
+
+              <div className="bg-emerald-50 dark:bg-emerald-950/30 p-3.5 rounded-xl border border-emerald-200 dark:border-emerald-800 text-[11px] text-emerald-800 dark:text-emerald-300">
+                🔒 Данные защищены и обрабатываются в строгом соответствии с 152-ФЗ.
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowVerifyModal(false)}
+                  className="px-4 py-2 text-sm text-slate-500"
+                >
+                  Отмена
+                </button>
+                <button
+                  type="submit"
+                  disabled={submittingVer}
+                  className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-sm shadow-md"
+                >
+                  {submittingVer ? 'Отправка...' : 'Отправить на проверку'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Deposit Modal */}
       {showDepositModal && (

@@ -39,6 +39,7 @@ def _run_column_migrations():
         f"ALTER TABLE users ADD COLUMN {ck}response_credits INTEGER DEFAULT 5",
         f"ALTER TABLE users ADD COLUMN {ck}is_pro BOOLEAN DEFAULT false",
         f"ALTER TABLE users ADD COLUMN {ck}pro_until VARCHAR",
+        f"ALTER TABLE transactions ADD COLUMN {ck}fee INTEGER DEFAULT 0",
     ]
     for m in migrations:
         with engine.connect() as conn:
@@ -116,6 +117,7 @@ app.include_router(files_router)
 app.include_router(notifications_router)
 app.include_router(ai_router)
 app.include_router(disputes_router)
+app.include_router(verification_router)
 
 @app.get("/")
 def root():
