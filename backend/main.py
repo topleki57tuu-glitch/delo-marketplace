@@ -18,7 +18,8 @@ from app.api import (
     files_router,
     notifications_router,
     ai_router,
-    disputes_router
+    disputes_router,
+    verification_router
 )
 from file_utils import UPLOAD_DIR
 from jose import jwt

@@ -169,6 +169,35 @@ class SpecialistOut(BaseModel):
     completed_tasks: int = 0
     online: bool = False
 
+class VerificationSubmitRequest(BaseModel):
+    full_name: str
+    document_type: str = "passport" # passport, inn_self_employed
+    document_number: Optional[str] = None
+    file_url: Optional[str] = None
+
+class VerificationReviewRequest(BaseModel):
+    action: str # "approve" or "reject"
+    reason: Optional[str] = None
+
+class VerificationRequestOut(BaseModel):
+    id: int
+    user_id: int
+    full_name: str
+    document_type: str
+    document_number: Optional[str] = None
+    file_url: Optional[str] = None
+    status: str
+    rejection_reason: Optional[str] = None
+    created_at: str
+    resolved_at: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+class VerificationStatusOut(BaseModel):
+    verified: bool
+    request: Optional[VerificationRequestOut] = None
+
 class AIChatRequest(BaseModel):
     prompt: str
     current_task: Optional[dict] = None

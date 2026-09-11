@@ -66,7 +66,26 @@ class Transaction(Base):
     amount = Column(Integer)
     type = Column(SqlaEnum(TransactionType))
     task_id = Column(Integer, nullable=True)
+    fee: Column = Column(Integer, default=0) # Комиссия сервиса (например, 5% при escrow_release)
     created_at = Column(String, default=lambda: datetime.utcnow().isoformat())
+
+class VerificationStatus(str, PyEnum):
+    pending = "pending"
+    approved = "approved"
+    rejected = "rejected"
+
+class VerificationRequest(Base):
+    __tablename__ = "verification_requests"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, index=True)
+    full_name = Column(String)
+    document_type = Column(String, default="passport") # passport / inn_self_employed
+    document_number = Column(String, nullable=True)
+    file_url = Column(String, nullable=True)
+    status = Column(SqlaEnum(VerificationStatus), default=VerificationStatus.pending)
+    rejection_reason = Column(String, nullable=True)
+    created_at = Column(String, default=lambda: datetime.utcnow().isoformat())
+    resolved_at = Column(String, nullable=True)
 
 class PaymentRecord(Base):
     __tablename__ = "payment_records"
