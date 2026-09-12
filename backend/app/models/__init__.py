@@ -56,12 +56,12 @@ class User(Base):
     portfolio = Column(Text, nullable=True)  # JSON string with portfolio items
     skills = Column(Text, nullable=True)     # JSON string with skills array
     verified = Column(Boolean, default=False)
-    last_seen = Column(String, nullable=True) # ISO time of last activity
+    last_seen = Column(DateTime, nullable=True) # Time of last activity
     response_credits = Column(Integer, default=5) # Paid responses bonus
     is_pro = Column(Boolean, default=False)       # PRO subscription
-    pro_until = Column(String, nullable=True)
+    pro_until = Column(DateTime, nullable=True)
     # Времени регистрации не было — без него не посчитать рост пользователей
-    created_at = Column(String, default=lambda: datetime.utcnow().isoformat())
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 class Transaction(Base):
     __tablename__ = "transactions"
@@ -71,7 +71,7 @@ class Transaction(Base):
     type = Column(SqlaEnum(TransactionType))
     task_id = Column(Integer, nullable=True)
     fee = Column(Integer, default=0) # Комиссия сервиса (например, 5% при escrow_release)
-    created_at = Column(String, default=lambda: datetime.utcnow().isoformat())
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 class VerificationStatus(str, PyEnum):
     pending = "pending"
@@ -88,8 +88,8 @@ class VerificationRequest(Base):
     file_url = Column(String, nullable=True)
     status = Column(SqlaEnum(VerificationStatus), default=VerificationStatus.pending)
     rejection_reason = Column(String, nullable=True)
-    created_at = Column(String, default=lambda: datetime.utcnow().isoformat())
-    resolved_at = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    resolved_at = Column(DateTime, nullable=True)
 
 class PaymentRecord(Base):
     __tablename__ = "payment_records"
@@ -97,7 +97,7 @@ class PaymentRecord(Base):
     payment_id = Column(String, unique=True, index=True)
     user_id = Column(Integer, index=True)
     amount = Column(Integer)
-    created_at = Column(String, default=lambda: datetime.utcnow().isoformat())
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 class Notification(Base):
     __tablename__ = "notifications"
@@ -108,7 +108,7 @@ class Notification(Base):
     text = Column(String)
     task_id = Column(Integer, nullable=True)
     is_read = Column(Boolean, default=False)
-    created_at = Column(String, default=lambda: datetime.utcnow().isoformat())
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 class Response(Base):
     __tablename__ = "responses"
@@ -138,7 +138,7 @@ class Task(Base):
     images = Column(Text, nullable=True) # JSON string with image URLs
     # Времени создания не было вовсе — из-за этого нельзя было ни показать
     # «опубликовано 2 часа назад», ни построить метрики по дням.
-    created_at = Column(String, default=lambda: datetime.utcnow().isoformat())
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 class Message(Base):
     __tablename__ = "messages"
@@ -147,7 +147,7 @@ class Message(Base):
     sender_id = Column(Integer)
     text = Column(String)
     is_read = Column(Boolean, default=False)
-    created_at = Column(String, default=lambda: datetime.utcnow().isoformat())
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 class Review(Base):
     __tablename__ = "reviews"
@@ -164,9 +164,9 @@ class PasswordResetToken(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, index=True)
     token = Column(String, unique=True, index=True)
-    expires_at = Column(String)
+    expires_at = Column(DateTime)
     used = Column(Boolean, default=False)
-    created_at = Column(String, default=lambda: datetime.utcnow().isoformat())
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 class DisputeStatus(str, PyEnum):
     open = "open"
@@ -182,8 +182,8 @@ class Dispute(Base):
     reason = Column(String)
     status = Column(SqlaEnum(DisputeStatus), default=DisputeStatus.open)
     resolution_comment = Column(String, nullable=True)
-    created_at = Column(String, default=lambda: datetime.utcnow().isoformat())
-    resolved_at = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    resolved_at = Column(DateTime, nullable=True)
 
 class StoredFile(Base):
     __tablename__ = "stored_files"
@@ -191,7 +191,7 @@ class StoredFile(Base):
     filename = Column(String)
     content_type = Column(String, default="image/jpeg")
     data = Column(SqlaLargeBinary)
-    created_at = Column(String, default=lambda: datetime.utcnow().isoformat())
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 
 class WithdrawalStatus(str, PyEnum):
@@ -219,8 +219,8 @@ class WithdrawalRequest(Base):
     requisites = Column(String)
     status = Column(SqlaEnum(WithdrawalStatus), default=WithdrawalStatus.pending)
     comment = Column(String, nullable=True)   # причина отклонения
-    created_at = Column(String, default=lambda: datetime.utcnow().isoformat())
-    resolved_at = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    resolved_at = Column(DateTime, nullable=True)
 
 
 class RefreshToken(Base):
@@ -234,7 +234,7 @@ class RefreshToken(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, index=True)
     token = Column(String, unique=True, index=True)  # jti (JWT ID)
-    expires_at = Column(String)
-    created_at = Column(String, default=lambda: datetime.utcnow().isoformat())
+    expires_at = Column(DateTime)
+    created_at = Column(DateTime, default=datetime.utcnow)
     revoked = Column(Boolean, default=False)  # Отозван ли токен
-    revoked_at = Column(String, nullable=True)
+    revoked_at = Column(DateTime, nullable=True)

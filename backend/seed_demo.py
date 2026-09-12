@@ -35,12 +35,9 @@ CITY = {
 }
 
 
-def iso(dt):
-    return dt.isoformat()
-
-
 def d(days):
-    return iso(NOW + timedelta(days=days))
+    """Return datetime object (not ISO string)"""
+    return NOW + timedelta(days=days)
 
 
 def main():
@@ -82,7 +79,7 @@ def main():
             pro_until=pro_until,
             verified=verified,
             response_credits=credits,
-            last_seen=iso(NOW - timedelta(minutes=last_seen_min)) if last_seen_min is not None else None,
+            last_seen=NOW - timedelta(minutes=last_seen_min) if last_seen_min is not None else None,
         )
         if skills:
             u.skills = "[" + ", ".join(f'"{s}"' for s in skills) + "]"
@@ -308,7 +305,7 @@ def main():
             task_id=tasks[task].id,
             sender_id=users[sender].id,
             text=text,
-            created_at=iso(NOW - timedelta(minutes=minutes_ago)),
+            created_at=NOW - timedelta(minutes=minutes_ago),
         ))
 
     add_msg("t12", "dmitry", "Добрый день! Когда сможете начать?", 2880)
@@ -339,7 +336,7 @@ def main():
             user_id=users[user].id, amount=amount, type=TransactionType[type_],
             task_id=tasks[task].id if task else None,
             fee=fee,
-            created_at=iso(NOW - timedelta(days=days_ago)),
+            created_at=NOW - timedelta(days=days_ago),
         ))
 
     add_tx("anna", 100000, "deposit", days_ago=22)
@@ -363,7 +360,7 @@ def main():
         db.add(Notification(
             user_id=users[user].id, type=type_, title=title, text=text_,
             task_id=tasks[task].id if task else None, is_read=read,
-            created_at=iso(NOW - timedelta(hours=hours_ago)),
+            created_at=NOW - timedelta(hours=hours_ago),
         ))
 
     add_notif("anna", "new_response", "Новый отклик на заказ!",
@@ -407,21 +404,21 @@ def main():
         owner.balance -= amount
         db.add(Transaction(
             user_id=owner.id, amount=-amount, type=TransactionType.withdraw_hold,
-            created_at=iso(NOW - timedelta(days=days_ago)),
+            created_at=NOW - timedelta(days=days_ago),
         ))
         resolved = status_ != WithdrawalStatus.pending
         if status_ in (WithdrawalStatus.rejected, WithdrawalStatus.cancelled):
             owner.balance += amount
             db.add(Transaction(
                 user_id=owner.id, amount=amount, type=TransactionType.withdraw_refund,
-                created_at=iso(NOW - timedelta(days=days_ago) + timedelta(hours=3)),
+                created_at=NOW - timedelta(days=days_ago) + timedelta(hours=3),
             ))
         db.add(WithdrawalRequest(
             user_id=owner.id, amount=amount, method=method,
             requisites=encrypt_sensitive(requisites),
             status=status_, comment=comment,
-            created_at=iso(NOW - timedelta(days=days_ago)),
-            resolved_at=iso(NOW - timedelta(days=days_ago) + timedelta(hours=3)) if resolved else None,
+            created_at=NOW - timedelta(days=days_ago),
+            resolved_at=NOW - timedelta(days=days_ago) + timedelta(hours=3) if resolved else None,
         ))
 
     add_withdrawal("igor", 10000, "card", "4276 3800 1234 5678",
