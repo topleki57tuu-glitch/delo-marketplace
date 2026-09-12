@@ -4,6 +4,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.security import oauth2_scheme, decode_token
+from app.core.csrf import verify_csrf
+from app.core.logging import logger, log_escrow_operation
 from app.models import (
     Task, User, Response, TaskCategory, TaskStatus, UserRole,
     Notification, Transaction, TransactionType, Dispute, DisputeStatus
@@ -21,7 +23,7 @@ class TaskImagesDeleteRequest(BaseModel):
     urls_to_delete: List[str]
 
 @router.post("/")
-def create_task(task: TaskCreate, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+def create_task(task: TaskCreate, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db), _csrf: None = Depends(verify_csrf)):
     payload = decode_token_or_401(token)
     # Роль берём из БД, а не из JWT: в токене роль остаётся прежней до 7 дней
     # после переключения роли
@@ -200,7 +202,7 @@ def get_task_detail(task_id: int, db: Session = Depends(get_db)):
     }
 
 @router.delete("/{task_id}/images")
-def delete_task_images(task_id: int, req: TaskImagesDeleteRequest, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+def delete_task_images(task_id: int, req: TaskImagesDeleteRequest, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db), _csrf: None = Depends(verify_csrf)):
     payload = decode_token_or_401(token)
     user_id = int(payload.get("sub"))
     task = db.query(Task).filter(Task.id == task_id).first()
@@ -218,10 +220,14 @@ def delete_task_images(task_id: int, req: TaskImagesDeleteRequest, token: str = 
     return {"message": "Фото удалено", "images": new_imgs}
 
 @router.put("/{task_id}/complete")
-def complete_task(task_id: int, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+def complete_task(task_id: int, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db), _csrf: None = Depends(verify_csrf)):
     payload = decode_token_or_401(token)
     user_id = int(payload.get("sub"))
-    task = db.query(Task).filter(Task.id == task_id).first()
+
+    # Блокируем запись заказа для предотвращения race condition
+    # (одновременное завершение и отмена). SELECT FOR UPDATE гарантирует,
+    # что только одна транзакция изменит статус.
+    task = db.query(Task).filter(Task.id == task_id).with_for_update().first()
     if not task:
         raise HTTPException(404, "Заказ не найден")
     if task.customer_id != user_id:
@@ -244,7 +250,8 @@ def complete_task(task_id: int, token: str = Depends(oauth2_scheme), db: Session
     payout = 0
     fee = 0
     if budget > 0:
-        executor = db.query(User).filter(User.id == task.executor_id).first()
+        # Блокируем запись исполнителя для защиты от конкурентного изменения баланса
+        executor = db.query(User).filter(User.id == task.executor_id).with_for_update().first()
         if executor:
             # Монетизация: 0% комиссия для пользователей со статусом PRO, иначе стандартные 5%
             is_pro = bool(executor.is_pro)
@@ -260,6 +267,16 @@ def complete_task(task_id: int, token: str = Depends(oauth2_scheme), db: Session
                 task_id=task.id,
                 fee=fee
             ))
+
+            # Логируем критичную операцию выплаты эскроу
+            log_escrow_operation(
+                operation="escrow_release",
+                task_id=task.id,
+                user_id=executor.id,
+                amount=payout,
+                fee=fee,
+                is_pro=is_pro
+            )
 
     if payout > 0:
         if fee > 0:

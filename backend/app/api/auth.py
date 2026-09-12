@@ -10,6 +10,7 @@ from app.core.security import (
     hash_password, verify_password, create_access_token,
     rate_limit, oauth2_scheme
 )
+from app.core.csrf import verify_csrf
 from app.models import User, PasswordResetToken
 from app.schemas import (
     UserCreate, ForgotPasswordRequest, ResetPasswordRequest
@@ -36,7 +37,7 @@ def send_email(to: str, subject: str, body: str):
         server.send_message(msg)
 
 @router.post("/register/")
-def register(user: UserCreate, request: Request, db: Session = Depends(get_db)):
+def register(user: UserCreate, request: Request, db: Session = Depends(get_db), _csrf: None = Depends(verify_csrf)):
     rate_limit(request, "register", limit=5, window_sec=3600)
     if db.query(User).filter(User.email == user.email).first():
         raise HTTPException(400, "Email уже зарегистрирован в системе")
@@ -65,7 +66,7 @@ def login(request: Request, form: OAuth2PasswordRequestForm = Depends(), db: Ses
     }
 
 @router.post("/auth/forgot-password")
-def forgot_password(req: ForgotPasswordRequest, request: Request, db: Session = Depends(get_db)):
+def forgot_password(req: ForgotPasswordRequest, request: Request, db: Session = Depends(get_db), _csrf: None = Depends(verify_csrf)):
     rate_limit(request, "forgot", limit=5, window_sec=3600)
     user = db.query(User).filter(User.email == req.email).first()
     dev_reset_link = None
@@ -98,7 +99,7 @@ def forgot_password(req: ForgotPasswordRequest, request: Request, db: Session = 
     return resp
 
 @router.post("/auth/reset-password")
-def reset_password(req: ResetPasswordRequest, db: Session = Depends(get_db)):
+def reset_password(req: ResetPasswordRequest, db: Session = Depends(get_db), _csrf: None = Depends(verify_csrf)):
     reset = db.query(PasswordResetToken).filter(PasswordResetToken.token == req.token).first()
     if not reset or reset.used:
         raise HTTPException(400, "Ссылка недействительна или уже использована")

@@ -3,6 +3,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.security import oauth2_scheme, decode_token, is_admin
+from app.core.csrf import verify_csrf
+from app.core.logging import logger, log_escrow_operation
 from app.models import (
     Dispute, DisputeStatus, Task, TaskStatus, User,
     Transaction, TransactionType, Notification
@@ -30,7 +32,7 @@ def _active_dispute(db: Session, task_id: int) -> Optional[Dispute]:
 
 # ---------- Открыть спор (заказчик или исполнитель, пока заказ в работе) ----------
 @router.post("/tasks/{task_id}/dispute")
-def open_dispute(task_id: int, req: DisputeCreate, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+def open_dispute(task_id: int, req: DisputeCreate, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db), _csrf: None = Depends(verify_csrf)):
     payload = decode_token_or_401(token)
     user_id = int(payload.get("sub"))
     task = _get_task_or_404(db, task_id)
@@ -59,10 +61,14 @@ def open_dispute(task_id: int, req: DisputeCreate, token: str = Depends(oauth2_s
 
 # ---------- Отмена назначения / отзыв спора ----------
 @router.post("/tasks/{task_id}/cancel")
-def cancel_task(task_id: int, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+def cancel_task(task_id: int, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db), _csrf: None = Depends(verify_csrf)):
     payload = decode_token_or_401(token)
     user_id = int(payload.get("sub"))
-    task = _get_task_or_404(db, task_id)
+
+    # Блокируем заказ для предотвращения race condition с завершением
+    task = db.query(Task).filter(Task.id == task_id).with_for_update().first()
+    if not task:
+        raise HTTPException(404, "Заказ не найден")
 
     if task.status not in (TaskStatus.open, TaskStatus.in_progress, TaskStatus.disputed):
         raise HTTPException(400, "Отменить можно только открытый заказ, заказ в работе или на арбитраже")
@@ -88,7 +94,8 @@ def cancel_task(task_id: int, token: str = Depends(oauth2_scheme), db: Session =
     budget = task.budget or 0
     refunded = 0
     if budget > 0 and task.executor_id is not None:
-        customer = db.query(User).filter(User.id == task.customer_id).first()
+        # Блокируем заказчика для защиты от конкурентных изменений баланса
+        customer = db.query(User).filter(User.id == task.customer_id).with_for_update().first()
         if customer:
             customer.balance += budget
             refunded = budget
@@ -96,6 +103,15 @@ def cancel_task(task_id: int, token: str = Depends(oauth2_scheme), db: Session =
                 user_id=customer.id, amount=budget,
                 type=TransactionType.escrow_refund, task_id=task.id
             ))
+
+            # Логируем возврат эскроу
+            log_escrow_operation(
+                operation="escrow_refund_cancel",
+                task_id=task.id,
+                user_id=customer.id,
+                amount=budget,
+                cancelled_by=user_id
+            )
 
     task.status = TaskStatus.cancelled
     cancelled_by = "заказчиком" if is_customer else ("исполнителем" if is_executor else "инициатором спора")
@@ -165,7 +181,7 @@ def list_disputes(token: str = Depends(oauth2_scheme), db: Session = Depends(get
 
 # ---------- Арбитраж: решение по спору ----------
 @router.post("/admin/disputes/{dispute_id}/resolve")
-def resolve_dispute(dispute_id: int, req: DisputeResolve, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+def resolve_dispute(dispute_id: int, req: DisputeResolve, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db), _csrf: None = Depends(verify_csrf)):
     payload = decode_token_or_401(token)
     admin = db.query(User).filter(User.id == int(payload.get("sub"))).first()
     if not is_admin(admin):
@@ -190,6 +206,16 @@ def resolve_dispute(dispute_id: int, req: DisputeResolve, token: str = Depends(o
                 customer.balance += budget
                 db.add(Transaction(user_id=customer.id, amount=budget,
                                    type=TransactionType.escrow_refund, task_id=task.id))
+
+                # Логируем арбитражное решение - возврат заказчику
+                log_escrow_operation(
+                    operation="escrow_refund_arbitration",
+                    task_id=task.id,
+                    user_id=customer.id,
+                    amount=budget,
+                    dispute_id=dispute.id,
+                    arbiter_id=admin.id
+                )
         verdict = "Средства возвращены заказчику"
     elif req.decision == "pay_specialist":
         dispute.status = DisputeStatus.resolved_specialist
@@ -206,6 +232,17 @@ def resolve_dispute(dispute_id: int, req: DisputeResolve, token: str = Depends(o
                 db.add(Transaction(user_id=executor.id, amount=payout,
                                    type=TransactionType.escrow_release, task_id=task.id,
                                    fee=fee))
+
+                # Логируем арбитражное решение - выплата исполнителю
+                log_escrow_operation(
+                    operation="escrow_release_arbitration",
+                    task_id=task.id,
+                    user_id=executor.id,
+                    amount=payout,
+                    fee=fee,
+                    dispute_id=dispute.id,
+                    arbiter_id=admin.id
+                )
         verdict = "Средства выплачены исполнителю"
     else:
         raise HTTPException(400, "decision должен быть refund_customer или pay_specialist")

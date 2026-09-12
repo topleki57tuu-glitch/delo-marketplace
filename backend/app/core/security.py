@@ -7,6 +7,7 @@ from jose import JWTError, jwt
 from fastapi import HTTPException, Request, Depends, status
 from fastapi.security import OAuth2PasswordBearer
 from app.core.config import settings
+from app.core.logging import log_security_event
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
 
@@ -213,6 +214,12 @@ def rate_limit(request: Request, bucket: str, limit: int = 60, window_sec: int =
             if count == 1:
                 client.expire(key, window_sec)
             if count > limit:
+                # Логируем превышение лимита
+                log_security_event(
+                    event_type="rate_limit_exceeded",
+                    ip=ip,
+                    details=f"bucket={bucket}, count={count}, limit={limit}"
+                )
                 raise _too_many_requests()
             return
         except HTTPException:

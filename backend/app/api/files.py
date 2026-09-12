@@ -3,6 +3,7 @@ from fastapi.responses import Response as FastResponse
 from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.security import oauth2_scheme, decode_token
+from app.core.csrf import verify_csrf
 from app.models import StoredFile
 from file_utils import validate_image
 
@@ -12,7 +13,7 @@ def decode_token_or_401(token: str) -> dict:
     return decode_token(token)
 
 @router.post("/upload/image")
-def upload_image(file: UploadFile = File(...), token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+def upload_image(file: UploadFile = File(...), token: str = Depends(oauth2_scheme), db: Session = Depends(get_db), _csrf: None = Depends(verify_csrf)):
     decode_token_or_401(token)
     safe_ctype = validate_image(file)
     data = file.file.read()

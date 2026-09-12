@@ -1,12 +1,17 @@
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response
+from fastapi.responses import JSONResponse as FastResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 import os
+import json
+import time
 
 from app.core.config import settings
 from app.core.database import engine, Base, SessionLocal
+from app.core.csrf import generate_csrf_token, set_csrf_cookie
+from app.core.logging import logger, log_request
 from app.models import User, StoredFile
 from app.api import (
     auth_router,
@@ -27,6 +32,28 @@ from app.api import (
 from file_utils import UPLOAD_DIR
 from jose import jwt
 from datetime import datetime
+
+# Инициализируем Sentry для мониторинга ошибок в production
+if settings.SENTRY_DSN:
+    import sentry_sdk
+    from sentry_sdk.integrations.fastapi import FastApiIntegration
+    from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
+
+    sentry_sdk.init(
+        dsn=settings.SENTRY_DSN,
+        environment=settings.SENTRY_ENVIRONMENT,
+        traces_sample_rate=settings.SENTRY_TRACES_SAMPLE_RATE,
+        integrations=[
+            FastApiIntegration(),
+            SqlalchemyIntegration(),
+        ],
+        # Включаем отправку PII (user_id) для контекста ошибок
+        send_default_pii=True,
+    )
+    logger.info(f"Sentry initialized | environment={settings.SENTRY_ENVIRONMENT} | sample_rate={settings.SENTRY_TRACES_SAMPLE_RATE}")
+
+# Инициализируем логирование при старте
+logger.info(f"Starting DELO Marketplace API | ENV={settings.ENV} | CSRF={settings.CSRF_ENABLED} | RATE_LIMIT={settings.RATE_LIMIT_ENABLED}")
 
 # Initialize Database tables
 Base.metadata.create_all(bind=engine)
@@ -99,12 +126,66 @@ app.add_middleware(
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 @app.middleware("http")
+async def log_requests(request: Request, call_next):
+    """Логирует все HTTP запросы с временем выполнения."""
+    start_time = time.time()
+
+    # Извлекаем user_id из JWT если есть
+    user_id = None
+    auth_header = request.headers.get("authorization", "")
+    if auth_header.startswith("Bearer "):
+        try:
+            payload = jwt.decode(auth_header[7:], settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+            user_id = int(payload.get("sub", 0))
+        except Exception:
+            pass
+
+    response = await call_next(request)
+
+    duration_ms = (time.time() - start_time) * 1000
+    client_ip = request.client.host if request.client else "unknown"
+
+    # Логируем все запросы кроме health check и статики
+    if not request.url.path.startswith(("/health", "/assets", "/uploads")):
+        log_request(
+            method=request.method,
+            path=request.url.path,
+            status=response.status_code,
+            duration_ms=duration_ms,
+            user_id=user_id,
+            ip=client_ip
+        )
+
+    return response
+
+@app.middleware("http")
 async def security_headers(request: Request, call_next):
     response = await call_next(request)
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     return response
+
+@app.middleware("http")
+async def limit_upload_size(request: Request, call_next):
+    """Ограничение размера загружаемых файлов на уровне middleware.
+
+    Проверяем Content-Length ДО чтения тела запроса, чтобы отклонить
+    слишком большие файлы без загрузки их в память — защита от DoS.
+    """
+    MAX_UPLOAD_SIZE = 10 * 1024 * 1024  # 10 MB
+
+    content_length = request.headers.get("content-length")
+    if content_length and int(content_length) > MAX_UPLOAD_SIZE:
+        return FastResponse(
+            status_code=413,
+            content=json.dumps({
+                "detail": f"Файл слишком большой. Максимум: {MAX_UPLOAD_SIZE // (1024*1024)} MB"
+            }),
+            media_type="application/json"
+        )
+
+    return await call_next(request)
 
 # Online presence tracking
 _seen_cache: dict[int, datetime] = {}
@@ -154,6 +235,18 @@ app.include_router(admin_router)
 @app.get("/health")
 def health():
     return {"status": "ok", "timestamp": datetime.utcnow().isoformat()}
+
+@app.get("/csrf-token")
+def get_csrf_token(response: Response):
+    """Выдаёт CSRF токен для клиента.
+
+    SPA вызывает этот эндпоинт при загрузке, сохраняет токен в localStorage
+    и отправляет в заголовке X-CSRF-Token при каждом state-changing запросе.
+    Токен также записывается в signed httpOnly cookie для проверки.
+    """
+    token = generate_csrf_token()
+    set_csrf_cookie(response, token)
+    return {"csrf_token": token}
 
 
 # ---------------------------------------------------------------------------

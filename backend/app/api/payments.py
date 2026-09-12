@@ -5,6 +5,8 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.config import settings
 from app.core.security import oauth2_scheme, decode_token
+from app.core.csrf import verify_csrf
+from app.core.logging import logger, log_escrow_operation
 from app.models import User, Transaction, PaymentRecord, Task, Notification, UserRole, TaskStatus, TransactionType
 from app.schemas import DepositRequest
 from pydantic import BaseModel
@@ -29,7 +31,7 @@ class BuyPackageRequest(BaseModel):
     package_id: str
 
 @router.post("/wallet/deposit")
-def deposit_funds(req: DepositRequest, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+def deposit_funds(req: DepositRequest, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db), _csrf: None = Depends(verify_csrf)):
     if settings.IS_PRODUCTION:
         raise HTTPException(403, "Демо-пополнение недоступно. Используйте оплату через платёжную систему.")
     payload = decode_token_or_401(token)
@@ -54,7 +56,7 @@ def get_packages():
     ]}
 
 @router.post("/monetization/buy")
-def buy_package(req: BuyPackageRequest, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+def buy_package(req: BuyPackageRequest, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db), _csrf: None = Depends(verify_csrf)):
     pkg = MONETIZATION_PACKAGES.get(req.package_id)
     if not pkg:
         raise HTTPException(404, "Пакет не найден")
@@ -96,7 +98,7 @@ def payments_status():
     return {"configured": payments.is_configured()}
 
 @router.post("/payments/create")
-def create_payment(req: DepositRequest, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+def create_payment(req: DepositRequest, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db), _csrf: None = Depends(verify_csrf)):
     payload = decode_token_or_401(token)
     user_id = int(payload.get("sub"))
     user = db.query(User).filter(User.id == user_id).first()
@@ -123,7 +125,7 @@ def create_payment(req: DepositRequest, token: str = Depends(oauth2_scheme), db:
     }
 
 @router.post("/payments/confirm")
-def confirm_payment(payment_id: str, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+def confirm_payment(payment_id: str, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db), _csrf: None = Depends(verify_csrf)):
     payload = decode_token_or_401(token)
     user_id = int(payload.get("sub"))
 
@@ -153,13 +155,18 @@ def confirm_payment(payment_id: str, token: str = Depends(oauth2_scheme), db: Se
     return {"status": "succeeded", "credited": True, "new_balance": user.balance}
 
 @router.put("/tasks/{task_id}/assign")
-def assign_task(task_id: int, specialist_id: int, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+def assign_task(task_id: int, specialist_id: int, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db), _csrf: None = Depends(verify_csrf)):
     payload = decode_token_or_401(token)
     customer_id = int(payload.get("sub"))
-    customer = db.query(User).filter(User.id == customer_id).first()
-    task = db.query(Task).filter(Task.id == task_id, Task.customer_id == customer_id).first()
+
+    # Блокируем заказчика и заказ для защиты от race condition
+    # (двойное назначение или назначение при недостаточном балансе после его изменения)
+    customer = db.query(User).filter(User.id == customer_id).with_for_update().first()
+    task = db.query(Task).filter(Task.id == task_id, Task.customer_id == customer_id).with_for_update().first()
     if not task:
         raise HTTPException(404, "Заказ не найден или вы не его автор")
+    if task.status != TaskStatus.open:
+        raise HTTPException(400, "Назначить исполнителя можно только для открытого заказа")
 
     spec = db.query(User).filter(User.id == specialist_id, User.role == UserRole.specialist).first()
     if not spec:
@@ -173,6 +180,15 @@ def assign_task(task_id: int, specialist_id: int, token: str = Depends(oauth2_sc
     if budget > 0:
         tx = Transaction(user_id=customer.id, amount=-budget, type=TransactionType.escrow_hold, task_id=task.id)
         db.add(tx)
+
+        # Логируем холд эскроу
+        log_escrow_operation(
+            operation="escrow_hold",
+            task_id=task.id,
+            user_id=customer.id,
+            amount=budget,
+            specialist_id=specialist_id
+        )
 
     task.executor_id = specialist_id
     task.status = TaskStatus.in_progress
