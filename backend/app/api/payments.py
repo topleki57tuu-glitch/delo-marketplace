@@ -7,6 +7,7 @@ from app.core.config import settings
 from app.core.security import oauth2_scheme, decode_token
 from app.core.csrf import verify_csrf
 from app.core.logging import logger, log_escrow_operation
+from app.core.cache import cache
 from app.models import User, Transaction, PaymentRecord, Task, Notification, UserRole, TaskStatus, TransactionType
 from app.schemas import DepositRequest
 from pydantic import BaseModel
@@ -193,6 +194,9 @@ def assign_task(task_id: int, specialist_id: int, token: str = Depends(oauth2_sc
     task.executor_id = specialist_id
     task.status = TaskStatus.in_progress
     db.commit()
+
+    # Инвалидация кеша при назначении исполнителя
+    cache.invalidate_pattern("tasks:list:*")
 
     db.add(Notification(
         user_id=specialist_id,

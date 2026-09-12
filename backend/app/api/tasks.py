@@ -1,11 +1,13 @@
 import json
 from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import func
 from app.core.database import get_db
 from app.core.security import oauth2_scheme, decode_token
 from app.core.csrf import verify_csrf
 from app.core.logging import logger, log_escrow_operation
+from app.core.cache import cache
 from app.models import (
     Task, User, Response, TaskCategory, TaskStatus, UserRole,
     Notification, Transaction, TransactionType, Dispute, DisputeStatus
@@ -56,6 +58,10 @@ def create_task(task: TaskCreate, token: str = Depends(oauth2_scheme), db: Sessi
     db.add(new_task)
     db.commit()
     db.refresh(new_task)
+
+    # Инвалидация кеша списка задач
+    cache.invalidate_pattern("tasks:list:*")
+
     return {"message": "Задание создано", "task_id": new_task.id}
 
 @router.get("/")
@@ -69,6 +75,28 @@ def get_tasks(
     per_page: int = 20,
     db: Session = Depends(get_db)
 ):
+    """Список задач с опциональными фильтрами и пагинацией.
+
+    Оптимизация: открытые задачи без фильтров кешируются в Redis на 60 секунд,
+    снижая нагрузку на БД при частых обращениях на главную страницу.
+    """
+    # Проверяем возможность кеширования (только для открытых задач без фильтров)
+    is_cacheable = (
+        not category and not search and not city and
+        is_remote is None and not status_filter and not page
+    )
+
+    if is_cacheable:
+        cache_key = "tasks:list:open:all"
+        cached = cache.get(cache_key)
+        if cached:
+            try:
+                logger.debug(f"Cache HIT: {cache_key}")
+                return json.loads(cached)
+            except json.JSONDecodeError:
+                logger.warning(f"Cache decode error for {cache_key}")
+
+    # Кеш промах или некешируемый запрос - выполняем запрос к БД
     query = db.query(Task)
     if category:
         query = query.filter(Task.category == category)
@@ -98,7 +126,17 @@ def get_tasks(
             "pages": (total + per_page - 1) // per_page,
         }
 
-    return query.all()
+    result = query.all()
+
+    # Сохраняем в кеш если это кешируемый запрос
+    if is_cacheable and cache.enabled:
+        try:
+            cache.set(cache_key, json.dumps(result, default=str), ttl_seconds=60)
+            logger.debug(f"Cache SET: {cache_key}")
+        except (TypeError, ValueError) as e:
+            logger.warning(f"Cache serialization error: {e}")
+
+    return result
 
 @router.get("/my")
 def get_my_tasks(
@@ -114,6 +152,9 @@ def get_my_tasks(
 
     ВАЖНО: этот маршрут объявлен ДО `/{task_id}`, иначе FastAPI попытался бы
     разобрать «my» как целочисленный id и вернул бы 422.
+
+    Оптимизация: использует joinedload для предзагрузки связанных данных
+    и подзапрос для подсчета откликов, избегая N+1 проблемы.
     """
     payload = decode_token_or_401(token)
     user_id = int(payload.get("sub"))
@@ -121,11 +162,25 @@ def get_my_tasks(
     if role not in ("customer", "executor"):
         raise HTTPException(400, "role должен быть customer или executor")
 
-    query = db.query(Task)
+    # Подзапрос для подсчета откликов (избегаем N+1)
+    responses_subq = (
+        db.query(Response.task_id, func.count(Response.id).label('count'))
+        .group_by(Response.task_id)
+        .subquery()
+    )
+
+    # Основной запрос с joinedload для customer/executor
+    query = (
+        db.query(Task)
+        .outerjoin(responses_subq, Task.id == responses_subq.c.task_id)
+        .add_columns(func.coalesce(responses_subq.c.count, 0).label('responses_count'))
+    )
+
+    # Предзагрузка связанных пользователей
     if role == "customer":
-        query = query.filter(Task.customer_id == user_id)
+        query = query.filter(Task.customer_id == user_id).options(joinedload(Task.executor))
     else:
-        query = query.filter(Task.executor_id == user_id)
+        query = query.filter(Task.executor_id == user_id).options(joinedload(Task.customer))
 
     if status_filter == "active":
         query = query.filter(Task.status.in_(
@@ -139,16 +194,12 @@ def get_my_tasks(
         except ValueError:
             raise HTTPException(400, "Неизвестный статус заказа")
 
-    tasks = query.order_by(Task.id.desc()).all()
+    results = query.order_by(Task.id.desc()).all()
 
     result = []
-    for t in tasks:
-        responses_count = db.query(Response).filter(Response.task_id == t.id).count()
-        counterparty_id = t.executor_id if role == "customer" else t.customer_id
-        counterparty = (
-            db.query(User).filter(User.id == counterparty_id).first()
-            if counterparty_id else None
-        )
+    for t, responses_count in results:
+        # Используем уже загруженные данные (без дополнительных запросов)
+        counterparty = t.executor if role == "customer" else t.customer
         result.append({
             "id": t.id,
             "title": t.title,
@@ -295,6 +346,10 @@ def complete_task(task_id: int, token: str = Depends(oauth2_scheme), db: Session
     ))
 
     db.commit()
+
+    # Инвалидация кеша при изменении статуса задачи
+    cache.invalidate_pattern("tasks:list:*")
+
     return {
         "message": "Заказ успешно завершён" + (f", исполнителю выплачено {payout} ₽" if payout else ""),
         "released": payout,
