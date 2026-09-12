@@ -1,6 +1,7 @@
 import bcrypt
 import os
 import time
+import secrets
 from datetime import datetime, timedelta
 from typing import Optional, Dict, List
 from jose import JWTError, jwt
@@ -10,6 +11,10 @@ from app.core.config import settings
 from app.core.logging import log_security_event
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
+
+# Время жизни токенов
+ACCESS_TOKEN_EXPIRE_MINUTES = 15  # Короткий access token
+REFRESH_TOKEN_EXPIRE_DAYS = 7     # Длинный refresh token
 
 def hash_password(password: str) -> str:
     return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
@@ -21,14 +26,64 @@ def verify_password(password: str, hashed: str) -> bool:
         return False
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
+    """Создаёт access токен с коротким временем жизни (15 минут)."""
     to_encode = data.copy()
     if expires_delta:
         expire = datetime.utcnow() + expires_delta
     else:
-        expire = datetime.utcnow() + timedelta(days=7)
-    to_encode.update({"exp": expire})
+        expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    to_encode.update({"exp": expire, "type": "access"})
     encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
     return encoded_jwt
+
+
+def create_refresh_token(user_id: int) -> tuple[str, str]:
+    """Создаёт refresh токен с длинным временем жизни (7 дней).
+
+    Возвращает: (token_string, jti) где jti — уникальный ID токена для blacklist.
+    """
+    jti = secrets.token_urlsafe(32)  # JWT ID для отзыва
+    expire = datetime.utcnow() + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+    to_encode = {
+        "sub": str(user_id),
+        "exp": expire,
+        "type": "refresh",
+        "jti": jti
+    }
+    token = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+    return token, jti
+
+
+def verify_refresh_token(token: str, db) -> Optional[dict]:
+    """Проверяет refresh токен и возвращает payload.
+
+    Проверяет:
+    1. Подпись токена
+    2. Срок действия
+    3. Тип токена (должен быть refresh)
+    4. Не отозван ли токен (blacklist)
+    """
+    try:
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+
+        # Проверка типа токена
+        if payload.get("type") != "refresh":
+            return None
+
+        # Проверка blacklist (отозван ли токен)
+        jti = payload.get("jti")
+        if jti:
+            from app.models import RefreshToken
+            db_token = db.query(RefreshToken).filter(
+                RefreshToken.token == jti,
+                RefreshToken.revoked == True
+            ).first()
+            if db_token:
+                return None  # Токен отозван
+
+        return payload
+    except JWTError:
+        return None
 
 def decode_token(token: str) -> dict:
     try:

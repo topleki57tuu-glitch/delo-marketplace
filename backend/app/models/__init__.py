@@ -221,3 +221,20 @@ class WithdrawalRequest(Base):
     comment = Column(String, nullable=True)   # причина отклонения
     created_at = Column(String, default=lambda: datetime.utcnow().isoformat())
     resolved_at = Column(String, nullable=True)
+
+
+class RefreshToken(Base):
+    """Refresh токены для безопасной ротации access токенов.
+
+    Access токены живут 15 минут, refresh токены — 7 дней.
+    При компрометации access токена достаточно дождаться его истечения.
+    Refresh токены можно отозвать через blacklist, что даёт контроль над сессиями.
+    """
+    __tablename__ = "refresh_tokens"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, index=True)
+    token = Column(String, unique=True, index=True)  # jti (JWT ID)
+    expires_at = Column(String)
+    created_at = Column(String, default=lambda: datetime.utcnow().isoformat())
+    revoked = Column(Boolean, default=False)  # Отозван ли токен
+    revoked_at = Column(String, nullable=True)

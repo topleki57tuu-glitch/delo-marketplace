@@ -1,15 +1,49 @@
 import asyncio
 import json
-from typing import Optional, List
+import time
+from typing import Optional, List, Dict
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, status
 from sqlalchemy.orm import Session
 from app.core.database import get_db, SessionLocal
 from app.core.security import oauth2_scheme, decode_token
+from app.core.logging import log_security_event
 from app.models import Message, Task, User, Notification, TaskStatus
 from app.schemas import MessageCreate
 from app.services.websocket_manager import manager
 
 router = APIRouter(tags=["Chat"])
+
+# WebSocket rate limiting: последние отправки сообщений по user_id
+_ws_rate_limit: Dict[int, List[float]] = {}
+WS_MESSAGE_LIMIT = 10  # Максимум сообщений
+WS_WINDOW_SECONDS = 60  # За 60 секунд
+
+
+def ws_rate_limit_check(user_id: int) -> bool:
+    """Проверяет rate limit для WebSocket сообщений.
+
+    Лимит: 10 сообщений за 60 секунд на пользователя.
+    Возвращает True если лимит превышен.
+    """
+    now = time.time()
+
+    # Получаем историю отправок пользователя
+    if user_id not in _ws_rate_limit:
+        _ws_rate_limit[user_id] = []
+
+    # Очищаем старые записи (вне окна)
+    _ws_rate_limit[user_id] = [
+        timestamp for timestamp in _ws_rate_limit[user_id]
+        if now - timestamp < WS_WINDOW_SECONDS
+    ]
+
+    # Проверяем лимит
+    if len(_ws_rate_limit[user_id]) >= WS_MESSAGE_LIMIT:
+        return True  # Превышен
+
+    # Добавляем текущую отправку
+    _ws_rate_limit[user_id].append(now)
+    return False
 
 def decode_token_or_401(token: str) -> dict:
     return decode_token(token)
@@ -119,6 +153,18 @@ def mark_messages_read(task_id: int, token: str = Depends(oauth2_scheme), db: Se
 async def post_message(task_id: int, message: MessageCreate, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
     payload = decode_token_or_401(token)
     user_id = int(payload.get("sub"))
+
+    # WebSocket rate limiting
+    if ws_rate_limit_check(user_id):
+        log_security_event(
+            event_type="ws_rate_limit_exceeded",
+            user_id=user_id,
+            details=f"task_id={task_id}"
+        )
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Слишком много сообщений. Подождите минуту."
+        )
 
     task = db.query(Task).filter(Task.id == task_id).first()
     if not task:

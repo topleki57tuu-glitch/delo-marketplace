@@ -164,6 +164,27 @@ async def security_headers(request: Request, call_next):
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+
+    # Content Security Policy (CSP) — защита от XSS и injection атак
+    # Разрешаем загрузку ресурсов только из доверенных источников
+    csp_directives = [
+        "default-src 'self'",  # По умолчанию только свой домен
+        "script-src 'self' 'unsafe-inline' 'unsafe-eval'",  # React требует unsafe для dev
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",  # Стили + Google Fonts
+        "font-src 'self' https://fonts.gstatic.com",  # Шрифты
+        "img-src 'self' data: https:",  # Изображения (data: для base64, https: для CDN)
+        "connect-src 'self' https://sentry.io",  # API запросы + Sentry
+        "frame-ancestors 'none'",  # Запрещает iframe (дублирует X-Frame-Options)
+        "base-uri 'self'",  # Ограничивает <base> tag
+        "form-action 'self'",  # Формы только на свой домен
+    ]
+
+    # В production ужесточаем CSP (убираем unsafe-*)
+    if settings.IS_PRODUCTION:
+        csp_directives[1] = "script-src 'self'"  # Без unsafe-inline/eval
+
+    response.headers["Content-Security-Policy"] = "; ".join(csp_directives)
+
     return response
 
 @app.middleware("http")
