@@ -8,9 +8,10 @@
 [![Documentation](https://img.shields.io/badge/Documentation-10%2F10-brightgreen)]()
 [![Tests](https://img.shields.io/badge/Tests-19%20passing-brightgreen)]()
 [![Database](https://img.shields.io/badge/Database-Optimized-brightgreen)]()
+[![Performance](https://img.shields.io/badge/Performance-Optimized-brightgreen)]()
 
 **Последнее обновление**: 2026-09-12  
-**Версия**: 2.3.0  
+**Версия**: 2.4.0  
 **Общая оценка**: **9.5/10** ⭐
 
 ---
@@ -24,9 +25,10 @@
 ### ✨ Ключевые особенности
 - 🔒 **Enterprise-уровень безопасности** (9.8/10)
 - 🏗️ **Масштабируемая архитектура** с DI и миграциями
-- ⚡ **Оптимизированный frontend** (lazy loading, -50% bundle size)
+- ⚡ **Оптимизированная производительность** (N+1 fixes, Redis caching)
+- 🚀 **Frontend оптимизация** (lazy loading, -50% bundle size)
 - ♿ **Accessibility compliance** (ARIA, keyboard navigation)
-- 📚 **Comprehensive документация** (3900+ строк, 9 документов)
+- 📚 **Comprehensive документация** (4800+ строк, 10 документов)
 - ✅ **19 тестов** с 80%+ coverage для stores
 
 ## 📊 Метрики качества
@@ -81,8 +83,10 @@
 | [ARCHITECTURE_IMPROVEMENTS.md](docs/ARCHITECTURE_IMPROVEMENTS.md) | DI, Alembic, datetime миграция | 370+ |
 | [DATETIME_MIGRATION.md](docs/DATETIME_MIGRATION.md) | Миграция ISO strings → native timestamps | 190+ |
 | [FRONTEND_IMPROVEMENTS.md](docs/FRONTEND_IMPROVEMENTS.md) | Stores, lazy loading, tests, a11y | 250+ |
+| [PERFORMANCE_OPTIMIZATIONS.md](docs/PERFORMANCE_OPTIMIZATIONS.md) | N+1 fixes, Redis caching, benchmarks | 350+ |
+| [CDN_SETUP.md](docs/CDN_SETUP.md) | Cloudflare/CloudFront setup guide | 280+ |
 
-**Итого**: 4160+ строк документации
+**Итого**: 4800+ строк документации
 
 ---
 
