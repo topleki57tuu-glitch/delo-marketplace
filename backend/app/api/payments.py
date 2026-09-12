@@ -12,6 +12,7 @@ from app.models import User, Transaction, PaymentRecord, Task, Notification, Use
 from app.schemas import DepositRequest
 from pydantic import BaseModel
 import payments
+from app.integrations import yoomoney
 
 router = APIRouter(tags=["Payments"])
 
@@ -30,6 +31,9 @@ MONETIZATION_PACKAGES = {
 
 class BuyPackageRequest(BaseModel):
     package_id: str
+
+class PaymentProviderRequest(BaseModel):
+    provider: str = "yoomoney"  # "yoomoney" или "yookassa"
 
 @router.post("/wallet/deposit")
 def deposit_funds(req: DepositRequest, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db), _csrf: None = Depends(verify_csrf)):
@@ -96,10 +100,25 @@ def buy_package(req: BuyPackageRequest, token: str = Depends(oauth2_scheme), db:
 
 @router.get("/payments/status")
 def payments_status():
-    return {"configured": payments.is_configured()}
+    return {
+        "yookassa": {"configured": payments.is_configured()},
+        "yoomoney": {"configured": yoomoney.is_configured()}
+    }
 
 @router.post("/payments/create")
-def create_payment(req: DepositRequest, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db), _csrf: None = Depends(verify_csrf)):
+def create_payment(
+    req: DepositRequest,
+    provider: str = "yoomoney",
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db),
+    _csrf: None = Depends(verify_csrf)
+):
+    """
+    Создать платеж для пополнения баланса.
+
+    Args:
+        provider: "yoomoney" или "yookassa"
+    """
     payload = decode_token_or_401(token)
     user_id = int(payload.get("sub"))
     user = db.query(User).filter(User.id == user_id).first()
@@ -108,29 +127,73 @@ def create_payment(req: DepositRequest, token: str = Depends(oauth2_scheme), db:
     if req.amount <= 0:
         raise HTTPException(400, "Сумма должна быть больше 0")
 
-    if not payments.is_configured():
-        raise HTTPException(400, "Платёжная система не настроена. Используйте демо-пополнение.")
+    # Выбираем провайдера
+    if provider == "yoomoney":
+        if not yoomoney.is_configured():
+            raise HTTPException(400, "ЮMoney не настроен. Используйте другой способ оплаты.")
 
-    result = payments.create_payment(
-        amount=req.amount,
-        description=f"Пополнение баланса «ДЕЛО» на {req.amount} руб.",
-        metadata={"user_id": str(user_id), "amount": str(req.amount)}
-    )
+        result = yoomoney.create_payment(
+            amount=req.amount,
+            description=f"Пополнение баланса «ДЕЛО» на {req.amount} руб.",
+            metadata={"user_id": str(user_id), "amount": str(req.amount)}
+        )
 
-    if "error" in result:
-        raise HTTPException(502, f"Ошибка создания платежа: {result['error']}")
+        if "error" in result:
+            raise HTTPException(502, f"Ошибка создания платежа: {result['error']}")
 
-    return {
-        "payment_id": result["payment_id"],
-        "confirmation_url": result["confirmation_url"]
-    }
+        return {
+            "provider": "yoomoney",
+            "payment_id": result["payment_id"],
+            "confirmation_url": result["confirmation_url"]
+        }
+
+    elif provider == "yookassa":
+        if not payments.is_configured():
+            raise HTTPException(400, "ЮKassa не настроена. Используйте другой способ оплаты.")
+
+        result = payments.create_payment(
+            amount=req.amount,
+            description=f"Пополнение баланса «ДЕЛО» на {req.amount} руб.",
+            metadata={"user_id": str(user_id), "amount": str(req.amount)}
+        )
+
+        if "error" in result:
+            raise HTTPException(502, f"Ошибка создания платежа: {result['error']}")
+
+        return {
+            "provider": "yookassa",
+            "payment_id": result["payment_id"],
+            "confirmation_url": result["confirmation_url"]
+        }
+
+    else:
+        raise HTTPException(400, f"Неизвестный провайдер: {provider}")
 
 @router.post("/payments/confirm")
-def confirm_payment(payment_id: str, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db), _csrf: None = Depends(verify_csrf)):
+def confirm_payment(
+    payment_id: str,
+    provider: str = "yoomoney",
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db),
+    _csrf: None = Depends(verify_csrf)
+):
+    """
+    Подтвердить и зачислить платеж.
+
+    Args:
+        provider: "yoomoney" или "yookassa"
+    """
     payload = decode_token_or_401(token)
     user_id = int(payload.get("sub"))
 
-    status_result = payments.get_payment_status(payment_id)
+    # Выбираем провайдера
+    if provider == "yoomoney":
+        status_result = yoomoney.get_payment_status(payment_id)
+    elif provider == "yookassa":
+        status_result = payments.get_payment_status(payment_id)
+    else:
+        raise HTTPException(400, f"Неизвестный провайдер: {provider}")
+
     if "error" in status_result:
         raise HTTPException(502, f"Ошибка проверки платежа: {status_result['error']}")
 
@@ -154,6 +217,87 @@ def confirm_payment(payment_id: str, token: str = Depends(oauth2_scheme), db: Se
     db.commit()
 
     return {"status": "succeeded", "credited": True, "new_balance": user.balance}
+
+@router.post("/payments/webhook/yoomoney")
+def yoomoney_webhook(request: Request, db: Session = Depends(get_db)):
+    """
+    Вебхук для уведомлений от ЮMoney.
+
+    ЮMoney отправляет POST запрос с параметрами:
+    - notification_type
+    - operation_id
+    - amount
+    - currency
+    - datetime
+    - sender
+    - codepro
+    - label
+    - sha1_hash
+    """
+    import asyncio
+    from fastapi import Form
+
+    # Получаем все параметры из формы
+    try:
+        form_data = asyncio.run(request.form())
+        notification_data = dict(form_data)
+    except:
+        raise HTTPException(400, "Invalid form data")
+
+    # Проверяем подпись
+    if not yoomoney.verify_webhook(notification_data):
+        logger.warning(f"Invalid ЮMoney webhook signature: {notification_data}")
+        raise HTTPException(403, "Invalid signature")
+
+    # Извлекаем данные
+    label = notification_data.get("label")
+    amount = float(notification_data.get("amount", 0))
+    operation_id = notification_data.get("operation_id")
+
+    if not label or not operation_id:
+        raise HTTPException(400, "Missing label or operation_id")
+
+    # Проверяем что платеж еще не зачислен
+    already = db.query(PaymentRecord).filter(PaymentRecord.payment_id == label).first()
+    if already:
+        logger.info(f"ЮMoney payment {label} already credited")
+        return {"status": "ok"}
+
+    # Извлекаем user_id из label (delo_USER_ID_RANDOM)
+    if not label.startswith("delo_"):
+        logger.warning(f"Invalid label format: {label}")
+        raise HTTPException(400, "Invalid label format")
+
+    parts = label.split("_")
+    if len(parts) < 2:
+        raise HTTPException(400, "Invalid label format")
+
+    user_id = int(parts[1])
+
+    # Зачисляем средства
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        logger.error(f"User {user_id} not found for payment {label}")
+        raise HTTPException(404, "User not found")
+
+    user.balance += amount
+    tx = Transaction(user_id=user_id, amount=amount, type=TransactionType.deposit)
+    db.add(tx)
+    db.add(PaymentRecord(payment_id=label, user_id=user_id, amount=amount))
+
+    # Отправляем уведомление пользователю
+    db.add(Notification(
+        user_id=user_id,
+        type="payment",
+        title="Баланс пополнен",
+        text=f"Ваш баланс пополнен на {amount} ₽ через ЮMoney"
+    ))
+
+    db.commit()
+
+    logger.info(f"ЮMoney payment {label} credited: {amount} RUB to user {user_id}")
+
+    return {"status": "ok"}
 
 @router.put("/tasks/{task_id}/assign")
 def assign_task(task_id: int, specialist_id: int, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db), _csrf: None = Depends(verify_csrf)):
