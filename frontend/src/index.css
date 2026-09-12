@@ -122,3 +122,27 @@ input:-webkit-autofill:focus {
     -webkit-box-shadow: 0 0 0 1000px var(--color-surface-2) inset;
     transition: background-color 5000s ease-in-out 0s;
 }
+
+/* Accessibility: Screen Reader Only класс */
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border-width: 0;
+}
+
+.focus\:not-sr-only:focus {
+    position: static;
+    width: auto;
+    height: auto;
+    padding: 0.5rem 1rem;
+    margin: 0;
+    overflow: visible;
+    clip: auto;
+    white-space: normal;
+}

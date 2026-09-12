@@ -1,23 +1,28 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { BrowserRouter, Routes, Route, Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from './store/authStore';
+import { useTasksStore } from './store/tasksStore';
 import { useToast } from './components/Toast';
 import { NotificationBell } from './components/NotificationBell';
 import { BottomNav } from './components/BottomNav';
 import { ChatsDrawer } from './components/ChatsDrawer';
+import { ErrorBoundary } from './components/ErrorBoundary';
+import { useModal } from './utils/a11y';
 
-// Pages
+// Eager load только критичные страницы
 import HomePage from './pages/HomePage';
-import TasksPage from './pages/TasksPage';
-import TaskDetailPage from './pages/TaskDetailPage';
-import CreateTaskPage from './pages/CreateTaskPage';
-import ProfilePage from './pages/ProfilePage';
-import SpecialistProfilePage from './pages/SpecialistProfilePage';
-import SpecialistsPage from './pages/SpecialistsPage';
-import MyTasksPage from './pages/MyTasksPage';
-import DisputesPage from './pages/DisputesPage';
-import ResetPasswordPage from './pages/ResetPasswordPage';
-import ChatsPage from './pages/ChatsPage';
+
+// Lazy load остальные страницы (загружаются по требованию)
+const TasksPage = lazy(() => import('./pages/TasksPage'));
+const TaskDetailPage = lazy(() => import('./pages/TaskDetailPage'));
+const CreateTaskPage = lazy(() => import('./pages/CreateTaskPage'));
+const ProfilePage = lazy(() => import('./pages/ProfilePage'));
+const SpecialistProfilePage = lazy(() => import('./pages/SpecialistProfilePage'));
+const SpecialistsPage = lazy(() => import('./pages/SpecialistsPage'));
+const MyTasksPage = lazy(() => import('./pages/MyTasksPage'));
+const DisputesPage = lazy(() => import('./pages/DisputesPage'));
+const ResetPasswordPage = lazy(() => import('./pages/ResetPasswordPage'));
+const ChatsPage = lazy(() => import('./pages/ChatsPage'));
 
 const API_URL = import.meta.env.VITE_API_URL || '';
 
@@ -159,6 +164,13 @@ function AuthModal({ isOpen, mode, onClose, onLoginSuccess }) {
   const [role, setRole] = useState('customer');
   const [loading, setLoading] = useState(false);
 
+  // Accessibility: modal management
+  useModal(isOpen, onClose, {
+    escapeEnabled: true,
+    lockScroll: true,
+    restoreFocus: true
+  });
+
   useEffect(() => {
     setIsLogin(mode === 'login');
     setForgotMode(false);
@@ -245,12 +257,21 @@ function AuthModal({ isOpen, mode, onClose, onLoginSuccess }) {
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-white dark:bg-slate-800 max-w-md w-full p-6 sm:p-8 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-2xl space-y-6">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="auth-modal-title"
+        className="bg-white dark:bg-slate-800 max-w-md w-full p-6 sm:p-8 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-2xl space-y-6"
+      >
         <div className="flex items-center justify-between">
-          <h2 className="text-2xl font-extrabold text-slate-900 dark:text-white">
+          <h2 id="auth-modal-title" className="text-2xl font-extrabold text-slate-900 dark:text-white">
             {forgotMode ? 'Сброс пароля' : isLogin ? 'Вход в аккаунт' : 'Регистрация в ДЕЛО'}
           </h2>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl font-bold">
+          <button
+            onClick={onClose}
+            aria-label="Закрыть модальное окно"
+            className="text-slate-400 hover:text-slate-600 text-xl font-bold"
+          >
             ✕
           </button>
         </div>
@@ -340,25 +361,33 @@ function AuthModal({ isOpen, mode, onClose, onLoginSuccess }) {
           )}
 
           <div>
-            <label className="block text-xs font-semibold text-slate-500 mb-1">Email</label>
+            <label htmlFor="email-input" className="block text-xs font-semibold text-slate-500 mb-1">
+              Email
+            </label>
             <input
+              id="email-input"
               type="email"
               placeholder="name@example.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="w-full p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+              aria-required="true"
               required
             />
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-slate-500 mb-1">Пароль (от 8 символов)</label>
+            <label htmlFor="password-input" className="block text-xs font-semibold text-slate-500 mb-1">
+              Пароль (от 8 символов)
+            </label>
             <input
+              id="password-input"
               type="password"
               placeholder="••••••••"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="w-full p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+              aria-required="true"
               required
             />
           </div>
@@ -402,27 +431,16 @@ export default function App() {
   const { token, user, role, login, logout, updateUser } = useAuthStore();
   const { addToast } = useToast();
 
+  // Используем tasksStore вместо локального state
+  const fetchTasks = useTasksStore(state => state.fetchTasks);
+  const tasks = useTasksStore(state => state.getAllTasks());
+  const loading = useTasksStore(state => state.loading);
+
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authModalMode, setAuthModalMode] = useState('login');
-  const [tasks, setTasks] = useState([]);
-  const [loadingTasks, setLoadingTasks] = useState(true);
 
   // Drawer chat state
   const [drawerChatTaskId, setDrawerChatTaskId] = useState(null);
-
-  const fetchTasks = async () => {
-    try {
-      const res = await fetch('/tasks/');
-      if (res.ok) {
-        const data = await res.json();
-        setTasks(data);
-      }
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoadingTasks(false);
-    }
-  };
 
   const fetchUserProfile = async () => {
     if (!token) return;
@@ -459,119 +477,140 @@ export default function App() {
     fetchUserProfile();
   };
 
-  return (
-    <BrowserRouter>
-      <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-slate-900 font-sans antialiased text-slate-800 dark:text-slate-100">
-        <NavigationBar
-          user={user}
-          token={token}
-          onOpenAuth={handleOpenAuth}
-          onLogout={logout}
-        />
+  // Loading fallback для lazy loaded страниц
+  const PageLoader = () => (
+    <div className="min-h-screen flex items-center justify-center">
+      <div className="text-center">
+        <div className="w-12 h-12 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mx-auto mb-4"></div>
+        <p className="text-sm text-slate-600 dark:text-slate-400">Загрузка...</p>
+      </div>
+    </div>
+  );
 
-        <main className="flex-1">
-          <Routes>
-            <Route
-              path="/"
-              element={
-                <HomePage
-                  user={user}
-                  onOpenAuth={handleOpenAuth}
-                  onOpenCreateTask={() => {}}
+  return (
+    <ErrorBoundary>
+      <BrowserRouter>
+        <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-slate-900 font-sans antialiased text-slate-800 dark:text-slate-100">
+          {/* Skip link для keyboard navigation */}
+          <a
+            href="#main-content"
+            className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-50 focus:px-4 focus:py-2 focus:bg-indigo-600 focus:text-white focus:rounded-lg focus:shadow-lg"
+          >
+            Перейти к содержимому
+          </a>
+
+          <NavigationBar
+            user={user}
+            token={token}
+            onOpenAuth={handleOpenAuth}
+            onLogout={logout}
+          />
+
+          <main id="main-content" className="flex-1">
+            <Suspense fallback={<PageLoader />}>
+              <Routes>
+                <Route
+                  path="/"
+                  element={
+                    <HomePage
+                      user={user}
+                      onOpenAuth={handleOpenAuth}
+                      onOpenCreateTask={() => {}}
+                    />
+                  }
                 />
-              }
-            />
-            <Route
-              path="/tasks"
-              element={
-                <TasksPage
-                  tasks={tasks}
-                  loading={loadingTasks}
-                  user={user}
-                  onOpenAuth={handleOpenAuth}
+                <Route
+                  path="/tasks"
+                  element={
+                    <TasksPage
+                      tasks={tasks}
+                      loading={loading}
+                      user={user}
+                      onOpenAuth={handleOpenAuth}
+                    />
+                  }
                 />
-              }
-            />
-            <Route
-              path="/tasks/:taskId"
-              element={
-                <TaskDetailPage
-                  user={user}
-                  token={token}
-                  onOpenAuth={handleOpenAuth}
-                  onOpenChat={(tId) => setDrawerChatTaskId(tId)}
-                  onOpenPublicProfile={(sId) => window.location.assign(`/specialist/${sId}`)}
+                <Route
+                  path="/tasks/:taskId"
+                  element={
+                    <TaskDetailPage
+                      user={user}
+                      token={token}
+                      onOpenAuth={handleOpenAuth}
+                      onOpenChat={(tId) => setDrawerChatTaskId(tId)}
+                      onOpenPublicProfile={(sId) => window.location.assign(`/specialist/${sId}`)}
+                    />
+                  }
                 />
-              }
-            />
-            <Route
-              path="/create-task"
-              element={
-                <CreateTaskPage
-                  user={user}
-                  token={token}
-                  onOpenAuth={handleOpenAuth}
-                  onTaskCreated={fetchTasks}
+                <Route
+                  path="/create-task"
+                  element={
+                    <CreateTaskPage
+                      user={user}
+                      token={token}
+                      onOpenAuth={handleOpenAuth}
+                      onTaskCreated={fetchTasks}
+                    />
+                  }
                 />
-              }
-            />
-            <Route
-              path="/profile"
-              element={
-                <ProfilePage
-                  user={user}
-                  token={token}
-                  onUpdateUser={fetchUserProfile}
-                  onLogout={logout}
-                  onOpenAuth={handleOpenAuth}
+                <Route
+                  path="/profile"
+                  element={
+                    <ProfilePage
+                      user={user}
+                      token={token}
+                      onUpdateUser={fetchUserProfile}
+                      onLogout={logout}
+                      onOpenAuth={handleOpenAuth}
+                    />
+                  }
                 />
-              }
-            />
-            <Route
-              path="/specialist/:specialistId"
-              element={
-                <SpecialistProfilePage
-                  user={user}
-                  onOpenAuth={handleOpenAuth}
+                <Route
+                  path="/specialist/:specialistId"
+                  element={
+                    <SpecialistProfilePage
+                      user={user}
+                      onOpenAuth={handleOpenAuth}
+                    />
+                  }
                 />
-              }
-            />
-            <Route
-              path="/specialists"
-              element={
-                <SpecialistsPage
-                  user={user}
-                  onOpenAuth={handleOpenAuth}
+                <Route
+                  path="/specialists"
+                  element={
+                    <SpecialistsPage
+                      user={user}
+                      onOpenAuth={handleOpenAuth}
+                    />
+                  }
                 />
-              }
-            />
-            <Route
-              path="/disputes"
-              element={
-                <DisputesPage
-                  user={user}
-                  token={token}
-                  onOpenAuth={handleOpenAuth}
+                <Route
+                  path="/disputes"
+                  element={
+                    <DisputesPage
+                      user={user}
+                      token={token}
+                      onOpenAuth={handleOpenAuth}
+                    />
+                  }
                 />
-              }
-            />
-            <Route
-              path="/my-tasks"
-              element={<MyTasksPage onOpenAuth={handleOpenAuth} />}
-            />
-            <Route path="/reset" element={<ResetPasswordPage />} />
-            <Route
-              path="/chats"
-              element={
-                <ChatsPage
-                  user={user}
-                  token={token}
-                  onOpenAuth={handleOpenAuth}
+                <Route
+                  path="/my-tasks"
+                  element={<MyTasksPage onOpenAuth={handleOpenAuth} />}
                 />
-              }
-            />
-          </Routes>
-        </main>
+                <Route path="/reset" element={<ResetPasswordPage />} />
+                <Route
+                  path="/chats"
+                  element={
+                    <ChatsPage
+                      user={user}
+                      token={token}
+                      onOpenAuth={handleOpenAuth}
+                    />
+                  }
+                />
+              </Routes>
+            </Suspense>
+          </main>
 
         {/* Footer */}
         <footer className="border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 pt-8 pb-24 md:pb-8 px-4 sm:px-6 lg:px-8 text-center text-xs text-slate-400">
@@ -611,5 +650,6 @@ export default function App() {
         )}
       </div>
     </BrowserRouter>
+  </ErrorBoundary>
   );
 }
