@@ -56,7 +56,14 @@ if settings.SENTRY_DSN:
 logger.info(f"Starting DELO Marketplace API | ENV={settings.ENV} | CSRF={settings.CSRF_ENABLED} | RATE_LIMIT={settings.RATE_LIMIT_ENABLED}")
 
 # Initialize Database tables
-Base.metadata.create_all(bind=engine)
+# ВАЖНО: В production используйте Alembic миграции вместо create_all
+# create_all() создаёт таблицы, но не обновляет существующие
+if settings.ENV == "development":
+    Base.metadata.create_all(bind=engine)
+    logger.info("Database tables created (development mode)")
+else:
+    # В production ожидаем, что миграции применены вручную через Alembic
+    logger.info("Production mode: ensure Alembic migrations are applied")
 
 # Для развёртывания «из коробки»: если выставлен SEED_DEMO=1 и база пустая,
 # засеиваем демо-данные. В обычной разработке выключено.
@@ -67,45 +74,9 @@ if os.environ.get("SEED_DEMO", "").lower() in ("1", "true", "yes"):
             if (_db.query(_func.count(User.id)).scalar() or 0) == 0:
                 from seed_demo import main as _seed_main
                 _seed_main()
-                print("[seed] база пуста — засеяна демо-данными")
+                logger.info("Database seeded with demo data")
     except Exception as _exc:
-        print(f"[seed] засеять не удалось: {_exc}")
-
-def _run_column_migrations():
-    """Добавляет новые колонки в уже существующие таблицы.
-
-    Это заплатка для баз, созданных до появления колонки: `create_all` новые
-    колонки в существующие таблицы не добавляет. Ошибки больше не глотаются
-    молча — «колонка уже есть» это ожидаемый случай, всё остальное печатаем.
-    Иначе сломанная миграция выглядит как успешный старт, а падает потом —
-    на первом запросе к несуществующей колонке, и искать причину негде.
-    """
-    from sqlalchemy import text
-    is_pg = "postgresql" in settings.DB_URL
-    ck = "IF NOT EXISTS " if is_pg else ""
-    migrations = [
-        f"ALTER TABLE users ADD COLUMN {ck}last_seen VARCHAR",
-        f"ALTER TABLE reviews ADD COLUMN {ck}target VARCHAR DEFAULT 'specialist'",
-        f"ALTER TABLE users ADD COLUMN {ck}response_credits INTEGER DEFAULT 5",
-        f"ALTER TABLE users ADD COLUMN {ck}is_pro BOOLEAN DEFAULT false",
-        f"ALTER TABLE users ADD COLUMN {ck}pro_until VARCHAR",
-        f"ALTER TABLE transactions ADD COLUMN {ck}fee INTEGER DEFAULT 0",
-    ]
-    # SQLite не поддерживает ADD COLUMN IF NOT EXISTS и сообщает о повторе текстом
-    already_applied = ("duplicate column name", "already exists")
-
-    for m in migrations:
-        with engine.connect() as conn:
-            try:
-                conn.execute(text(m))
-                conn.commit()
-            except Exception as exc:
-                conn.rollback()
-                if any(marker in str(exc).lower() for marker in already_applied):
-                    continue  # колонка уже есть — нормальный случай
-                print(f"[migrations] НЕ ПРИМЕНИЛАСЬ: {m} — {exc}")
-
-_run_column_migrations()
+        logger.error(f"Failed to seed demo data: {_exc}")
 
 app = FastAPI(
     title="Marketplace Platform API",

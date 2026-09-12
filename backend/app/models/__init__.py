@@ -3,7 +3,7 @@ from datetime import datetime
 from enum import Enum as PyEnum
 from sqlalchemy import (
     Column, Integer, String, Float, Boolean, Text,
-    Enum as SqlaEnum, LargeBinary as SqlaLargeBinary
+    Enum as SqlaEnum, LargeBinary as SqlaLargeBinary, DateTime
 )
 from app.core.database import Base
 
