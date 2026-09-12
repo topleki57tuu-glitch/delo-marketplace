@@ -39,6 +39,10 @@ export default defineConfig({
       '/uploads': 'http://localhost:8000',
       '/notifications': 'http://localhost:8000',
       '/ai': 'http://localhost:8000',
+      // Без этой строки запросы верификации уходили в SPA-fallback: Vite отдавал
+      // index.html со статусом 200, r.json() падал, и профиль показывал
+      // «заявок нет», хотя заявки были. В nginx-конфиге /verification есть.
+      '/verification': 'http://localhost:8000',
       '/ws': {
         target: 'ws://localhost:8000',
         ws: true,

@@ -1,26 +1,28 @@
 import React from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
-import { useNavStore } from '../store/navStore';
 
+/**
+ * Нижняя мобильная навигация.
+ *
+ * Раньше компонент писал состояние в navStore (openFeed/openChats/openCreateTask),
+ * которое не читал ни один компонент приложения, — все кнопки были «мёртвыми».
+ * Теперь навигация идёт через react-router по реальным маршрутам,
+ * а требующие авторизации действия вызывают onOpenAuth (проп из App).
+ */
 export const BottomNav = ({
+    onOpenAuth,
     unreadMessagesCount = 0,
     unreadNotificationsCount = 0,
 }) => {
     const location = useLocation();
     const navigate = useNavigate();
     const { isAuth } = useAuthStore();
-    const {
-        viewMode,
-        closeAllOverlays,
-        openFeed,
-        openCreateTask,
-        openChats,
-        openAuth
-    } = useNavStore();
 
-    const isHomePage = location.pathname === '/';
+    const isTasksPage = location.pathname.startsWith('/tasks');
     const isProfilePage = location.pathname === '/profile';
+    const isChatsPage = location.pathname === '/chats';
+    const isMapView = new URLSearchParams(location.search).get('view') === 'map';
 
     // Trigger Telegram Haptic Feedback if running inside Telegram WebApp
     const triggerHaptic = (type = 'light') => {
@@ -37,78 +39,56 @@ export const BottomNav = ({
         }
     };
 
-    const scrollToFeed = () => {
-        setTimeout(() => {
-            const feedEl = document.getElementById('feed');
-            if (feedEl) {
-                feedEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            } else {
-                window.scrollTo({ top: 350, behavior: 'smooth' });
-            }
-        }, 100);
+    const openAuth = (mode) => {
+        if (typeof onOpenAuth === 'function') {
+            onOpenAuth(mode);
+        }
     };
 
-    // 1. «Заказы» (Список)
+    // 1. «Заказы» — список заданий
     const handleFeedClick = () => {
         triggerHaptic('selection');
-        // Закрываем все открытые окна/шторки и переключаем на список заказов
-        openFeed('list');
-        if (!isHomePage) {
-            navigate('/?view=list');
-        }
-        scrollToFeed();
+        navigate('/tasks');
     };
 
-    // 2. «Карта»
+    // 2. «Карта» — тот же список, но с открытой картой
     const handleMapClick = () => {
         triggerHaptic('selection');
-        // Закрываем все открытые окна/шторки и переключаем на карту
-        openFeed('map');
-        if (!isHomePage) {
-            navigate('/?view=map');
-        }
-        scrollToFeed();
+        navigate('/tasks?view=map');
     };
 
-    // 3. «+» (Создать заказ)
+    // 3. «+» — создать задание (нужен вход)
     const handleCreateClick = () => {
         triggerHaptic('medium');
-        // Закрываем все предыдущие окна/шторки
-        closeAllOverlays();
         if (!isAuth) {
-            openAuth();
+            openAuth('register');
             return;
         }
-
-        if (!isHomePage) {
-            navigate('/?create=true');
-        }
-        openCreateTask();
+        navigate('/create-task');
     };
 
-    // 4. «Чаты»
+    // 4. «Чаты» — страница переписки (нужен вход)
     const handleMessagesClick = () => {
         triggerHaptic('light');
-        // Закрываем все предыдущие окна/шторки и открываем только чаты
-        closeAllOverlays();
         if (!isAuth) {
-            openAuth();
+            openAuth('login');
             return;
         }
-        openChats();
+        navigate('/chats');
     };
 
-    // 5. «Профиль»
+    // 5. «Профиль» / «Войти»
     const handleProfileClick = () => {
         triggerHaptic('selection');
-        // Закрываем все открытые окна/шторки и переходим в профиль
-        closeAllOverlays();
         if (!isAuth) {
-            openAuth();
+            openAuth('login');
             return;
         }
         navigate('/profile');
     };
+
+    const feedActive = isTasksPage && !isMapView;
+    const mapActive = isTasksPage && isMapView;
 
     return (
         <nav
@@ -120,15 +100,16 @@ export const BottomNav = ({
                 <button
                     type="button"
                     onClick={handleFeedClick}
+                    aria-current={feedActive ? 'page' : undefined}
                     className={`flex flex-col items-center justify-center flex-1 py-1 px-1 transition-all duration-200 active:scale-95 min-w-[56px] cursor-pointer ${
-                        isHomePage && viewMode === 'list'
+                        feedActive
                             ? 'text-accent-bright font-bold'
                             : 'text-muted hover:text-ink'
                     }`}
                 >
                     <div className="relative">
                         <span className="text-xl">📋</span>
-                        {isHomePage && viewMode === 'list' && (
+                        {feedActive && (
                             <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full bg-accent glow-accent-sm"></span>
                         )}
                     </div>
@@ -139,15 +120,16 @@ export const BottomNav = ({
                 <button
                     type="button"
                     onClick={handleMapClick}
+                    aria-current={mapActive ? 'page' : undefined}
                     className={`flex flex-col items-center justify-center flex-1 py-1 px-1 transition-all duration-200 active:scale-95 min-w-[56px] cursor-pointer ${
-                        isHomePage && viewMode === 'map'
+                        mapActive
                             ? 'text-accent-bright font-bold'
                             : 'text-muted hover:text-ink'
                     }`}
                 >
                     <div className="relative">
                         <span className="text-xl">🗺️</span>
-                        {isHomePage && viewMode === 'map' && (
+                        {mapActive && (
                             <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full bg-accent glow-accent-sm"></span>
                         )}
                     </div>
@@ -159,7 +141,8 @@ export const BottomNav = ({
                     <button
                         type="button"
                         onClick={handleCreateClick}
-                        title="Создать заказ"
+                        title="Создать задание"
+                        aria-label="Создать задание"
                         className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-accent to-[#38BDF8] text-white flex items-center justify-center text-2xl font-bold shadow-lg shadow-accent/40 active:scale-90 transition-transform -translate-y-2 border-2 border-surface cursor-pointer"
                     >
                         +
@@ -170,7 +153,10 @@ export const BottomNav = ({
                 <button
                     type="button"
                     onClick={handleMessagesClick}
-                    className="flex flex-col items-center justify-center flex-1 py-1 px-1 transition-all duration-200 active:scale-95 min-w-[56px] text-muted hover:text-ink cursor-pointer"
+                    aria-current={isChatsPage ? 'page' : undefined}
+                    className={`flex flex-col items-center justify-center flex-1 py-1 px-1 transition-all duration-200 active:scale-95 min-w-[56px] cursor-pointer ${
+                        isChatsPage ? 'text-accent-bright font-bold' : 'text-muted hover:text-ink'
+                    }`}
                 >
                     <div className="relative">
                         <span className="text-xl">💬</span>
@@ -187,6 +173,7 @@ export const BottomNav = ({
                 <button
                     type="button"
                     onClick={handleProfileClick}
+                    aria-current={isProfilePage ? 'page' : undefined}
                     className={`flex flex-col items-center justify-center flex-1 py-1 px-1 transition-all duration-200 active:scale-95 min-w-[56px] cursor-pointer ${
                         isProfilePage
                             ? 'text-accent-bright font-bold'

@@ -14,6 +14,7 @@ import CreateTaskPage from './pages/CreateTaskPage';
 import ProfilePage from './pages/ProfilePage';
 import SpecialistProfilePage from './pages/SpecialistProfilePage';
 import SpecialistsPage from './pages/SpecialistsPage';
+import MyTasksPage from './pages/MyTasksPage';
 import DisputesPage from './pages/DisputesPage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
 import ChatsPage from './pages/ChatsPage';
@@ -69,6 +70,18 @@ function NavigationBar({ user, token, onOpenAuth, onOpenChatsDrawer, onLogout })
           >
             Создать задание
           </Link>
+          {user && (
+            <Link
+              to="/my-tasks"
+              className={`px-3.5 py-2 rounded-xl transition-colors ${
+                location.pathname === '/my-tasks'
+                  ? 'bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400'
+                  : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              Мои заказы
+            </Link>
+          )}
           {user && (
             <Link
               to="/chats"
@@ -542,6 +555,10 @@ export default function App() {
                 />
               }
             />
+            <Route
+              path="/my-tasks"
+              element={<MyTasksPage onOpenAuth={handleOpenAuth} />}
+            />
             <Route path="/reset" element={<ResetPasswordPage />} />
             <Route
               path="/chats"
@@ -557,7 +574,7 @@ export default function App() {
         </main>
 
         {/* Footer */}
-        <footer className="border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 py-8 px-4 sm:px-6 lg:px-8 text-center text-xs text-slate-400">
+        <footer className="border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 pt-8 pb-24 md:pb-8 px-4 sm:px-6 lg:px-8 text-center text-xs text-slate-400">
           <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
             <div className="flex items-center gap-2">
               <div className="w-6 h-6 rounded-lg bg-indigo-600 text-white font-bold flex items-center justify-center text-xs">
@@ -574,11 +591,7 @@ export default function App() {
         </footer>
 
         {/* Bottom Nav for Mobile */}
-        <BottomNav
-          user={user}
-          onOpenAuth={handleOpenAuth}
-          onOpenChats={() => setDrawerChatTaskId(true)}
-        />
+        <BottomNav onOpenAuth={handleOpenAuth} />
 
         {/* Auth Modal */}
         <AuthModal
@@ -593,8 +606,7 @@ export default function App() {
           <ChatsDrawer
             isOpen={!!drawerChatTaskId}
             onClose={() => setDrawerChatTaskId(null)}
-            user={user}
-            token={token}
+            onOpenAuth={handleOpenAuth}
           />
         )}
       </div>

@@ -102,6 +102,11 @@ def mark_messages_read(task_id: int, token: str = Depends(oauth2_scheme), db: Se
     if not task:
         raise HTTPException(404, "Заказ не найден")
 
+    # Помечать прочитанным можно только переписку своей сделки —
+    # иначе любой авторизованный пользователь сбрасывал бы чужие непрочитанные.
+    if user_id not in (task.customer_id, task.executor_id):
+        raise HTTPException(403, "Нет доступа")
+
     updated = db.query(Message).filter(
         Message.task_id == task_id,
         Message.sender_id != user_id,

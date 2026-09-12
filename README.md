@@ -44,6 +44,31 @@ cd ../bot
 TG_BOT_TOKEN=... API_URL=http://localhost:8000 FRONTEND_URL=http://localhost:3000 python bot.py
 ```
 
+## Миграции базы (Alembic)
+
+Схема версионируется через Alembic. URL базы миграции берут из `app.core.config`
+(`DATABASE_URL`), поэтому отдельно его указывать не нужно.
+
+```bash
+cd backend
+
+alembic upgrade head                             # применить все миграции
+alembic current                                  # какая ревизия применена
+alembic check                                    # есть ли расхождения моделей и миграций
+alembic revision --autogenerate -m "описание"    # новая миграция по изменениям моделей
+```
+
+**Про порядок.** Приложение при старте вызывает `create_all` — это bootstrap для
+чистой базы, но новые колонки в уже существующие таблицы он не добавляет. Отсюда:
+
+- **чистая база:** `alembic upgrade head`, затем обычный запуск;
+- **база уже создана приложением** (например `marketplace_v3.db` после `seed_demo.py`):
+  один раз выполнить `alembic stamp head`, чтобы отметить текущую схему актуальной,
+  и дальше применять только новые миграции.
+
+Если запустить `alembic upgrade head` на базе, которую уже создал `create_all`,
+миграция упадёт на «table already exists». Это ожидаемо и лечится `stamp`.
+
 ## Docker / продакшн
 
 ```bash

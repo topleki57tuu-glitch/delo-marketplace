@@ -38,6 +38,8 @@ class TransactionType(str, PyEnum):
     escrow_release = "escrow_release"
     escrow_refund = "escrow_refund"  # возврат эскроу заказчику (отмена/арбитраж)
     purchase = "purchase"            # покупка пакета откликов / PRO
+    withdraw_hold = "withdraw_hold"      # заморозка под заявку на вывод средств
+    withdraw_refund = "withdraw_refund"  # возврат заявки на вывод (отклонена/отменена)
 
 class User(Base):
     __tablename__ = "users"
@@ -58,6 +60,8 @@ class User(Base):
     response_credits = Column(Integer, default=5) # Paid responses bonus
     is_pro = Column(Boolean, default=False)       # PRO subscription
     pro_until = Column(String, nullable=True)
+    # Времени регистрации не было — без него не посчитать рост пользователей
+    created_at = Column(String, default=lambda: datetime.utcnow().isoformat())
 
 class Transaction(Base):
     __tablename__ = "transactions"
@@ -66,7 +70,7 @@ class Transaction(Base):
     amount = Column(Integer)
     type = Column(SqlaEnum(TransactionType))
     task_id = Column(Integer, nullable=True)
-    fee: Column = Column(Integer, default=0) # Комиссия сервиса (например, 5% при escrow_release)
+    fee = Column(Integer, default=0) # Комиссия сервиса (например, 5% при escrow_release)
     created_at = Column(String, default=lambda: datetime.utcnow().isoformat())
 
 class VerificationStatus(str, PyEnum):
@@ -132,6 +136,9 @@ class Task(Base):
     deadline = Column(String, nullable=True)
     is_remote = Column(Boolean, default=False)
     images = Column(Text, nullable=True) # JSON string with image URLs
+    # Времени создания не было вовсе — из-за этого нельзя было ни показать
+    # «опубликовано 2 часа назад», ни построить метрики по дням.
+    created_at = Column(String, default=lambda: datetime.utcnow().isoformat())
 
 class Message(Base):
     __tablename__ = "messages"
@@ -185,3 +192,32 @@ class StoredFile(Base):
     content_type = Column(String, default="image/jpeg")
     data = Column(SqlaLargeBinary)
     created_at = Column(String, default=lambda: datetime.utcnow().isoformat())
+
+
+class WithdrawalStatus(str, PyEnum):
+    pending = "pending"      # ожидает решения модератора
+    paid = "paid"            # выплачено
+    rejected = "rejected"    # отклонено, деньги вернулись на баланс
+    cancelled = "cancelled"  # отменено самим пользователем
+
+
+class WithdrawalRequest(Base):
+    """Заявка на вывод заработанных средств.
+
+    Деньги списываются с баланса в момент подачи заявки (как эскроу при
+    назначении исполнителя): иначе пользователь мог бы подать заявку,
+    потратить баланс и уйти в минус к моменту решения модератора.
+    При отклонении или отмене сумма возвращается на баланс.
+    """
+    __tablename__ = "withdrawal_requests"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, index=True)
+    amount = Column(Integer)
+    method = Column(String, default="card")   # card | sbp
+    # Реквизиты — такие же персональные данные, как номер документа при
+    # верификации, поэтому в БД лежат зашифрованными (см. app/core/security.py)
+    requisites = Column(String)
+    status = Column(SqlaEnum(WithdrawalStatus), default=WithdrawalStatus.pending)
+    comment = Column(String, nullable=True)   # причина отклонения
+    created_at = Column(String, default=lambda: datetime.utcnow().isoformat())
+    resolved_at = Column(String, nullable=True)

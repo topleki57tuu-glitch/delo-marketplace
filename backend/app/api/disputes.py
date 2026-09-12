@@ -1,9 +1,8 @@
-import os
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.core.database import get_db
-from app.core.security import oauth2_scheme, decode_token
+from app.core.security import oauth2_scheme, decode_token, is_admin
 from app.models import (
     Dispute, DisputeStatus, Task, TaskStatus, User,
     Transaction, TransactionType, Notification
@@ -14,13 +13,6 @@ router = APIRouter(tags=["Disputes"])
 
 def decode_token_or_401(token: str) -> dict:
     return decode_token(token)
-
-def _is_admin(user: User) -> bool:
-    """Арбитрами выступают пользователи, чьи email перечислены в ADMIN_EMAILS (через запятую)."""
-    # Дефолт согласован с seed_demo.py и verification.py: арбитр admin@delo.ru
-    raw = os.environ.get("ADMIN_EMAILS", "admin@delo.ru")
-    admins = [e.strip().lower() for e in raw.split(",") if e.strip()]
-    return bool(user and user.email and user.email.lower() in admins)
 
 def _get_task_or_404(db: Session, task_id: int) -> Task:
     task = db.query(Task).filter(Task.id == task_id).first()
@@ -72,8 +64,8 @@ def cancel_task(task_id: int, token: str = Depends(oauth2_scheme), db: Session =
     user_id = int(payload.get("sub"))
     task = _get_task_or_404(db, task_id)
 
-    if task.status not in (TaskStatus.in_progress, TaskStatus.disputed):
-        raise HTTPException(400, "Отменить можно только заказ в работе или на арбитраже")
+    if task.status not in (TaskStatus.open, TaskStatus.in_progress, TaskStatus.disputed):
+        raise HTTPException(400, "Отменить можно только открытый заказ, заказ в работе или на арбитраже")
 
     dispute = _active_dispute(db, task_id)
     is_customer = user_id == task.customer_id
@@ -90,10 +82,12 @@ def cancel_task(task_id: int, token: str = Depends(oauth2_scheme), db: Session =
     elif not (is_customer or is_executor):
         raise HTTPException(403, "Отменить заказ могут только участники сделки")
 
-    # Возврат эскроу заказчику
+    # Возврат эскроу заказчику. Деньги замораживаются только при назначении
+    # исполнителя (assign_task списывает бюджет), поэтому у открытого заказа
+    # возвращать нечего — иначе баланс пополнился бы суммой, которая не списывалась.
     budget = task.budget or 0
     refunded = 0
-    if budget > 0:
+    if budget > 0 and task.executor_id is not None:
         customer = db.query(User).filter(User.id == task.customer_id).first()
         if customer:
             customer.balance += budget
@@ -105,9 +99,10 @@ def cancel_task(task_id: int, token: str = Depends(oauth2_scheme), db: Session =
 
     task.status = TaskStatus.cancelled
     cancelled_by = "заказчиком" if is_customer else ("исполнителем" if is_executor else "инициатором спора")
+    refund_note = " Эскроу возвращён заказчику." if refunded else ""
     for uid in {task.customer_id, task.executor_id} - {user_id, None}:
         _notify(db, uid, "cancelled", "Заказ отменён",
-                f"Заказ «{task.title}» отменён ({cancelled_by}). Эскроу возвращён заказчику.",
+                f"Заказ «{task.title}» отменён ({cancelled_by}).{refund_note}",
                 task.id)
     db.commit()
     return {"message": "Заказ отменён" + (f", заказчику возвращено {refunded} ₽" if refunded else ""), "refunded": refunded}
@@ -120,7 +115,7 @@ def get_task_dispute(task_id: int, token: str = Depends(oauth2_scheme), db: Sess
     task = _get_task_or_404(db, task_id)
     user = db.query(User).filter(User.id == user_id).first()
 
-    if user_id not in (task.customer_id, task.executor_id) and not _is_admin(user):
+    if user_id not in (task.customer_id, task.executor_id) and not is_admin(user):
         raise HTTPException(403, "Нет доступа к информации о споре")
 
     dispute = db.query(Dispute).filter(Dispute.task_id == task_id).order_by(Dispute.id.desc()).first()
@@ -145,7 +140,7 @@ def get_task_dispute(task_id: int, token: str = Depends(oauth2_scheme), db: Sess
 def list_disputes(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
     payload = decode_token_or_401(token)
     user = db.query(User).filter(User.id == int(payload.get("sub"))).first()
-    if not _is_admin(user):
+    if not is_admin(user):
         raise HTTPException(403, "Доступно только арбитрам платформы")
 
     disputes = db.query(Dispute).filter(Dispute.status == DisputeStatus.open).order_by(Dispute.id.desc()).all()
@@ -173,7 +168,7 @@ def list_disputes(token: str = Depends(oauth2_scheme), db: Session = Depends(get
 def resolve_dispute(dispute_id: int, req: DisputeResolve, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
     payload = decode_token_or_401(token)
     admin = db.query(User).filter(User.id == int(payload.get("sub"))).first()
-    if not _is_admin(admin):
+    if not is_admin(admin):
         raise HTTPException(403, "Доступно только арбитрам платформы")
 
     dispute = db.query(Dispute).filter(Dispute.id == dispute_id).first()

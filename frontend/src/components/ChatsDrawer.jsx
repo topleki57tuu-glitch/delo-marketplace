@@ -1,15 +1,19 @@
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
-import { useNavStore } from '../store/navStore';
 
 // Используем относительные пути: Vite proxies /tasks → backend:8000
 
-export const ChatsDrawer = ({ isOpen, onClose, onSelectTask }) => {
+export const ChatsDrawer = ({ isOpen, onClose, onSelectTask, onOpenAuth }) => {
     const { token, role, isAuth } = useAuthStore();
-    const { closeAllOverlays, openAuth, openFeed, openTaskChat } = useNavStore();
+    const navigate = useNavigate();
     const [tasks, setTasks] = useState([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
+
+    const close = () => {
+        if (onClose) onClose();
+    };
 
     useEffect(() => {
         if (!isOpen || !token) return;
@@ -45,10 +49,7 @@ export const ChatsDrawer = ({ isOpen, onClose, onSelectTask }) => {
                     </div>
                     <button
                         type="button"
-                        onClick={() => {
-                            if (onClose) onClose();
-                            closeAllOverlays();
-                        }}
+                        onClick={close}
                         className="w-9 h-9 rounded-xl bg-surface-2 border border-border text-ink hover:border-accent hover:text-accent flex items-center justify-center font-bold transition"
                     >
                         ✕
@@ -67,8 +68,8 @@ export const ChatsDrawer = ({ isOpen, onClose, onSelectTask }) => {
                             <button
                                 type="button"
                                 onClick={() => {
-                                    closeAllOverlays();
-                                    openAuth();
+                                    close();
+                                    if (onOpenAuth) onOpenAuth('login');
                                 }}
                                 className="mt-4 px-5 py-2.5 rounded-xl bg-accent text-white font-bold text-xs uppercase tracking-wider hover:bg-accent-bright transition"
                             >
@@ -98,8 +99,8 @@ export const ChatsDrawer = ({ isOpen, onClose, onSelectTask }) => {
                             <button
                                 type="button"
                                 onClick={() => {
-                                    openFeed('list');
-                                    window.location.href = '/?view=list';
+                                    close();
+                                    navigate('/tasks');
                                 }}
                                 className="mt-4 px-4 py-2 rounded-xl bg-surface-2 border border-border text-xs font-bold uppercase tracking-wider hover:border-accent transition"
                             >
@@ -115,11 +116,11 @@ export const ChatsDrawer = ({ isOpen, onClose, onSelectTask }) => {
                                 <div
                                     key={task.id}
                                     onClick={() => {
-                                        closeAllOverlays();
+                                        close();
                                         if (onSelectTask) {
                                             onSelectTask(task);
                                         } else {
-                                            openTaskChat(task);
+                                            navigate(`/tasks/${task.id}`);
                                         }
                                     }}
                                     className="p-3.5 rounded-xl bg-surface-2/80 hover:bg-surface-2 border border-border hover:border-accent transition cursor-pointer flex flex-col gap-1.5 group"
@@ -154,10 +155,7 @@ export const ChatsDrawer = ({ isOpen, onClose, onSelectTask }) => {
                 <div className="pt-3 border-t border-border">
                     <button
                         type="button"
-                        onClick={() => {
-                            if (onClose) onClose();
-                            closeAllOverlays();
-                        }}
+                        onClick={close}
                         className="w-full py-2.5 rounded-xl bg-surface-2 border border-border font-bold text-xs uppercase tracking-wider text-muted hover:text-ink transition"
                     >
                         Закрыть

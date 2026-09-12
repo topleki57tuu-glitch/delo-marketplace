@@ -15,8 +15,8 @@ export default function ResetPasswordPage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (password.length < 6) {
-      addToast('Пароль должен содержать минимум 6 символов', 'error');
+    if (password.length < 8) {
+      addToast('Пароль должен содержать минимум 8 символов', 'error');
       return;
     }
     if (password !== confirm) {
@@ -73,7 +73,7 @@ export default function ResetPasswordPage() {
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-xs font-semibold text-slate-500 mb-1">Новый пароль (от 6 символов)</label>
+              <label className="block text-xs font-semibold text-slate-500 mb-1">Новый пароль (от 8 символов)</label>
               <input
                 type="password"
                 value={password}

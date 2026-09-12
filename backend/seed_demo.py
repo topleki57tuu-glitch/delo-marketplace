@@ -19,11 +19,11 @@ sys.path.insert(0, ".")
 from sqlalchemy import text
 
 from app.core.database import SessionLocal, engine, Base
-from app.core.security import hash_password
+from app.core.security import hash_password, encrypt_sensitive
 from app.models import (
     User, Task, Response, Message, Review, Notification, Transaction,
     UserRole, TaskStatus, TaskCategory, TransactionType,
-    Dispute, DisputeStatus,
+    Dispute, DisputeStatus, WithdrawalRequest, WithdrawalStatus,
 )
 
 NOW = datetime.utcnow()
@@ -51,6 +51,8 @@ def main():
     tables = [
         "messages", "reviews", "responses", "notifications", "transactions",
         "payment_records", "password_reset_tokens", "stored_files", "disputes",
+        "verification_requests",
+        "withdrawal_requests",
         "tasks", "users",
     ]
     for t in tables:
@@ -114,7 +116,7 @@ def main():
              city="Москва",
              bio="Графический дизайнер. Логотипы, фирменные стили, реклама для соцсетей.",
              skills=["Figma", "Illustrator", "Photoshop", "Брендинг"],
-             balance=7810, verified=True, credits=15, last_seen_min=25)
+             balance=7410, verified=True, credits=15, last_seen_min=25)
     add_user("alexey", "alexey@delo.ru", "Алексей Петров", "specialist",
              city="Санкт-Петербург",
              bio="Мастер по ремонту: сантехника, электрика, отделка «под ключ». Работаю по договору.",
@@ -332,10 +334,11 @@ def main():
                   comment="Хороший заказчик, правки по существу. Единственное — согласование затянулось на пару дней."))
 
     # ---------- Транзакции ----------
-    def add_tx(user, amount, type_, task=None, days_ago=0):
+    def add_tx(user, amount, type_, task=None, days_ago=0, fee=0):
         db.add(Transaction(
             user_id=users[user].id, amount=amount, type=TransactionType[type_],
             task_id=tasks[task].id if task else None,
+            fee=fee,
             created_at=iso(NOW - timedelta(days=days_ago)),
         ))
 
@@ -344,10 +347,10 @@ def main():
     add_tx("olga", 10000, "deposit", days_ago=8)
     # t10: холд + выплата
     add_tx("anna", -25000, "escrow_hold", task="t10", days_ago=19)
-    add_tx("igor", 25000, "escrow_release", task="t10", days_ago=6)
+    add_tx("igor", 25000, "escrow_release", task="t10", days_ago=6, fee=0)  # PRO: комиссия 0%
     # t11: холд + выплата
     add_tx("anna", -8000, "escrow_hold", task="t11", days_ago=14)
-    add_tx("maria", 8000, "escrow_release", task="t11", days_ago=5)
+    add_tx("maria", 7600, "escrow_release", task="t11", days_ago=5, fee=400)  # 5% от 8000
     # t12, t13: заморожено, в работе
     add_tx("dmitry", -150000, "escrow_hold", task="t12", days_ago=9)
     add_tx("anna", -20000, "escrow_hold", task="t13", days_ago=2)
@@ -388,13 +391,46 @@ def main():
               "Заказчик подтвердил выполнение «Telegram-бот для записи клиентов в барбершоп». 25000 ₽ переведены на ваш баланс.",
               task="t10", hours_ago=140, read=True)
     add_notif("maria", "completed", "Заказ завершён!",
-              "Заказчик подтвердил выполнение «Баннеры для рекламы в соцсетях (6 форматов)». 8000 ₽ переведены на ваш баланс.",
+              "Заказчик подтвердил выполнение «Баннеры для рекламы в соцсетях (6 форматов)». 7600 ₽ переведены на ваш баланс (комиссия платформы 5%: 400 ₽).",
               task="t11", hours_ago=110, read=True)
     add_notif("igor", "review", "Новый отзыв о вашей работе",
               "Анна Смирнова оценила вашу работу на 5 ⭐", task="t10", hours_ago=139)
     add_notif("sergey", "dispute", "Открыт спор по заказу",
               "Анна Смирнова открыла спор по заказу «Предметная фотосъёмка для каталога одежды». Средства заморожены до решения арбитража.",
               task="t13", hours_ago=6)
+
+    # ---------- Заявки на вывод средств ----------
+    def add_withdrawal(user, amount, method, requisites, status_, days_ago=0, comment=None):
+        """Повторяет денежную логику API: при подаче заявки сумма списывается
+        с баланса, при отклонении или отмене — возвращается."""
+        owner = users[user]
+        owner.balance -= amount
+        db.add(Transaction(
+            user_id=owner.id, amount=-amount, type=TransactionType.withdraw_hold,
+            created_at=iso(NOW - timedelta(days=days_ago)),
+        ))
+        resolved = status_ != WithdrawalStatus.pending
+        if status_ in (WithdrawalStatus.rejected, WithdrawalStatus.cancelled):
+            owner.balance += amount
+            db.add(Transaction(
+                user_id=owner.id, amount=amount, type=TransactionType.withdraw_refund,
+                created_at=iso(NOW - timedelta(days=days_ago) + timedelta(hours=3)),
+            ))
+        db.add(WithdrawalRequest(
+            user_id=owner.id, amount=amount, method=method,
+            requisites=encrypt_sensitive(requisites),
+            status=status_, comment=comment,
+            created_at=iso(NOW - timedelta(days=days_ago)),
+            resolved_at=iso(NOW - timedelta(days=days_ago) + timedelta(hours=3)) if resolved else None,
+        ))
+
+    add_withdrawal("igor", 10000, "card", "4276 3800 1234 5678",
+                   WithdrawalStatus.pending, days_ago=1)
+    add_withdrawal("maria", 5000, "sbp", "+7 916 123-45-67",
+                   WithdrawalStatus.paid, days_ago=9, comment="Выплачено по СБП")
+    add_withdrawal("maria", 2000, "card", "4276 3800 8765 4321",
+                   WithdrawalStatus.rejected, days_ago=15,
+                   comment="Имя получателя не совпадает с владельцем счёта")
 
     db.commit()
 
@@ -411,6 +447,8 @@ def main():
     print(f"Отзывы: {db.query(Review).count()}")
     print(f"Транзакции: {db.query(Transaction).count()}")
     print(f"Уведомления: {db.query(Notification).count()}")
+    print(f"Заявки на вывод: {db.query(WithdrawalRequest).count()} "
+          f"(pending={db.query(WithdrawalRequest).filter(WithdrawalRequest.status == WithdrawalStatus.pending).count()})")
     print("\nАккаунты для входа:")
     for u in users.values():
         tag = "PRO " if u.is_pro else ""

@@ -5,11 +5,17 @@ Converts addresses to coordinates and vice versa
 
 import os
 import requests
+from functools import lru_cache
 from typing import Optional, Tuple
 
 YANDEX_GEOCODER_API_KEY = os.environ.get("YANDEX_GEOCODER_API_KEY", "")
 YANDEX_GEOCODER_URL = "https://geocode-maps.yandex.ru/1.x/"
 
+# Вызов геокодера синхронный и происходит прямо в запросе создания задания,
+# поэтому кэшируем результат: одинаковые «Москва» или «Казань, ул. Ленина 10»
+# не должны каждый раз стоить отдельного обращения к Яндекс.Картам.
+# Координаты города практически не меняются, так что протухание не проблема.
+@lru_cache(maxsize=512)
 def geocode_address(city: str, address: Optional[str] = None) -> Optional[Tuple[float, float]]:
     """
     Convert city and address to coordinates (latitude, longitude)

@@ -1,6 +1,29 @@
 from pydantic import BaseModel, EmailStr, field_validator, Field
 from typing import Optional, List
+import json
+
 from app.models import UserRole, TaskStatus, TaskCategory, TransactionType
+
+MAX_TASK_IMAGES = 10
+MAX_IMAGE_PATH_LEN = 500
+
+# bcrypt молча обрезает всё после 72-го байта, поэтому два разных длинных пароля
+# с общим префиксом стали бы эквивалентны — длину проверяем явно.
+BCRYPT_MAX_BYTES = 72
+
+
+def _check_password(v: str) -> str:
+    """Единая политика пароля для регистрации и сброса.
+
+    Порог в 8 символов совпадает с тем, что обещает интерфейс
+    («Пароль (от 8 символов)»).
+    """
+    if len(v) < 8:
+        raise ValueError("Пароль должен содержать минимум 8 символов")
+    if len(v.encode("utf-8")) > BCRYPT_MAX_BYTES:
+        raise ValueError("Пароль слишком длинный: максимум 72 байта")
+    return v
+
 
 class UserCreate(BaseModel):
     email: EmailStr
@@ -11,9 +34,7 @@ class UserCreate(BaseModel):
     @field_validator("password")
     @classmethod
     def _password_policy(cls, v: str) -> str:
-        if len(v) < 6:
-            raise ValueError("Пароль должен содержать минимум 6 символов")
-        return v
+        return _check_password(v)
 
 class UserOut(BaseModel):
     id: int
@@ -54,9 +75,37 @@ class ResetPasswordRequest(BaseModel):
     @field_validator("new_password")
     @classmethod
     def _password_policy(cls, v: str) -> str:
-        if len(v) < 6:
-            raise ValueError("Пароль должен содержать минимум 6 символов")
+        return _check_password(v)
+
+MIN_WITHDRAWAL = 500
+WITHDRAWAL_METHODS = {"card", "sbp"}
+
+class WithdrawalCreateRequest(BaseModel):
+    """Заявка на вывод заработанных средств."""
+    amount: int = Field(gt=0, description="Сумма вывода в рублях")
+    method: str = "card"          # card — на карту, sbp — по номеру телефона
+    requisites: str               # номер карты или телефон
+
+    @field_validator("method")
+    @classmethod
+    def _validate_method(cls, v: str) -> str:
+        if v not in WITHDRAWAL_METHODS:
+            raise ValueError("Способ вывода: card или sbp")
         return v
+
+    @field_validator("requisites")
+    @classmethod
+    def _validate_requisites(cls, v: str) -> str:
+        clean = (v or "").strip()
+        if len(clean) < 5:
+            raise ValueError("Укажите реквизиты для выплаты")
+        if len(clean) > 100:
+            raise ValueError("Реквизиты слишком длинные")
+        return clean
+
+class WithdrawalReviewRequest(BaseModel):
+    action: str                   # approve | reject
+    comment: Optional[str] = None
 
 class TaskCreate(BaseModel):
     title: str
@@ -70,6 +119,34 @@ class TaskCreate(BaseModel):
     deadline: Optional[str] = None
     is_remote: bool = False
     images: Optional[str] = None
+
+    @field_validator("images")
+    @classmethod
+    def _validate_images(cls, v: Optional[str]) -> Optional[str]:
+        """Изображения приходят JSON-строкой — проверяем, что это список строк.
+
+        Раньше значение уходило в колонку как есть, а читалось потом через
+        json.loads: одна кривая строка ломала открытие задания.
+        """
+        if v is None or v == "":
+            return None
+        try:
+            parsed = json.loads(v)
+        except (TypeError, ValueError):
+            raise ValueError("Поле images должно быть JSON-массивом")
+
+        if not isinstance(parsed, list):
+            raise ValueError("Поле images должно быть JSON-массивом")
+        if len(parsed) > MAX_TASK_IMAGES:
+            raise ValueError(f"Не больше {MAX_TASK_IMAGES} изображений на задание")
+
+        for item in parsed:
+            if not isinstance(item, str):
+                raise ValueError("Элементы images должны быть строками")
+            if len(item) > MAX_IMAGE_PATH_LEN:
+                raise ValueError("Слишком длинный путь к изображению")
+
+        return json.dumps(parsed, ensure_ascii=False)
 
 class TaskOut(TaskCreate):
     id: int

@@ -46,6 +46,8 @@ services:
       CORS_ORIGINS: ${CORS_ORIGINS:-}
       FRONTEND_URL: ${FRONTEND_URL:-}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      # Счётчики лимитов в общем Redis, иначе они живут в памяти каждого воркера
+      REDIS_URL: redis://redis:6379/0
       API_HOST: 0.0.0.0
       API_PORT: 8000
     ports:

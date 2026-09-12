@@ -183,6 +183,7 @@ def get_my_transactions(token: str = Depends(oauth2_scheme), db: Session = Depen
         {
             "id": t.id,
             "amount": t.amount,
+            "fee": t.fee or 0,
             "type": t.type.value if hasattr(t.type, "value") else str(t.type),
             "task_id": t.task_id,
             "task_title": tasks.get(t.task_id),
@@ -208,7 +209,7 @@ def export_my_transactions_csv(token: str = Depends(oauth2_scheme), db: Session 
     buf = io.StringIO()
     buf.write("\ufeff")  # BOM для корректной кириллицы в Excel
     writer = csv.writer(buf, delimiter=";")
-    writer.writerow(["ID", "Дата", "Тип", "Сумма (₽)", "ID заказа"])
+    writer.writerow(["ID", "Дата", "Тип", "Сумма (₽)", "Комиссия (₽)", "ID заказа"])
     for t in txs:
         ttype = t.type.value if hasattr(t.type, "value") else str(t.type)
         writer.writerow([
@@ -216,6 +217,7 @@ def export_my_transactions_csv(token: str = Depends(oauth2_scheme), db: Session 
             (t.created_at or "")[:19].replace("T", " "),
             type_names.get(ttype, ttype),
             t.amount,
+            t.fee or 0,
             t.task_id or "",
         ])
     buf.seek(0)

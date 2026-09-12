@@ -35,6 +35,18 @@ class Settings:
     FRONTEND_URL: str = os.environ.get("FRONTEND_URL", "").rstrip("/")
     CORS_ORIGINS: List[str] = _parse_origins(os.environ.get("CORS_ORIGINS", ""))
 
+    # Лимиты запросов. В проде включены всегда; в разработке по умолчанию
+    # выключены, но их можно включить (RATE_LIMIT_ENABLED=1) — иначе защита
+    # от перебора паролей никогда не проверяется до самого релиза.
+    _rl_raw: str = os.environ.get("RATE_LIMIT_ENABLED", "")
+    RATE_LIMIT_ENABLED: bool = (
+        IS_PRODUCTION if _rl_raw == "" else _rl_raw.strip().lower() in ("1", "true", "yes", "on")
+    )
+
+    # Общий счётчик лимитов. Без него лимиты считаются в памяти процесса
+    # и не разделяются между воркерами — реальный порог умножается на их число.
+    REDIS_URL: str = os.environ.get("REDIS_URL", "")
+
     if not CORS_ORIGINS:
         if IS_PRODUCTION:
             if FRONTEND_URL:

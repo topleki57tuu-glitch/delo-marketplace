@@ -1,5 +1,5 @@
 """
-File upload utilities for ProfiClone
+File upload utilities for «ДЕЛО»
 Handles image uploads and storage
 """
 

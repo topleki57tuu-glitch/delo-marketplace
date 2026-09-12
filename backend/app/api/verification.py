@@ -1,10 +1,12 @@
-import os
 from typing import Optional, List
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from app.core.database import get_db
-from app.core.security import oauth2_scheme, decode_token
+from app.core.security import (
+    oauth2_scheme, decode_token, is_admin,
+    encrypt_sensitive, decrypt_sensitive, mask_document_number,
+)
 from app.models import (
     User, UserRole, Notification,
     VerificationRequest, VerificationStatus
@@ -19,12 +21,28 @@ router = APIRouter(prefix="/verification", tags=["Verification"])
 def decode_token_or_401(token: str) -> dict:
     return decode_token(token)
 
-def _is_admin(user: User) -> bool:
-    # Только строгое совпадение email из ADMIN_EMAILS: substring-проверка
-    # ("admin" in email) выдавала бы права модератора любому admin-vasya@x.com
-    raw = os.environ.get("ADMIN_EMAILS", "admin@delo.ru")
-    admins = [e.strip().lower() for e in raw.split(",") if e.strip()]
-    return bool(user and user.email and user.email.lower() in admins)
+
+def _request_out(r: VerificationRequest, *, reveal_number: bool) -> dict:
+    """Сериализует заявку, расшифровывая номер документа.
+
+    reveal_number=True отдаёт номер целиком — это нужно только модератору,
+    который сверяет его со сканом. Владельцу заявки номер показываем
+    замаскированным: подтвердить, что данные приняты, хватает и маски,
+    а полный номер лишний раз не светится в интерфейсе и скриншотах.
+    """
+    number = decrypt_sensitive(r.document_number)
+    return {
+        "id": r.id,
+        "user_id": r.user_id,
+        "full_name": r.full_name,
+        "document_type": r.document_type,
+        "document_number": number if reveal_number else mask_document_number(number),
+        "file_url": r.file_url,
+        "status": r.status.value if hasattr(r.status, "value") else str(r.status),
+        "rejection_reason": r.rejection_reason,
+        "created_at": r.created_at,
+        "resolved_at": r.resolved_at,
+    }
 
 @router.post("/submit", response_model=VerificationRequestOut)
 def submit_verification(
@@ -37,7 +55,12 @@ def submit_verification(
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(404, "Пользователь не найден")
-    
+
+    # Верификация удостоверяет специалиста — заказчику она не нужна,
+    # а принимать и хранить его документы мы не должны.
+    if user.role != UserRole.specialist:
+        raise HTTPException(403, "Верификация доступна только специалистам")
+
     # Проверяем, есть ли уже открытая заявка
     existing = db.query(VerificationRequest).filter(
         VerificationRequest.user_id == user_id,
@@ -50,7 +73,8 @@ def submit_verification(
         user_id=user_id,
         full_name=req.full_name,
         document_type=req.document_type,
-        document_number=req.document_number,
+        # Номер документа в БД не хранится открытым текстом — только Fernet-токен
+        document_number=encrypt_sensitive(req.document_number),
         file_url=req.file_url,
         status=VerificationStatus.pending
     )
@@ -66,7 +90,7 @@ def submit_verification(
     
     db.commit()
     db.refresh(new_req)
-    return new_req
+    return _request_out(new_req, reveal_number=False)
 
 @router.get("/status", response_model=VerificationStatusOut)
 def get_verification_status(
@@ -85,7 +109,7 @@ def get_verification_status(
     
     return {
         "verified": bool(user.verified),
-        "request": latest_req
+        "request": _request_out(latest_req, reveal_number=False) if latest_req else None
     }
 
 @router.get("/admin/list")
@@ -95,27 +119,17 @@ def list_verifications_admin(
 ):
     payload = decode_token_or_401(token)
     user = db.query(User).filter(User.id == int(payload.get("sub"))).first()
-    if not _is_admin(user):
+    if not is_admin(user):
         raise HTTPException(403, "Доступ разрешён только модераторам сервиса")
     
     requests = db.query(VerificationRequest).order_by(VerificationRequest.id.desc()).all()
     results = []
     for r in requests:
         u = db.query(User).filter(User.id == r.user_id).first()
-        results.append({
-            "id": r.id,
-            "user_id": r.user_id,
-            "user_name": u.name if u else "—",
-            "user_email": u.email if u else "—",
-            "full_name": r.full_name,
-            "document_type": r.document_type,
-            "document_number": r.document_number,
-            "file_url": r.file_url,
-            "status": r.status.value if hasattr(r.status, "value") else str(r.status),
-            "rejection_reason": r.rejection_reason,
-            "created_at": r.created_at,
-            "resolved_at": r.resolved_at
-        })
+        item = _request_out(r, reveal_number=True)  # модератору нужен номер для сверки со сканом
+        item["user_name"] = u.name if u else "—"
+        item["user_email"] = u.email if u else "—"
+        results.append(item)
     return results
 
 @router.post("/admin/{request_id}/review")
@@ -127,7 +141,7 @@ def review_verification_admin(
 ):
     payload = decode_token_or_401(token)
     admin_user = db.query(User).filter(User.id == int(payload.get("sub"))).first()
-    if not _is_admin(admin_user):
+    if not is_admin(admin_user):
         raise HTTPException(403, "Доступ разрешён только модераторам сервиса")
         
     v_req = db.query(VerificationRequest).filter(VerificationRequest.id == request_id).first()

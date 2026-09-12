@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { useToast } from '../components/Toast';
 import CityInput from '../components/CityInput';
 import { PortfolioUploader } from '../components/ImageUploader';
+import { WithdrawModal } from '../components/WithdrawModal';
 
 const TX_TYPE_NAMES = {
   deposit: '💰 Пополнение',
@@ -9,7 +11,26 @@ const TX_TYPE_NAMES = {
   escrow_release: '💸 Выплата (эскроу)',
   escrow_refund: '↩ Возврат (эскроу)',
   purchase: '🛒 Покупка пакета',
+  withdraw_hold: '🏦 Вывод средств (заявка)',
+  withdraw_refund: '↩ Возврат заявки на вывод',
 };
+
+const WITHDRAWAL_STATUS = {
+  pending:   { label: 'Ожидает',   cls: 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300' },
+  paid:      { label: 'Выплачено', cls: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300' },
+  rejected:  { label: 'Отклонено', cls: 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300' },
+  cancelled: { label: 'Отменено',  cls: 'bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300' },
+};
+
+function Stat({ label, value, sub }) {
+  return (
+    <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-700">
+      <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{label}</div>
+      <div className="text-xl font-extrabold text-slate-900 dark:text-white mt-1">{value}</div>
+      {sub && <div className="text-[10px] text-slate-400 mt-0.5">{sub}</div>}
+    </div>
+  );
+}
 
 export default function ProfilePage({ user, token, onUpdateUser, onLogout, onOpenAuth }) {
   const { addToast } = useToast();
@@ -48,6 +69,78 @@ export default function ProfilePage({ user, token, onUpdateUser, onLogout, onOpe
   const [transactions, setTransactions] = useState([]);
   const [showTransactions, setShowTransactions] = useState(false);
   const [loadingTx, setLoadingTx] = useState(false);
+
+  // Вывод средств
+  const [showWithdrawModal, setShowWithdrawModal] = useState(false);
+  const [withdrawals, setWithdrawals] = useState([]);
+  const [showWithdrawals, setShowWithdrawals] = useState(false);
+  const [loadingWithdrawals, setLoadingWithdrawals] = useState(false);
+
+  // Админ: заявки на вывод и сводка по платформе
+  const [adminWithdrawals, setAdminWithdrawals] = useState([]);
+  const [showAdminWithdrawals, setShowAdminWithdrawals] = useState(false);
+  const [processingWdId, setProcessingWdId] = useState(null);
+  const [adminStats, setAdminStats] = useState(null);
+  const [showAdminStats, setShowAdminStats] = useState(false);
+
+  const loadWithdrawals = () => {
+    if (!token) return;
+    setLoadingWithdrawals(true);
+    fetch('/wallet/withdrawals', { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data) => setWithdrawals(Array.isArray(data) ? data : []))
+      .catch(() => setWithdrawals([]))
+      .finally(() => setLoadingWithdrawals(false));
+  };
+
+  const loadAdminWithdrawals = () => {
+    if (!token || !isAdmin) return;
+    fetch('/admin/withdrawals', { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data) => setAdminWithdrawals(Array.isArray(data) ? data : []))
+      .catch(() => setAdminWithdrawals([]));
+  };
+
+  const loadAdminStats = () => {
+    if (!token || !isAdmin) return;
+    fetch('/admin/stats', { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => setAdminStats(data))
+      .catch(() => setAdminStats(null));
+  };
+
+  const handleAdminWithdrawalReview = async (id, action) => {
+    setProcessingWdId(id);
+    try {
+      const res = await fetch(`/admin/withdrawals/${id}/review`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ action }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Не удалось обработать заявку');
+      addToast(action === 'approve' ? 'Заявка одобрена' : 'Заявка отклонена, деньги возвращены', 'success');
+      loadAdminWithdrawals();
+      loadAdminStats();
+      if (onUpdateUser) onUpdateUser();
+    } catch (err) {
+      addToast(err.message, 'error');
+    } finally {
+      setProcessingWdId(null);
+    }
+  };
+
+  useEffect(() => {
+    if (showWithdrawals && token) loadWithdrawals();
+  }, [showWithdrawals, token]);
+
+  useEffect(() => {
+    if (showAdminWithdrawals && isAdmin) loadAdminWithdrawals();
+  }, [showAdminWithdrawals, isAdmin]);
+
+  useEffect(() => {
+    if (showAdminStats && isAdmin) loadAdminStats();
+  }, [showAdminStats, isAdmin]);
 
   useEffect(() => {
     if (user && token) {
@@ -431,12 +524,26 @@ export default function ProfilePage({ user, token, onUpdateUser, onLogout, onOpe
           )}
 
           {isAdmin && (
-            <button
-              onClick={() => setShowAdminVerifications(!showAdminVerifications)}
-              className="px-4 py-2 bg-indigo-800/80 hover:bg-indigo-700 text-indigo-100 text-xs font-semibold rounded-xl border border-indigo-600 transition-all"
-            >
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                onClick={() => setShowAdminVerifications(!showAdminVerifications)}
+                className="px-4 py-2 bg-indigo-800/80 hover:bg-indigo-700 text-indigo-100 text-xs font-semibold rounded-xl border border-indigo-600 transition-all"
+              >
               👑 Модерация заявок
             </button>
+              <button
+                onClick={() => setShowAdminWithdrawals(!showAdminWithdrawals)}
+                className="px-4 py-2 bg-indigo-800/80 hover:bg-indigo-700 text-indigo-100 text-xs font-semibold rounded-xl border border-indigo-600 transition-all"
+              >
+                🏦 Заявки на вывод
+              </button>
+              <button
+                onClick={() => setShowAdminStats(!showAdminStats)}
+                className="px-4 py-2 bg-indigo-800/80 hover:bg-indigo-700 text-indigo-100 text-xs font-semibold rounded-xl border border-indigo-600 transition-all"
+              >
+                📊 Сводка
+              </button>
+            </div>
           )}
         </div>
       </div>
@@ -516,6 +623,101 @@ export default function ProfilePage({ user, token, onUpdateUser, onLogout, onOpe
         </div>
       )}
 
+      {/* Admin: заявки на вывод средств */}
+      {isAdmin && showAdminWithdrawals && (
+        <div className="bg-white dark:bg-slate-800 p-6 sm:p-8 rounded-3xl border border-indigo-200 dark:border-indigo-800 shadow-lg space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+              <span>🏦</span> Панель модератора: Заявки на вывод
+            </h3>
+            <button onClick={loadAdminWithdrawals} className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline">
+              🔄 Обновить
+            </button>
+          </div>
+
+          {adminWithdrawals.length === 0 ? (
+            <p className="text-xs text-slate-500 py-4 text-center">Заявок на вывод пока нет.</p>
+          ) : (
+            <div className="space-y-3 max-h-96 overflow-y-auto">
+              {adminWithdrawals.map((w) => {
+                const meta = WITHDRAWAL_STATUS[w.status] || { label: w.status, cls: 'bg-slate-200 text-slate-600' };
+                return (
+                  <div key={w.id} className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-700 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div className="space-y-1 text-xs">
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-sm text-slate-900 dark:text-white">
+                          {w.amount.toLocaleString('ru-RU')} ₽
+                        </span>
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${meta.cls}`}>
+                          {meta.label}
+                        </span>
+                      </div>
+                      <div className="text-slate-500">
+                        {w.user_name} ({w.user_email}) · баланс: {(w.user_balance || 0).toLocaleString('ru-RU')} ₽
+                      </div>
+                      <div className="font-mono text-slate-700 dark:text-slate-300">
+                        {w.method === 'card' ? '💳' : '📱'} {w.requisites}
+                      </div>
+                      {w.comment && <div className="text-[10px] text-slate-400">{w.comment}</div>}
+                    </div>
+
+                    {w.status === 'pending' && (
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          onClick={() => handleAdminWithdrawalReview(w.id, 'approve')}
+                          disabled={processingWdId === w.id}
+                          className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-sm transition-all"
+                        >
+                          ✓ Выплачено
+                        </button>
+                        <button
+                          onClick={() => {
+                            const reason = prompt('Причина отклонения:', 'Реквизиты не прошли проверку');
+                            if (reason !== null) handleAdminWithdrawalReview(w.id, 'reject');
+                          }}
+                          disabled={processingWdId === w.id}
+                          className="px-3.5 py-1.5 bg-red-600 hover:bg-red-500 text-white font-bold text-xs rounded-xl shadow-sm transition-all"
+                        >
+                          ✕ Отклонить
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Admin: сводка по платформе */}
+      {isAdmin && showAdminStats && adminStats && (
+        <div className="bg-white dark:bg-slate-800 p-6 sm:p-8 rounded-3xl border border-indigo-200 dark:border-indigo-800 shadow-lg space-y-5">
+          <h3 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+            <span>📊</span> Сводка по платформе
+          </h3>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <Stat label="Пользователей" value={adminStats.users.total} sub={`+${adminStats.users.new_7d} за неделю`} />
+            <Stat label="Заказов" value={adminStats.tasks.total} sub={`+${adminStats.tasks.new_7d} за неделю`} />
+            <Stat label="Оборот" value={`${adminStats.money.gmv.toLocaleString('ru-RU')} ₽`} sub="завершённые сделки" />
+            <Stat label="Комиссия" value={`${adminStats.money.commission_earned.toLocaleString('ru-RU')} ₽`} sub="заработано" />
+            <Stat label="В эскроу" value={`${adminStats.money.escrow_held.toLocaleString('ru-RU')} ₽`} sub="заморожено по сделкам" />
+            <Stat label="На балансах" value={`${adminStats.money.user_balances.toLocaleString('ru-RU')} ₽`} sub="обязательства" />
+            <Stat label="Заявок на вывод" value={adminStats.queues.withdrawals_pending} sub={`${adminStats.money.withdrawals_pending_amount.toLocaleString('ru-RU')} ₽ в очереди`} />
+            <Stat label="Споров открыто" value={adminStats.queues.disputes_open} sub={`верификаций: ${adminStats.queues.verifications_pending}`} />
+          </div>
+
+          <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs">
+            <span className="text-slate-500">Всего должны пользователям: </span>
+            <b className="text-slate-900 dark:text-white">
+              {adminStats.money.total_liabilities.toLocaleString('ru-RU')} ₽
+            </b>
+            <span className="text-slate-400"> — эскроу + балансы + очереди на вывод. Сверяйте с фактическим счётом.</span>
+          </div>
+        </div>
+      )}
+
       {/* Edit Profile Form */}
       {isEditing && (
         <form onSubmit={handleSaveProfile} className="bg-white dark:bg-slate-800 p-6 sm:p-8 rounded-3xl border border-indigo-200 dark:border-indigo-800 shadow-lg space-y-4">
@@ -585,13 +787,29 @@ export default function ProfilePage({ user, token, onUpdateUser, onLogout, onOpe
               Баланс используется для безопасных сделок (эскроу-депонирование) и мгновенных выплат.
             </p>
           </div>
-          <div className="pt-4 border-t border-slate-100 dark:border-slate-700">
-            <button
-              onClick={() => setShowDepositModal(true)}
-              className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-sm shadow-md shadow-emerald-600/20 transition-all"
+          <div className="pt-4 border-t border-slate-100 dark:border-slate-700 space-y-2">
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowDepositModal(true)}
+                className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-sm shadow-md shadow-emerald-600/20 transition-all"
+              >
+                + Пополнить
+              </button>
+              <button
+                onClick={() => setShowWithdrawModal(true)}
+                disabled={(user.balance || 0) < 500}
+                title={(user.balance || 0) < 500 ? 'Минимальная сумма вывода — 500 ₽' : 'Вывести средства'}
+                className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold rounded-xl text-sm shadow-md shadow-indigo-600/20 transition-all"
+              >
+                🏦 Вывести
+              </button>
+            </div>
+            <Link
+              to="/my-tasks"
+              className="block text-center text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline pt-1"
             >
-              + Пополнить баланс
-            </button>
+              Мои заказы →
+            </Link>
           </div>
         </div>
 
@@ -784,6 +1002,71 @@ export default function ProfilePage({ user, token, onUpdateUser, onLogout, onOpe
         )}
       </div>
 
+      {/* Заявки на вывод средств */}
+      <div className="bg-white dark:bg-slate-800 p-6 sm:p-8 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h3 className="text-lg font-bold text-slate-900 dark:text-white">Вывод средств</h3>
+            <p className="text-xs text-slate-400">Заявки на выплату заработанного на карту или по СБП</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowWithdrawals(!showWithdrawals)}
+              className="px-4 py-2 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-xs font-bold rounded-xl transition-all"
+            >
+              {showWithdrawals ? 'Скрыть' : 'Показать'}
+            </button>
+            <button
+              onClick={() => setShowWithdrawModal(true)}
+              disabled={(user.balance || 0) < 500}
+              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-bold rounded-xl transition-all"
+            >
+              🏦 Новая заявка
+            </button>
+          </div>
+        </div>
+
+        {showWithdrawals && (
+          loadingWithdrawals ? (
+            <div className="flex justify-center py-6">
+              <div className="w-8 h-8 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+            </div>
+          ) : withdrawals.length === 0 ? (
+            <p className="text-sm text-slate-400 text-center py-6">
+              Заявок на вывод пока не было.
+            </p>
+          ) : (
+            <div className="space-y-2 max-h-80 overflow-y-auto">
+              {withdrawals.map((w) => {
+                const meta = WITHDRAWAL_STATUS[w.status] || { label: w.status, cls: 'bg-slate-200 text-slate-600' };
+                return (
+                  <div
+                    key={w.id}
+                    className="flex items-center justify-between gap-3 p-3 rounded-xl bg-slate-50 dark:bg-slate-900 text-sm"
+                  >
+                    <div className="min-w-0">
+                      <span className="font-semibold text-slate-800 dark:text-slate-200">
+                        {w.amount.toLocaleString('ru-RU')} ₽
+                        <span className="text-slate-400 font-normal"> · {w.method === 'card' ? '💳 карта' : '📱 СБП'} {w.requisites}</span>
+                      </span>
+                      {w.comment && (
+                        <span className="block text-[11px] text-slate-400">{w.comment}</span>
+                      )}
+                      <span className="block text-[10px] text-slate-400">
+                        {(w.created_at || '').slice(0, 16).replace('T', ' ')}
+                      </span>
+                    </div>
+                    <span className={`shrink-0 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${meta.cls}`}>
+                      {meta.label}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )
+        )}
+      </div>
+
       {/* Verification Request Modal */}
       {showVerifyModal && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
@@ -916,6 +1199,18 @@ export default function ProfilePage({ user, token, onUpdateUser, onLogout, onOpe
             </form>
           </div>
         </div>
+      )}
+
+      {/* Withdraw Modal */}
+      {showWithdrawModal && (
+        <WithdrawModal
+          balance={user.balance || 0}
+          onClose={() => setShowWithdrawModal(false)}
+          onCreated={() => {
+            loadWithdrawals();
+            if (onUpdateUser) onUpdateUser();
+          }}
+        />
       )}
     </div>
   );

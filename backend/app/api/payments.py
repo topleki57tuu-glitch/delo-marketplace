@@ -110,7 +110,7 @@ def create_payment(req: DepositRequest, token: str = Depends(oauth2_scheme), db:
 
     result = payments.create_payment(
         amount=req.amount,
-        description=f"Пополнение баланса ProfiClone на {req.amount} руб.",
+        description=f"Пополнение баланса «ДЕЛО» на {req.amount} руб.",
         metadata={"user_id": str(user_id), "amount": str(req.amount)}
     )
 

@@ -7,6 +7,7 @@ const CATEGORIES = [
   { id: 'all', label: 'Все категории', icon: '⚡' },
   { id: 'development', label: 'Разработка сайтов и IT', icon: '💻' },
   { id: 'design', label: 'Дизайн и графика', icon: '🎨' },
+  { id: 'writing', label: 'Тексты и переводы', icon: '✍️' },
   { id: 'repairs', label: 'Ремонт и строительство', icon: '🔨' },
   { id: 'cleaning', label: 'Уборка и клининг', icon: '✨' },
   { id: 'delivery', label: 'Курьеры и доставка', icon: '🚚' },
@@ -33,7 +34,19 @@ export default function TasksPage({
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCity, setSelectedCity] = useState(null);
   const [isRemoteOnly, setIsRemoteOnly] = useState(false);
-  const [showMap, setShowMap] = useState(false);
+  // Вид «карта» храним в URL (?view=map), чтобы на него можно было
+  // вести ссылкой из нижней навигации и чтобы работала кнопка «назад».
+  const showMap = searchParams.get('view') === 'map';
+
+  const toggleMap = () => {
+    const next = new URLSearchParams(searchParams);
+    if (showMap) {
+      next.delete('view');
+    } else {
+      next.set('view', 'map');
+    }
+    setSearchParams(next, { replace: true });
+  };
 
   const handleCategorySelect = (catId) => {
     if (catId === 'all') {
@@ -72,7 +85,7 @@ export default function TasksPage({
 
         <div className="flex items-center gap-3">
           <button
-            onClick={() => setShowMap(!showMap)}
+            onClick={toggleMap}
             className={`px-4 py-2 rounded-xl text-sm font-semibold border transition-all flex items-center gap-2 ${
               showMap
                 ? 'bg-indigo-600 text-white border-indigo-600 shadow-md shadow-indigo-600/20'

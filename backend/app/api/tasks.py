@@ -98,6 +98,76 @@ def get_tasks(
 
     return query.all()
 
+@router.get("/my")
+def get_my_tasks(
+    role: str = "customer",
+    status_filter: Optional[str] = None,
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db)
+):
+    """Заказы текущего пользователя — где он заказчик или где он исполнитель.
+
+    Раньше своих заказов посмотреть было негде: они растворялись в общем
+    списке, и после публикации заказчик терял его из виду.
+
+    ВАЖНО: этот маршрут объявлен ДО `/{task_id}`, иначе FastAPI попытался бы
+    разобрать «my» как целочисленный id и вернул бы 422.
+    """
+    payload = decode_token_or_401(token)
+    user_id = int(payload.get("sub"))
+
+    if role not in ("customer", "executor"):
+        raise HTTPException(400, "role должен быть customer или executor")
+
+    query = db.query(Task)
+    if role == "customer":
+        query = query.filter(Task.customer_id == user_id)
+    else:
+        query = query.filter(Task.executor_id == user_id)
+
+    if status_filter == "active":
+        query = query.filter(Task.status.in_(
+            (TaskStatus.open, TaskStatus.in_progress, TaskStatus.disputed)
+        ))
+    elif status_filter == "completed":
+        query = query.filter(Task.status == TaskStatus.completed)
+    elif status_filter:
+        try:
+            query = query.filter(Task.status == TaskStatus(status_filter))
+        except ValueError:
+            raise HTTPException(400, "Неизвестный статус заказа")
+
+    tasks = query.order_by(Task.id.desc()).all()
+
+    result = []
+    for t in tasks:
+        responses_count = db.query(Response).filter(Response.task_id == t.id).count()
+        counterparty_id = t.executor_id if role == "customer" else t.customer_id
+        counterparty = (
+            db.query(User).filter(User.id == counterparty_id).first()
+            if counterparty_id else None
+        )
+        result.append({
+            "id": t.id,
+            "title": t.title,
+            "description": t.description,
+            "budget": t.budget,
+            "category": t.category.value if hasattr(t.category, "value") else str(t.category),
+            "status": t.status.value if hasattr(t.status, "value") else str(t.status),
+            "city": t.city,
+            "is_remote": t.is_remote,
+            "deadline": t.deadline,
+            "created_at": t.created_at,
+            "customer_id": t.customer_id,
+            "executor_id": t.executor_id,
+            "responses_count": responses_count,
+            "counterparty_id": counterparty.id if counterparty else None,
+            "counterparty_name": (
+                (counterparty.name or counterparty.email) if counterparty else None
+            ),
+        })
+    return result
+
 @router.get("/{task_id}")
 def get_task_detail(task_id: int, db: Session = Depends(get_db)):
     task = db.query(Task).filter(Task.id == task_id).first()
@@ -162,6 +232,10 @@ def complete_task(task_id: int, token: str = Depends(oauth2_scheme), db: Session
         raise HTTPException(400, "Заказ отменён")
     if task.status == TaskStatus.disputed:
         raise HTTPException(400, "По заказу открыт спор — дождитесь решения арбитража")
+    # Завершать нечего, если исполнитель так и не был назначен: раньше заказ молча
+    # уходил в «completed» с выплатой 0 и без уведомлений. Такой заказ нужно отменять.
+    if not task.executor_id:
+        raise HTTPException(400, "Нельзя завершить заказ без исполнителя — отмените его, если он больше не нужен")
 
     task.status = TaskStatus.completed
 
@@ -169,7 +243,7 @@ def complete_task(task_id: int, token: str = Depends(oauth2_scheme), db: Session
     budget = task.budget or 0
     payout = 0
     fee = 0
-    if budget > 0 and task.executor_id:
+    if budget > 0:
         executor = db.query(User).filter(User.id == task.executor_id).first()
         if executor:
             # Монетизация: 0% комиссия для пользователей со статусом PRO, иначе стандартные 5%
@@ -187,22 +261,21 @@ def complete_task(task_id: int, token: str = Depends(oauth2_scheme), db: Session
                 fee=fee
             ))
 
-    if task.executor_id:
-        if payout > 0:
-            if fee > 0:
-                payout_note = f" {payout} ₽ переведены на ваш баланс (комиссия платформы 5%: {fee} ₽. С подпиской PRO комиссия 0%!)."
-            else:
-                payout_note = f" {payout} ₽ переведены на ваш баланс (0% комиссия для PRO-специалиста!)."
+    if payout > 0:
+        if fee > 0:
+            payout_note = f" {payout} ₽ переведены на ваш баланс (комиссия платформы 5%: {fee} ₽. С подпиской PRO комиссия 0%!)."
         else:
-            payout_note = ""
+            payout_note = f" {payout} ₽ переведены на ваш баланс (0% комиссия для PRO-специалиста!)."
+    else:
+        payout_note = ""
 
-        db.add(Notification(
-            user_id=task.executor_id,
-            type="completed",
-            title="Заказ завершён!",
-            text=f"Заказчик подтвердил выполнение «{task.title}».{payout_note}",
-            task_id=task.id
-        ))
+    db.add(Notification(
+        user_id=task.executor_id,
+        type="completed",
+        title="Заказ завершён!",
+        text=f"Заказчик подтвердил выполнение «{task.title}».{payout_note}",
+        task_id=task.id
+    ))
 
     db.commit()
     return {

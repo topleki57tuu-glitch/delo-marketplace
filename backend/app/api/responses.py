@@ -31,6 +31,12 @@ def create_response(task_id: int, response: ResponseCreate, token: str = Depends
     if specialist.role != UserRole.specialist:
         raise HTTPException(403, "Откликаться могут только специалисты")
 
+    # Сначала валидируем заказ: списывать кредит за несуществующий task_id нельзя,
+    # иначе платный отклик сгорает впустую (достаточно подставить любой левый id).
+    task = db.query(Task).filter(Task.id == task_id).first()
+    if not task:
+        raise HTTPException(404, "Заказ не найден")
+
     # Монетизация: PRO — безлимит, иначе списываем 1 отклик
     if not specialist.is_pro:
         if (specialist.response_credits or 0) <= 0:
@@ -46,15 +52,13 @@ def create_response(task_id: int, response: ResponseCreate, token: str = Depends
     )
     db.add(new_response)
 
-    task = db.query(Task).filter(Task.id == task_id).first()
-    if task:
-        db.add(Notification(
-            user_id=task.customer_id,
-            type="new_response",
-            title="Новый отклик на заказ!",
-            text=f"{'PRO ★ ' if specialist.is_pro else ''}{specialist.name or specialist.email} откликнулся на задачу \"{task.title}\"" + (f" — {response.proposed_price} ₽" if response.proposed_price else ""),
-            task_id=task_id
-        ))
+    db.add(Notification(
+        user_id=task.customer_id,
+        type="new_response",
+        title="Новый отклик на заказ!",
+        text=f"{'PRO ★ ' if specialist.is_pro else ''}{specialist.name or specialist.email} откликнулся на задачу \"{task.title}\"" + (f" — {response.proposed_price} ₽" if response.proposed_price else ""),
+        task_id=task_id
+    ))
     db.commit()
     return {"message": "Отклик отправлен", "credits_left": None if specialist.is_pro else specialist.response_credits}
 

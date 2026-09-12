@@ -10,6 +10,8 @@ from app.api.notifications import router as notifications_router
 from app.api.ai import router as ai_router
 from app.api.disputes import router as disputes_router
 from app.api.verification import router as verification_router
+from app.api.withdrawals import router as withdrawals_router
+from app.api.admin import router as admin_router
 
 __all__ = [
     "auth_router",
@@ -23,5 +25,7 @@ __all__ = [
     "notifications_router",
     "ai_router",
     "disputes_router",
-    "verification_router"
+    "verification_router",
+    "withdrawals_router",
+    "admin_router"
 ]

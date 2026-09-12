@@ -8,6 +8,7 @@ import { useToast } from '../components/Toast';
 const CATEGORIES = [
   { id: 'development', label: 'Разработка сайтов и IT', icon: '💻' },
   { id: 'design', label: 'Дизайн и графика', icon: '🎨' },
+  { id: 'writing', label: 'Тексты и переводы', icon: '✍️' },
   { id: 'repairs', label: 'Ремонт и строительство', icon: '🔨' },
   { id: 'cleaning', label: 'Уборка и клининг', icon: '✨' },
   { id: 'delivery', label: 'Курьеры и доставка', icon: '🚚' },
@@ -56,11 +57,13 @@ export default function CreateTaskPage({ user, token, onOpenAuth, onTaskCreated 
   }
 
   const handleApplyAiSuggestion = (suggestion) => {
-    if (suggestion.title) setTitle(suggestion.title);
-    if (suggestion.description) setDescription(suggestion.description);
-    if (suggestion.category) setCategory(suggestion.category);
-    if (suggestion.budget) setBudget(String(suggestion.budget));
+    // Поля ответа бэкенда — suggested_* (см. backend/app/api/ai.py)
+    if (suggestion.suggested_title) setTitle(suggestion.suggested_title);
+    if (suggestion.suggested_description) setDescription(suggestion.suggested_description);
+    if (suggestion.suggested_category) setCategory(suggestion.suggested_category);
+    if (suggestion.suggested_budget) setBudget(String(suggestion.suggested_budget));
     addToast('ТЗ успешно сформировано AI-помощником!', 'success');
+    setShowAiModal(false);
   };
 
   const handleSubmit = async (e) => {
@@ -289,7 +292,7 @@ export default function CreateTaskPage({ user, token, onOpenAuth, onTaskCreated 
         <AITaskAssistant
           onClose={() => setShowAiModal(false)}
           onApplySuggestion={handleApplyAiSuggestion}
-          token={token}
+          currentTask={{ budget }}
         />
       )}
     </div>

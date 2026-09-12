@@ -28,9 +28,9 @@ YOOKASSA_API_URL = "https://api.yookassa.ru/v3"
 # Where to redirect after payment
 RETURN_URL = os.environ.get("PAYMENT_RETURN_URL", "http://localhost:5173/profile")
 
-# Where YooKassa should send us webhooks about payment status
-# In production this must be a public HTTPS URL
-WEBHOOK_ENABLED = os.environ.get("YOOKASSA_WEBHOOK_ENABLED", "false").lower() == "true"
+# Здесь была переменная WEBHOOK_ENABLED, но обработчика вебхуков в проекте нет:
+# статус платежа забирается опросом (get_payment_status), а не push-уведомлением.
+# Флаг только создавал впечатление готовой интеграции, поэтому убран.
 
 
 def is_configured() -> bool:
