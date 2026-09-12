@@ -152,7 +152,7 @@ def cancel_withdrawal(
     ))
 
     request.status = WithdrawalStatus.cancelled
-    request.resolved_at = datetime.utcnow().isoformat()
+    request.resolved_at = datetime.utcnow()
     request.comment = "Отменено пользователем"
     db.commit()
 
@@ -213,7 +213,7 @@ def review_withdrawal_admin(
     if not owner:
         raise HTTPException(404, "Пользователь заявки не найден")
 
-    request.resolved_at = datetime.utcnow().isoformat()
+    request.resolved_at = datetime.utcnow()
 
     if req.action == "approve":
         # Деньги уже списаны при подаче заявки — здесь только фиксируем факт выплаты

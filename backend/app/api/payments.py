@@ -78,11 +78,11 @@ def buy_package(req: BuyPackageRequest, token: str = Depends(oauth2_scheme), db:
     else:
         from datetime import timedelta
         base = datetime.utcnow()
-        if user.pro_until and datetime.fromisoformat(user.pro_until) > base:
-            base = datetime.fromisoformat(user.pro_until)
-        user.pro_until = (base + timedelta(days=pkg["days"])).isoformat()
+        if user.pro_until and user.pro_until > base:
+            base = user.pro_until
+        user.pro_until = base + timedelta(days=pkg["days"])
         user.is_pro = True
-        msg = f"PRO активирован до {user.pro_until[:10]}"
+        msg = f"PRO активирован до {user.pro_until.strftime('%Y-%m-%d')}"
 
     db.commit()
     return {

@@ -152,7 +152,7 @@ def review_verification_admin(
     if not user:
         raise HTTPException(404, "Пользователь не найден")
         
-    v_req.resolved_at = datetime.utcnow().isoformat()
+    v_req.resolved_at = datetime.utcnow()
     
     if req.action == "approve":
         v_req.status = VerificationStatus.approved

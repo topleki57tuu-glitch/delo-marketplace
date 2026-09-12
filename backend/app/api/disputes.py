@@ -83,7 +83,7 @@ def cancel_task(task_id: int, token: str = Depends(oauth2_scheme), db: Session =
             raise HTTPException(403, "По заказу открыт спор — дождитесь решения арбитража")
         dispute.status = DisputeStatus.closed
         from datetime import datetime
-        dispute.resolved_at = datetime.utcnow().isoformat()
+        dispute.resolved_at = datetime.utcnow()
         dispute.resolution_comment = "Спор отозван инициатором, заказ отменён"
     elif not (is_customer or is_executor):
         raise HTTPException(403, "Отменить заказ могут только участники сделки")
@@ -248,7 +248,7 @@ def resolve_dispute(dispute_id: int, req: DisputeResolve, token: str = Depends(o
         raise HTTPException(400, "decision должен быть refund_customer или pay_specialist")
 
     dispute.resolution_comment = req.comment
-    dispute.resolved_at = datetime.utcnow().isoformat()
+    dispute.resolved_at = datetime.utcnow()
 
     for uid in {task.customer_id, task.executor_id} - {None}:
         _notify(db, uid, "dispute_resolved", "Спор решён арбитражем",

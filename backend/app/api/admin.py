@@ -38,8 +38,8 @@ def platform_stats(token: str = Depends(oauth2_scheme), db: Session = Depends(ge
         raise HTTPException(403, "Доступ разрешён только модераторам сервиса")
 
     now = datetime.utcnow()
-    week_ago = (now - timedelta(days=7)).isoformat()
-    online_since = (now - timedelta(seconds=120)).isoformat()
+    week_ago = now - timedelta(days=7)
+    online_since = now - timedelta(seconds=120)
 
     # ------------------------------------------------------------- пользователи
     users = {
