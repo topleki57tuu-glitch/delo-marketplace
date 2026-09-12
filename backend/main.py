@@ -12,6 +12,7 @@ from app.core.config import settings
 from app.core.database import engine, Base, SessionLocal
 from app.core.csrf import generate_csrf_token, set_csrf_cookie
 from app.core.logging import logger, log_request
+from app.core.monitoring import setup_query_monitoring, get_connection_pool_status
 from app.models import User, StoredFile
 from app.api import (
     auth_router,
@@ -54,6 +55,11 @@ if settings.SENTRY_DSN:
 
 # Инициализируем логирование при старте
 logger.info(f"Starting DELO Marketplace API | ENV={settings.ENV} | CSRF={settings.CSRF_ENABLED} | RATE_LIMIT={settings.RATE_LIMIT_ENABLED}")
+
+# Setup query monitoring for slow queries (>100ms)
+if settings.ENV == "production" or os.getenv("ENABLE_QUERY_MONITORING", "").lower() in ("1", "true"):
+    setup_query_monitoring(slow_query_threshold_ms=100)
+    logger.info("Query monitoring enabled (threshold: 100ms)")
 
 # Initialize Database tables
 # ВАЖНО: В production используйте Alembic миграции вместо create_all
@@ -227,6 +233,35 @@ app.include_router(admin_router)
 @app.get("/health")
 def health():
     return {"status": "ok", "timestamp": datetime.utcnow().isoformat()}
+
+@app.get("/health/db")
+def health_db():
+    """Database health check with connection pool status.
+
+    Useful for monitoring and alerting on database connection issues.
+    """
+    try:
+        pool_status = get_connection_pool_status(engine)
+        # Simple query to verify DB connectivity
+        with SessionLocal() as db:
+            db.execute("SELECT 1")
+
+        return {
+            "status": "ok",
+            "timestamp": datetime.utcnow().isoformat(),
+            "database": "connected",
+            "pool": pool_status
+        }
+    except Exception as e:
+        logger.error(f"Database health check failed: {e}")
+        return FastResponse(
+            status_code=503,
+            content={
+                "status": "error",
+                "database": "disconnected",
+                "error": str(e)
+            }
+        )
 
 @app.get("/csrf-token")
 def get_csrf_token(response: Response):
