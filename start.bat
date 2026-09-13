@@ -1,91 +1,145 @@
 @echo off
-REM Скрипт запуска ДЕЛО Marketplace на Windows
-
-echo === ДЕЛО Marketplace - Deployment Script ===
-echo Дата: %date% %time%
+chcp 65001 >nul
+echo ================================================
+echo   ДЕЛО Marketplace - Запуск приложения
+echo ================================================
 echo.
 
-REM Проверка .env файла
-if not exist .env (
-    echo [ERROR] Файл .env не найден!
-    echo Скопируйте .env.example и настройте переменные окружения
-    exit /b 1
+:: Проверка и остановка старых процессов
+echo [1/5] Проверка запущенных процессов...
+netstat -ano | findstr ":8000" >nul 2>&1
+if %errorlevel% equ 0 (
+    echo ⚠️  Порт 8000 занят. Останавливаю процесс...
+    for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":8000"') do taskkill /F /PID %%a >nul 2>&1
+    timeout /t 2 >nul
 )
 
-echo [OK] Файл .env найден
+netstat -ano | findstr ":3000" >nul 2>&1
+if %errorlevel% equ 0 (
+    echo ⚠️  Порт 3000 занят. Останавливаю процесс...
+    for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":3000"') do taskkill /F /PID %%a >nul 2>&1
+    timeout /t 2 >nul
+)
 
-REM Шаг 1: Запуск PostgreSQL и Redis
+:: Остановка процессов по имени
+taskkill /F /IM uvicorn.exe >nul 2>&1
+taskkill /F /IM node.exe >nul 2>&1
+timeout /t 2 >nul
+
+echo ✅ Порты освобождены
 echo.
-echo [1/6] Запуск PostgreSQL и Redis...
 
-REM Проверка Docker
-docker --version >nul 2>&1
-if errorlevel 1 (
-    echo [ERROR] Docker не установлен или не запущен!
-    echo.
-    echo Установите Docker Desktop для Windows:
-    echo https://www.docker.com/products/docker-desktop
-    echo.
-    echo Или запустите Docker Desktop, если он уже установлен.
+:: Проверка существования директорий
+if not exist "backend" (
+    echo ❌ Ошибка: Директория backend не найдена!
+    echo    Запустите скрипт из корневой директории проекта
     pause
     exit /b 1
 )
 
-docker compose -f docker-compose.infra.yml up -d
-
-REM Ожидание готовности баз данных
-echo Ожидание готовности PostgreSQL...
-:wait_postgres
-docker exec marketplace_postgres pg_isready -U marketplace_user -d marketplace_db >nul 2>&1
-if errorlevel 1 (
-    timeout /t 1 /nobreak >nul
-    goto wait_postgres
+if not exist "frontend" (
+    echo ❌ Ошибка: Директория frontend не найдена!
+    echo    Запустите скрипт из корневой директории проекта
+    pause
+    exit /b 1
 )
-echo [OK] PostgreSQL готов
 
-echo Ожидание готовности Redis...
-:wait_redis
-docker exec marketplace_redis redis-cli ping >nul 2>&1
-if errorlevel 1 (
-    timeout /t 1 /nobreak >nul
-    goto wait_redis
-)
-echo [OK] Redis готов
-
-REM Шаг 2: Установка зависимостей backend
-echo.
-echo [2/6] Установка зависимостей backend...
+:: Запуск Backend
+echo [2/5] Запуск Backend (FastAPI)...
 cd backend
-pip install -r requirements.txt --quiet
-echo [OK] Зависимости установлены
-
-REM Шаг 3: Применение миграций БД
-echo.
-echo [3/6] Применение миграций базы данных...
-alembic upgrade head
-echo [OK] Миграции применены
-
-REM Шаг 4: Пропуск демо-данных
-echo.
-echo [4/6] Пропуск демо-данных (установите SEED_DEMO=1 для засева)
-
-REM Шаг 5: Сборка frontend
-echo.
-echo [5/6] Сборка frontend...
-cd ..\frontend
-call npm install --quiet
-call npm run build
-echo [OK] Frontend собран
-
-REM Шаг 6: Запуск backend
-echo.
-echo [6/6] Запуск backend сервера...
-cd ..\backend
-
-if "%1"=="--dev" (
-    echo Режим: Development (с auto-reload)
-    uvicorn main:app --host 0.0.0.0 --port 8000 --reload
-) else (
-    echo Режим: Production (4 воркера)
-    uvicorn main:app --host 0.0.0.0 --port 8000 --workers 4
+if not exist "delo.db" (
+    echo ⚠️  База данных не найдена. Создаю демо-данные...
+    python seed_demo.py
 )
+
+start /B cmd /c "python -m uvicorn main:app --host 0.0.0.0 --port 8000 > backend.log 2>&1"
+cd ..
+
+:: Ожидание запуска backend
+echo    Ожидание запуска backend...
+timeout /t 3 >nul
+
+:: Проверка backend
+curl -s http://localhost:8000/health >nul 2>&1
+if %errorlevel% equ 0 (
+    echo ✅ Backend запущен на http://localhost:8000
+) else (
+    echo ⚠️  Backend запускается... (может потребоваться несколько секунд)
+)
+echo.
+
+:: Запуск Frontend
+echo [3/5] Запуск Frontend (Vite + React)...
+cd frontend
+start /B cmd /c "npm run dev > frontend.log 2>&1"
+cd ..
+
+:: Ожидание запуска frontend
+echo    Ожидание запуска frontend...
+timeout /t 5 >nul
+
+:: Проверка frontend
+curl -s http://localhost:3000 >nul 2>&1
+if %errorlevel% equ 0 (
+    echo ✅ Frontend запущен на http://localhost:3000
+) else (
+    echo ⚠️  Frontend запускается... (может потребоваться несколько секунд)
+)
+echo.
+
+:: Финальная проверка
+echo [4/5] Проверка сервисов...
+timeout /t 2 >nul
+
+curl -s http://localhost:8000/health >nul 2>&1
+if %errorlevel% equ 0 (
+    echo ✅ Backend: OK
+) else (
+    echo ❌ Backend: Не отвечает
+)
+
+curl -s http://localhost:3000 >nul 2>&1
+if %errorlevel% equ 0 (
+    echo ✅ Frontend: OK
+) else (
+    echo ❌ Frontend: Не отвечает
+)
+echo.
+
+:: Открытие браузера
+echo [5/5] Открытие приложения в браузере...
+echo.
+echo ================================================
+echo   ✅ Приложение успешно запущено!
+echo ================================================
+echo.
+echo 🌐 Доступные URL:
+echo    Frontend:  http://localhost:3000
+echo    Backend:   http://localhost:8000
+echo    API Docs:  http://localhost:8000/docs
+echo    Admin:     http://localhost:3000/admin/dashboard
+echo.
+echo 👤 Демо-аккаунты (пароль для всех: demo123):
+echo    Админ:       admin@delo.ru
+echo    Заказчик:    anna@delo.ru
+echo    Специалист:  igor@delo.ru
+echo.
+echo 📊 Логи:
+echo    Backend:  backend\backend.log
+echo    Frontend: frontend\frontend.log
+echo.
+echo ⚠️  Не закрывайте это окно, пока приложение работает!
+echo    Для остановки используйте stop.bat
+echo.
+echo ================================================
+
+:: Открытие браузера через 2 секунды
+timeout /t 2 >nul
+start http://localhost:3000
+
+:: Держим окно открытым
+echo.
+echo Нажмите Ctrl+C для выхода (приложение продолжит работу в фоне)
+echo Или используйте stop.bat для полной остановки
+echo.
+pause >nul
