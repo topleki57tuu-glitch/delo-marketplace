@@ -24,6 +24,7 @@ const MyTasksPage = lazy(() => import('./pages/MyTasksPage'));
 const DisputesPage = lazy(() => import('./pages/DisputesPage'));
 const ResetPasswordPage = lazy(() => import('./pages/ResetPasswordPage'));
 const ChatsPage = lazy(() => import('./pages/ChatsPage'));
+const AdminDashboardPage = lazy(() => import('./pages/AdminDashboardPage'));
 
 const API_URL = import.meta.env.VITE_API_URL || '';
 
@@ -98,6 +99,18 @@ function NavigationBar({ user, token, onOpenAuth, onOpenChatsDrawer, onLogout })
               }`}
             >
               Сообщения
+            </Link>
+          )}
+          {user && user.email && ['admin@delo.ru'].includes(user.email) && (
+            <Link
+              to="/admin/dashboard"
+              className={`px-3.5 py-2 rounded-xl transition-colors ${
+                location.pathname === '/admin/dashboard'
+                  ? 'bg-red-50 dark:bg-red-900/40 text-red-600 dark:text-red-400'
+                  : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              🛡️ Admin
             </Link>
           )}
         </nav>
@@ -620,6 +633,15 @@ export default function App() {
                       user={user}
                       token={token}
                       onOpenAuth={handleOpenAuth}
+                    />
+                  }
+                />
+                <Route
+                  path="/admin/dashboard"
+                  element={
+                    <AdminDashboardPage
+                      user={user}
+                      token={token}
                     />
                   }
                 />

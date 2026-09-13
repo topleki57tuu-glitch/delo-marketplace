@@ -64,7 +64,13 @@ export default defineConfig({
           if (req.headers.accept && req.headers.accept.includes('text/html')) return '/index.html';
         },
       },
-      '/admin': 'http://localhost:8000',
+      '/admin': {
+        target: 'http://localhost:8000',
+        bypass(req) {
+          // Браузерная навигация на /admin/dashboard → SPA index.html
+          if (req.headers.accept && req.headers.accept.includes('text/html')) return '/index.html';
+        },
+      },
       '/upload': 'http://localhost:8000',
       '/login': 'http://localhost:8000',
       '/register': 'http://localhost:8000',
