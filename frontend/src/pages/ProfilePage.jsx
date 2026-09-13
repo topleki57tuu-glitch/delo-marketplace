@@ -4,6 +4,7 @@ import { useToast } from '../components/Toast';
 import CityInput from '../components/CityInput';
 import { PortfolioUploader } from '../components/ImageUploader';
 import { WithdrawModal } from '../components/WithdrawModal';
+import { Avatar, AvatarUploader } from '../components/Avatar';
 
 const TX_TYPE_NAMES = {
   deposit: '💰 Пополнение',
@@ -421,9 +422,7 @@ export default function ProfilePage({ user, token, onUpdateUser, onLogout, onOpe
       <div className="bg-white dark:bg-slate-800 p-6 sm:p-8 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
         <div className="flex items-center gap-5">
           <div className="relative shrink-0">
-            <div className="w-20 h-20 rounded-2xl bg-gradient-to-tr from-indigo-500 to-purple-600 text-white font-extrabold text-3xl flex items-center justify-center shadow-lg shadow-indigo-500/20">
-              {user.name ? user.name[0].toUpperCase() : user.email[0].toUpperCase()}
-            </div>
+            <Avatar user={user} size="2xl" className="shadow-lg" />
             {user.verified && (
               <span className="absolute -bottom-1 -right-1 bg-emerald-500 text-white p-1 rounded-full shadow-md text-xs font-bold" title="Документы проверены">
                 ✓
@@ -722,6 +721,17 @@ export default function ProfilePage({ user, token, onUpdateUser, onLogout, onOpe
       {isEditing && (
         <form onSubmit={handleSaveProfile} className="bg-white dark:bg-slate-800 p-6 sm:p-8 rounded-3xl border border-indigo-200 dark:border-indigo-800 shadow-lg space-y-4">
           <h3 className="text-lg font-bold text-slate-900 dark:text-white">Редактирование профиля</h3>
+
+          {/* Avatar Upload Section */}
+          <div className="pb-4 border-b border-slate-200 dark:border-slate-700">
+            <label className="block text-xs font-semibold text-slate-500 mb-3">Фото профиля</label>
+            <AvatarUploader
+              currentAvatar={user.avatar}
+              onAvatarUpdate={onUpdateUser}
+              token={token}
+            />
+          </div>
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-semibold text-slate-500 mb-1">Имя</label>

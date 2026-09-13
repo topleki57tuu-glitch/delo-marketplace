@@ -8,6 +8,7 @@ import { BottomNav } from './components/BottomNav';
 import { ChatsDrawer } from './components/ChatsDrawer';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { useModal } from './utils/a11y';
+import { Avatar } from './components/Avatar';
 
 // Eager load только критичные страницы
 import HomePage from './pages/HomePage';
@@ -111,9 +112,7 @@ function NavigationBar({ user, token, onOpenAuth, onOpenChatsDrawer, onLogout })
                 to="/profile"
                 className="flex items-center gap-2 p-1.5 pr-3 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
               >
-                <div className="w-8 h-8 rounded-full bg-indigo-600 text-white font-bold flex items-center justify-center text-xs">
-                  {user.name ? user.name[0].toUpperCase() : user.email[0].toUpperCase()}
-                </div>
+                <Avatar user={user} size="sm" />
                 <div className="hidden sm:block text-left">
                   <span className="block text-xs font-bold text-slate-800 dark:text-slate-200 leading-none">
                     {user.name || user.email.split('@')[0]}
