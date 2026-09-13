@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useToast } from './Toast';
-import { format, isToday, isYesterday } from 'date-fns';
-import { ru } from 'date-fns/locale';
+import format from 'date-fns/format';
+import isToday from 'date-fns/isToday';
+import isYesterday from 'date-fns/isYesterday';
+import ru from 'date-fns/locale/ru';
 
 const TX_TYPE_NAMES = {
   deposit: '💰 Пополнение',

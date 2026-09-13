@@ -102,28 +102,29 @@ class YooMoneyClient:
                 "payment_url": "https://yoomoney.ru/quickpay/confirm?requestId=..."
             }
 
-        Примечание: Это упрощенный метод для генерации ссылки на форму оплаты.
-        Для полноценной интеграции используйте Quickpay форму.
+        Примечание: Использует упрощенную форму ЮMoney без проверки домена.
         """
         if not self.enabled:
             return {"error": "ЮMoney not configured"}
 
-        # ЮMoney Quickpay form URL (редирект на форму оплаты)
-        # Документация: https://yoomoney.ru/docs/payment-buttons/using-api/forms
+        # Получаем номер кошелька
         receiver = self.get_account_info().get("account")
 
         if not receiver:
             return {"error": "Failed to get receiver account"}
 
+        # ЮMoney Quickpay form URL (публичная форма без ограничений по домену)
+        # Документация: https://yoomoney.ru/docs/payment-buttons/using-api/forms
         quickpay_form_url = "https://yoomoney.ru/quickpay/confirm.xml"
 
         params = {
             "receiver": receiver,
             "quickpay-form": "shop",
-            "targets": comment or f"Пополнение баланса на {amount} руб.",
+            "targets": comment or f"Пополнение баланса ДЕЛО на {amount} руб.",
             "paymentType": "AC",  # AC = банковская карта, PC = ЮMoney кошелек
             "sum": amount,
             "label": label,  # Уникальный ID для идентификации платежа
+            "successURL": ""  # Пустой = остаться на странице ЮMoney после оплаты
         }
 
         # Формируем URL с параметрами

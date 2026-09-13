@@ -1,6 +1,6 @@
 import os
 import secrets
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
@@ -67,7 +67,7 @@ def login(request: Request, form: OAuth2PasswordRequestForm = Depends(), db: Ses
     refresh_token, jti = create_refresh_token(user.id)
 
     # Сохраняем refresh токен в БД
-    expires_at = datetime.utcnow() + timedelta(days=7)
+    expires_at = datetime.now(timezone.utc) + timedelta(days=7)
     db_refresh = RefreshToken(
         user_id=user.id,
         token=jti,
@@ -128,7 +128,7 @@ def logout(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
         RefreshToken.revoked == False
     ).update({
         "revoked": True,
-        "revoked_at": datetime.utcnow()
+        "revoked_at": datetime.now(timezone.utc)
     })
     db.commit()
 
@@ -148,7 +148,7 @@ def forgot_password(req: ForgotPasswordRequest, request: Request, db: Session = 
         reset = PasswordResetToken(
             user_id=user.id,
             token=token,
-            expires_at=datetime.utcnow() + timedelta(hours=1)
+            expires_at=datetime.now(timezone.utc) + timedelta(hours=1)
         )
         db.add(reset)
         db.commit()
@@ -183,7 +183,7 @@ def reset_password(req: ResetPasswordRequest, db: Session = Depends(get_db), _cs
     reset = db.query(PasswordResetToken).filter(PasswordResetToken.token == req.token).first()
     if not reset or reset.used:
         raise HTTPException(400, "Ссылка недействительна или уже использована")
-    if reset.expires_at < datetime.utcnow():
+    if reset.expires_at < datetime.now(timezone.utc):
         raise HTTPException(400, "Ссылка истекла, запросите сброс заново")
     user = db.query(User).filter(User.id == reset.user_id).first()
     if not user:

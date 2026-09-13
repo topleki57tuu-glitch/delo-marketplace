@@ -182,12 +182,18 @@ class ResponseOut(ResponseCreate):
 
 class MessageCreate(BaseModel):
     text: str
+    file_url: Optional[str] = None
+    file_name: Optional[str] = None
+    file_type: Optional[str] = None
 
 class MessageOut(BaseModel):
     id: int
     task_id: int
     sender_id: int
     text: str
+    file_url: Optional[str] = None
+    file_name: Optional[str] = None
+    file_type: Optional[str] = None
     is_read: bool = False
     created_at: str
     sender_name: Optional[str] = None

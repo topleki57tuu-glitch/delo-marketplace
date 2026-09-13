@@ -444,15 +444,20 @@ export default function App() {
   const fetchUserProfile = async () => {
     if (!token) return;
     try {
+      console.log('[fetchUserProfile] Загружаем профиль...');
       const res = await fetch('/users/me', {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (res.ok) {
         const data = await res.json();
+        console.log('[fetchUserProfile] Профиль получен:', data);
+        console.log('[fetchUserProfile] Avatar URL:', data.avatar);
         updateUser(data);
+      } else {
+        console.error('[fetchUserProfile] Ошибка:', res.status);
       }
     } catch (err) {
-      console.error(err);
+      console.error('[fetchUserProfile] Exception:', err);
     }
   };
 
@@ -464,6 +469,17 @@ export default function App() {
     if (token) {
       fetchUserProfile();
     }
+  }, [token]);
+
+  // Добавляем setInterval для периодического обновления профиля
+  useEffect(() => {
+    if (!token) return;
+
+    const interval = setInterval(() => {
+      fetchUserProfile();
+    }, 5000); // Обновляем каждые 5 секунд
+
+    return () => clearInterval(interval);
   }, [token]);
 
   const handleOpenAuth = (mode = 'login') => {

@@ -118,9 +118,12 @@ export const PortfolioUploader = ({ token, portfolio = [], onUploadSuccess, onDe
                                 {onDelete && (
                                     <button
                                         type="button"
-                                        onClick={() => onDelete(idx)}
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            onDelete(idx);
+                                        }}
                                         title="Удалить из портфолио"
-                                        className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-slate-900/70 text-white text-xs opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600"
+                                        className="absolute top-1.5 right-1.5 w-7 h-7 rounded-full bg-red-600 hover:bg-red-700 text-white text-sm font-bold shadow-lg transition-colors md:opacity-0 md:group-hover:opacity-100"
                                     >
                                         ✕
                                     </button>

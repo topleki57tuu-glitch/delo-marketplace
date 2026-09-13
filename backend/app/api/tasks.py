@@ -25,7 +25,11 @@ class TaskImagesDeleteRequest(BaseModel):
     urls_to_delete: List[str]
 
 @router.post("/")
-def create_task(task: TaskCreate, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db), _csrf: None = Depends(verify_csrf)):
+def create_task(task: TaskCreate, request: Request, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db), _csrf: None = Depends(verify_csrf)):
+    # FIX: Добавлен rate limiting для защиты от спама
+    from app.core.security import rate_limit
+    rate_limit(request, "create_task", limit=10, window_sec=300)
+
     payload = decode_token_or_401(token)
     # Роль берём из БД, а не из JWT: в токене роль остаётся прежней до 7 дней
     # после переключения роли

@@ -1,7 +1,7 @@
 import csv
 import io
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
@@ -20,7 +20,13 @@ def user_online(user: User) -> bool:
     if not user.last_seen:
         return False
     try:
-        return (datetime.utcnow() - datetime.fromisoformat(user.last_seen)).total_seconds() < 120
+        # FIX: user.last_seen теперь datetime объект, не строка
+        if isinstance(user.last_seen, str):
+            # Обратная совместимость для старых записей
+            last_seen_dt = datetime.fromisoformat(user.last_seen)
+        else:
+            last_seen_dt = user.last_seen
+        return (datetime.now(timezone.utc) - last_seen_dt).total_seconds() < 120
     except Exception:
         return False
 
@@ -87,27 +93,52 @@ def update_profile(profile: ProfileUpdate, token: str = Depends(oauth2_scheme), 
         user.city = profile.city
     if profile.phone is not None:
         user.phone = profile.phone
+
+    # Упрощённая проверка для avatar
     if profile.avatar is not None:
-        user.avatar = profile.avatar
+        if profile.avatar == "":
+            # Пустая строка - удаляем аватар
+            user.avatar = None
+        else:
+            # Сохраняем аватар
+            user.avatar = profile.avatar
+
     if profile.skills is not None:
         user.skills = profile.skills
+
+    # Упрощённая проверка для portfolio
     if profile.portfolio is not None:
-        user.portfolio = profile.portfolio
+        if profile.portfolio == "":
+            pass
+        else:
+            user.portfolio = profile.portfolio
 
     db.commit()
+    db.refresh(user)
+
     return {"message": "Профиль успешно обновлён"}
 
 @router.post("/users/me/switch-role")
 def switch_role(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+    from app.core.security import create_access_token
+
     payload = decode_token_or_401(token)
     user = db.query(User).filter(User.id == int(payload.get("sub"))).first()
     if not user:
         raise HTTPException(404, "Пользователь не найден")
-    
+
     new_role = UserRole.specialist if user.role == UserRole.customer else UserRole.customer
     user.role = new_role
     db.commit()
-    return {"message": "Роль изменена", "role": new_role.value}
+
+    # Создаём новый токен с обновлённой ролью
+    new_token = create_access_token({"sub": str(user.id), "role": new_role.value})
+
+    return {
+        "message": "Роль изменена",
+        "role": new_role.value,
+        "token": new_token  # Возвращаем новый токен
+    }
 
 @router.get("/specialists/")
 def list_specialists(

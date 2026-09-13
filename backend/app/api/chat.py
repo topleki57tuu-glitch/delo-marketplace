@@ -121,6 +121,9 @@ def get_messages(task_id: int, token: str = Depends(oauth2_scheme), db: Session 
             "task_id": m.task_id,
             "sender_id": m.sender_id,
             "text": m.text,
+            "file_url": m.file_url,
+            "file_name": m.file_name,
+            "file_type": m.file_type,
             "is_read": bool(m.is_read),
             "created_at": m.created_at,
             "sender_name": sender.name or sender.email if sender else "Unknown"
@@ -174,7 +177,15 @@ async def post_message(task_id: int, message: MessageCreate, token: str = Depend
     if user_id not in (task.customer_id, task.executor_id):
         raise HTTPException(403, "Нет доступа")
 
-    new_message = Message(task_id=task_id, sender_id=user_id, text=message.text, is_read=False)
+    new_message = Message(
+        task_id=task_id,
+        sender_id=user_id,
+        text=message.text,
+        file_url=message.file_url,
+        file_name=message.file_name,
+        file_type=message.file_type,
+        is_read=False
+    )
     db.add(new_message)
     db.commit()
     db.refresh(new_message)
@@ -182,11 +193,18 @@ async def post_message(task_id: int, message: MessageCreate, token: str = Depend
     sender = db.query(User).filter(User.id == user_id).first()
     recipient_id = task.executor_id if task.customer_id == user_id else task.customer_id
     if recipient_id:
+        # Формируем текст уведомления
+        notification_text = message.text[:60] if message.text else ""
+        if message.file_name:
+            notification_text = f"📎 {message.file_name}"
+        if len(message.text) > 60:
+            notification_text += "..."
+
         db.add(Notification(
             user_id=recipient_id,
             type="message",
             title="Новое сообщение",
-            text=f"{sender.name or sender.email}: {message.text[:60]}{'...' if len(message.text) > 60 else ''}",
+            text=f"{sender.name or sender.email}: {notification_text}",
             task_id=task_id
         ))
         db.commit()
@@ -196,6 +214,9 @@ async def post_message(task_id: int, message: MessageCreate, token: str = Depend
         "task_id": task_id,
         "sender_id": user_id,
         "text": message.text,
+        "file_url": message.file_url,
+        "file_name": message.file_name,
+        "file_type": message.file_type,
         "is_read": False,
         "created_at": new_message.created_at,
         "sender_name": sender.name or sender.email if sender else "Unknown"
@@ -243,13 +264,40 @@ async def websocket_endpoint(websocket: WebSocket, task_id: int, token: Optional
 
     if not already_accepted:
         await websocket.accept()
-        
+
     if task_id not in manager.active_connections:
         manager.active_connections[task_id] = []
     manager.active_connections[task_id].append(websocket)
 
+    db_session = SessionLocal()
     try:
         while True:
-            await websocket.receive_text()
+            data_text = await websocket.receive_text()
+            try:
+                data = json.loads(data_text)
+                event_type = data.get("type")
+
+                # Обработка typing событий
+                if event_type == "typing_start":
+                    sender = db_session.query(User).filter(User.id == user_id).first()
+                    await manager.broadcast_typing(
+                        task_id=task_id,
+                        user_id=user_id,
+                        user_name=sender.name or sender.email if sender else "Пользователь",
+                        is_typing=True
+                    )
+                elif event_type == "typing_stop":
+                    sender = db_session.query(User).filter(User.id == user_id).first()
+                    await manager.broadcast_typing(
+                        task_id=task_id,
+                        user_id=user_id,
+                        user_name=sender.name or sender.email if sender else "Пользователь",
+                        is_typing=False
+                    )
+            except (json.JSONDecodeError, AttributeError):
+                # Игнорируем невалидные сообщения
+                pass
     except WebSocketDisconnect:
         manager.disconnect(websocket, task_id)
+    finally:
+        db_session.close()

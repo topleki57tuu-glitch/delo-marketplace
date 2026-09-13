@@ -4,7 +4,9 @@ import { useToast } from '../components/Toast';
 import CityInput from '../components/CityInput';
 import { PortfolioUploader } from '../components/ImageUploader';
 import { WithdrawModal } from '../components/WithdrawModal';
+import { PaymentModal } from '../components/PaymentModal';
 import { Avatar, AvatarUploader } from '../components/Avatar';
+import { useAuthStore } from '../store/authStore';
 
 const TX_TYPE_NAMES = {
   deposit: '💰 Пополнение',
@@ -45,7 +47,6 @@ export default function ProfilePage({ user, token, onUpdateUser, onLogout, onOpe
 
   // Wallet top up modal
   const [showDepositModal, setShowDepositModal] = useState(false);
-  const [depositAmount, setDepositAmount] = useState('1000');
   const [depositing, setDepositing] = useState(false);
 
   // Monetization buy
@@ -352,41 +353,16 @@ export default function ProfilePage({ user, token, onUpdateUser, onLogout, onOpe
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || 'Не удалось переключить роль');
 
+      // Обновляем токен в store
+      if (data.token) {
+        const { login } = useAuthStore.getState();
+        login(data.token, data.role);
+      }
+
       addToast(`Роль изменена на: ${data.role === 'specialist' ? 'Специалист' : 'Заказчик'}`, 'success');
       onUpdateUser();
     } catch (err) {
       addToast(err.message, 'error');
-    }
-  };
-
-  const handleDeposit = async (e) => {
-    e.preventDefault();
-    const amt = parseInt(depositAmount, 10);
-    if (!amt || amt <= 0) {
-      addToast('Введите корректную сумму', 'error');
-      return;
-    }
-
-    setDepositing(true);
-    try {
-      const res = await fetch('/wallet/deposit', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ amount: amt }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || 'Ошибка пополнения');
-
-      addToast(`Баланс пополнен на ${amt} ₽`, 'success');
-      setShowDepositModal(false);
-      onUpdateUser();
-    } catch (err) {
-      addToast(err.message, 'error');
-    } finally {
-      setDepositing(false);
     }
   };
 
@@ -1162,53 +1138,11 @@ export default function ProfilePage({ user, token, onUpdateUser, onLogout, onOpe
 
       {/* Deposit Modal */}
       {showDepositModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-800 max-w-md w-full p-6 sm:p-8 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-2xl space-y-4">
-            <h3 className="text-xl font-bold text-slate-900 dark:text-white">Пополнение баланса</h3>
-            <form onSubmit={handleDeposit} className="space-y-4">
-              <div>
-                <label className="block text-xs font-semibold text-slate-500 mb-1">Сумма в рублях (₽)</label>
-                <input
-                  type="number"
-                  value={depositAmount}
-                  onChange={(e) => setDepositAmount(e.target.value)}
-                  className="w-full p-3.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-lg font-bold outline-none"
-                  required
-                />
-              </div>
-
-              <div className="flex gap-2">
-                {[500, 1000, 3000, 5000].map((val) => (
-                  <button
-                    key={val}
-                    type="button"
-                    onClick={() => setDepositAmount(String(val))}
-                    className="flex-1 py-2 bg-slate-100 dark:bg-slate-700 rounded-lg text-xs font-semibold hover:bg-slate-200"
-                  >
-                    +{val} ₽
-                  </button>
-                ))}
-              </div>
-
-              <div className="flex justify-end gap-2 pt-4">
-                <button
-                  type="button"
-                  onClick={() => setShowDepositModal(false)}
-                  className="px-4 py-2 text-sm text-slate-500"
-                >
-                  Отмена
-                </button>
-                <button
-                  type="submit"
-                  disabled={depositing}
-                  className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-sm shadow-md"
-                >
-                  {depositing ? 'Обработка...' : 'Пополнить'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+        <PaymentModal
+          onClose={() => setShowDepositModal(false)}
+          onSuccess={onUpdateUser}
+          token={token}
+        />
       )}
 
       {/* Withdraw Modal */}

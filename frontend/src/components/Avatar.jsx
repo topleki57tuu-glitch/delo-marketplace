@@ -38,8 +38,13 @@ export function AvatarUploader({ currentAvatar, onAvatarUpdate, token }) {
   const handleUpload = async () => {
     if (!preview) return;
 
+    console.log('[Avatar] handleUpload started');
+    console.log('[Avatar] preview length:', preview.length);
+    console.log('[Avatar] token exists:', !!token);
+
     setUploading(true);
     try {
+      console.log('[Avatar] Sending PUT /users/me...');
       // Отправляем base64 изображение на сервер
       const res = await fetch('/users/me', {
         method: 'PUT',
@@ -50,20 +55,40 @@ export function AvatarUploader({ currentAvatar, onAvatarUpdate, token }) {
         body: JSON.stringify({ avatar: preview })
       });
 
-      if (!res.ok) throw new Error('Не удалось обновить аватар');
+      console.log('[Avatar] Response status:', res.status);
+
+      if (!res.ok) {
+        const errorData = await res.json();
+        console.error('[Avatar] Error response:', errorData);
+        throw new Error(errorData.detail || 'Не удалось обновить аватар');
+      }
+
+      const responseData = await res.json();
+      console.log('[Avatar] Success response:', responseData);
 
       addToast('Аватар обновлен!', 'success');
-      onAvatarUpdate();
       setPreview(null);
+
+      console.log('[Avatar] Calling onAvatarUpdate...');
+      // Принудительно обновляем данные пользователя
+      await onAvatarUpdate();
+
+      // Дополнительная задержка и повторное обновление для надёжности
+      setTimeout(() => {
+        console.log('[Avatar] Calling onAvatarUpdate again (delayed)...');
+        onAvatarUpdate();
+      }, 1000);
     } catch (err) {
+      console.error('[Avatar] Exception:', err);
       addToast(err.message, 'error');
     } finally {
       setUploading(false);
+      console.log('[Avatar] handleUpload finished');
     }
   };
 
   const handleRemove = async () => {
-    if (!currentAvatar) return;
+    if (!currentAvatar && !preview) return;
 
     setUploading(true);
     try {
@@ -73,13 +98,17 @@ export function AvatarUploader({ currentAvatar, onAvatarUpdate, token }) {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`
         },
-        body: JSON.stringify({ avatar: null })
+        body: JSON.stringify({ avatar: "" })
       });
 
-      if (!res.ok) throw new Error('Не удалось удалить аватар');
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.detail || 'Не удалось удалить аватар');
+      }
 
       addToast('Аватар удален', 'success');
-      onAvatarUpdate();
+      setPreview(null);
+      onAvatarUpdate(); // Перезагружаем данные пользователя
     } catch (err) {
       addToast(err.message, 'error');
     } finally {
@@ -101,6 +130,7 @@ export function AvatarUploader({ currentAvatar, onAvatarUpdate, token }) {
           </div>
           <div className="flex gap-2 justify-center">
             <button
+              type="button"
               onClick={handleUpload}
               disabled={uploading}
               className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-sm font-bold rounded-xl transition-colors"
@@ -108,6 +138,7 @@ export function AvatarUploader({ currentAvatar, onAvatarUpdate, token }) {
               {uploading ? 'Сохранение...' : 'Сохранить'}
             </button>
             <button
+              type="button"
               onClick={() => setPreview(null)}
               disabled={uploading}
               className="px-4 py-2 bg-slate-200 hover:bg-slate-300 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-900 dark:text-white text-sm font-bold rounded-xl transition-colors"
@@ -127,6 +158,7 @@ export function AvatarUploader({ currentAvatar, onAvatarUpdate, token }) {
           />
           <div className="flex gap-2 justify-center">
             <button
+              type="button"
               onClick={() => fileInputRef.current?.click()}
               className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-bold rounded-xl transition-colors"
             >
@@ -134,6 +166,7 @@ export function AvatarUploader({ currentAvatar, onAvatarUpdate, token }) {
             </button>
             {currentAvatar && (
               <button
+                type="button"
                 onClick={handleRemove}
                 disabled={uploading}
                 className="px-4 py-2 bg-red-100 hover:bg-red-200 dark:bg-red-900/30 dark:hover:bg-red-900/50 text-red-600 dark:text-red-400 text-sm font-bold rounded-xl transition-colors"

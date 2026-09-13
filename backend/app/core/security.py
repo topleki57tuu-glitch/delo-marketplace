@@ -2,7 +2,7 @@ import bcrypt
 import os
 import time
 import secrets
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, List
 from jose import JWTError, jwt
 from fastapi import HTTPException, Request, Depends, status
@@ -29,9 +29,9 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     """Создаёт access токен с коротким временем жизни (15 минут)."""
     to_encode = data.copy()
     if expires_delta:
-        expire = datetime.utcnow() + expires_delta
+        expire = datetime.now(timezone.utc) + expires_delta
     else:
-        expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+        expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode.update({"exp": expire, "type": "access"})
     encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
     return encoded_jwt
@@ -43,7 +43,7 @@ def create_refresh_token(user_id: int) -> tuple[str, str]:
     Возвращает: (token_string, jti) где jti — уникальный ID токена для blacklist.
     """
     jti = secrets.token_urlsafe(32)  # JWT ID для отзыва
-    expire = datetime.utcnow() + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+    expire = datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
     to_encode = {
         "sub": str(user_id),
         "exp": expire,

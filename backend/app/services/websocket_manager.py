@@ -22,7 +22,23 @@ class ConnectionManager:
                 del self.active_connections[task_id]
 
     async def broadcast(self, message: dict, task_id: int):
+        """Broadcast message to all connections in task room"""
         if task_id in self.active_connections:
+            for connection in self.active_connections[task_id]:
+                try:
+                    await connection.send_text(json.dumps(message))
+                except Exception:
+                    pass
+
+    async def broadcast_typing(self, task_id: int, user_id: int, user_name: str, is_typing: bool):
+        """Broadcast typing indicator to all except sender"""
+        if task_id in self.active_connections:
+            message = {
+                "type": "typing",
+                "user_id": user_id,
+                "user_name": user_name,
+                "is_typing": is_typing
+            }
             for connection in self.active_connections[task_id]:
                 try:
                     await connection.send_text(json.dumps(message))

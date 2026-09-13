@@ -1,0 +1,45 @@
+ИНСТРУКЦИЯ ПО ДЕПЛОЮ НА СЕРВЕР
+===================================
+
+ШАГ 1: Откройте ОТДЕЛЬНОЕ окно CMD/PowerShell и подключитесь к серверу:
+-----------------------------------------------------------------------
+ssh root@213.21.229.145
+
+ШАГ 2: На сервере выполните команды очистки (скопируйте всё за раз):
+---------------------------------------------------------------------
+pkill -f uvicorn
+rm -rf /var/www/delomaster.online/backend/*
+rm -rf /var/www/delomaster.online/frontend/*
+mkdir -p /var/www/delomaster.online/backend
+mkdir -p /var/www/delomaster.online/frontend
+echo "Сервер очищен"
+
+ШАГ 3: В ЭТОМ окне Windows (C:\Users\armen\delo-marketplace) загрузите frontend:
+---------------------------------------------------------------------------------
+scp -r frontend/dist/* root@213.21.229.145:/var/www/delomaster.online/frontend/
+
+ШАГ 4: Загрузите backend:
+--------------------------
+scp -r backend/* root@213.21.229.145:/var/www/delomaster.online/backend/
+
+ШАГ 5: Вернитесь в окно SSH (сервер) и запустите backend:
+----------------------------------------------------------
+cd /var/www/delomaster.online/backend
+pip3 install -r requirements.txt
+nohup uvicorn main:app --host 0.0.0.0 --port 8000 > /var/log/backend.log 2>&1 &
+
+ШАГ 6: Проверьте что backend запустился:
+-----------------------------------------
+ps aux | grep uvicorn
+tail -20 /var/log/backend.log
+
+ШАГ 7: Перезапустите nginx:
+----------------------------
+nginx -t
+systemctl restart nginx
+
+ШАГ 8: Проверьте сайт:
+-----------------------
+Откройте в браузере: http://delomaster.online
+
+ГОТОВО!

@@ -7,6 +7,7 @@ from pathlib import Path
 import os
 import json
 import time
+from datetime import datetime, timezone
 
 from app.core.config import settings
 from app.core.database import engine, Base, SessionLocal
@@ -32,7 +33,6 @@ from app.api import (
 )
 from file_utils import UPLOAD_DIR
 from jose import jwt
-from datetime import datetime
 
 # Инициализируем Sentry для мониторинга ошибок в production
 if settings.SENTRY_DSN:
@@ -196,12 +196,13 @@ async def track_last_seen(request: Request, call_next):
         try:
             payload = jwt.decode(auth[7:], settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
             uid = int(payload.get("sub"))
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc)
             last = _seen_cache.get(uid)
             if last is None or (now - last).total_seconds() > 60:
                 db = SessionLocal()
                 try:
-                    db.query(User).filter(User.id == uid).update({"last_seen": now.isoformat()})
+                    # FIX: Передаём datetime объект вместо строки для совместимости с Column(DateTime)
+                    db.query(User).filter(User.id == uid).update({"last_seen": now})
                     db.commit()
                 finally:
                     db.close()
@@ -232,7 +233,7 @@ app.include_router(admin_router)
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "timestamp": datetime.utcnow().isoformat()}
+    return {"status": "ok", "timestamp": datetime.now(timezone.utc).isoformat()}
 
 @app.get("/health/db")
 def health_db():
@@ -248,7 +249,7 @@ def health_db():
 
         return {
             "status": "ok",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "database": "connected",
             "pool": pool_status
         }

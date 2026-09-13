@@ -1,8 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import { useToast } from '../components/Toast';
-import { formatDistanceToNow, format, isToday, isYesterday } from 'date-fns';
-import { ru } from 'date-fns/locale';
+import formatDistanceToNow from 'date-fns/formatDistanceToNow';
+import format from 'date-fns/format';
+import isToday from 'date-fns/isToday';
+import isYesterday from 'date-fns/isYesterday';
+import ru from 'date-fns/locale/ru';
+import { EmojiPicker } from '../components/EmojiPicker';
 
 // Форматирование времени для чата
 function formatMessageTime(dateStr) {
@@ -45,10 +49,16 @@ export default function ChatsPage({ user, token, onOpenAuth }) {
   const [wsConnected, setWsConnected] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [filter, setFilter] = useState('all'); // all, active, completed
+  const [typingUsers, setTypingUsers] = useState({}); // { user_id: { name, timestamp } }
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [uploadingFile, setUploadingFile] = useState(false);
 
   const wsRef = useRef(null);
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
+  const typingTimeoutRef = useRef(null);
+  const emojiPickerRef = useRef(null);
+  const fileInputRef = useRef(null);
 
   // Load user's chats with metadata
   useEffect(() => {
@@ -118,6 +128,27 @@ export default function ChatsPage({ user, token, onOpenAuth }) {
       ws.onmessage = (event) => {
         try {
           const msg = JSON.parse(event.data);
+
+          // Обработка typing событий
+          if (msg.type === 'typing') {
+            if (msg.user_id !== user.id) {
+              if (msg.is_typing) {
+                setTypingUsers(prev => ({
+                  ...prev,
+                  [msg.user_id]: { name: msg.user_name, timestamp: Date.now() }
+                }));
+              } else {
+                setTypingUsers(prev => {
+                  const updated = { ...prev };
+                  delete updated[msg.user_id];
+                  return updated;
+                });
+              }
+            }
+            return;
+          }
+
+          // Обработка обычных сообщений
           setMessages((prev) => [...prev, msg]);
 
           // Звуковое уведомление для входящих сообщений
@@ -143,6 +174,43 @@ export default function ChatsPage({ user, token, onOpenAuth }) {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  // Auto-cleanup typing indicators after 3 seconds of inactivity
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const now = Date.now();
+      setTypingUsers(prev => {
+        const updated = { ...prev };
+        let changed = false;
+        Object.keys(updated).forEach(userId => {
+          if (now - updated[userId].timestamp > 3000) {
+            delete updated[userId];
+            changed = true;
+          }
+        });
+        return changed ? updated : prev;
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  // Close emoji picker when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (emojiPickerRef.current && !emojiPickerRef.current.contains(event.target)) {
+        setShowEmojiPicker(false);
+      }
+    };
+
+    if (showEmojiPicker) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showEmojiPicker]);
 
   const playNotificationSound = () => {
     // Простой beep звук (можно заменить на загрузку audio файла)
@@ -178,6 +246,15 @@ export default function ChatsPage({ user, token, onOpenAuth }) {
     const textToSend = messageText.trim();
     setMessageText('');
 
+    // Stop typing indicator when sending
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: 'typing_stop' }));
+    }
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+      typingTimeoutRef.current = null;
+    }
+
     try {
       const res = await fetch(`/tasks/${activeTaskId}/messages`, {
         method: 'POST',
@@ -191,6 +268,87 @@ export default function ChatsPage({ user, token, onOpenAuth }) {
       if (!res.ok) throw new Error('Не удалось отправить сообщение');
     } catch (err) {
       addToast(err.message, 'error');
+    }
+  };
+
+  const handleInputChange = (e) => {
+    setMessageText(e.target.value);
+
+    // Send typing_start event
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: 'typing_start' }));
+
+      // Clear previous timeout
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+      }
+
+      // Auto-stop typing after 3 seconds of inactivity
+      typingTimeoutRef.current = setTimeout(() => {
+        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+          wsRef.current.send(JSON.stringify({ type: 'typing_stop' }));
+        }
+      }, 3000);
+    }
+  };
+
+  const handleEmojiClick = (emojiObject) => {
+    setMessageText(prev => prev + emojiObject.emoji);
+    setShowEmojiPicker(false);
+  };
+
+  const handleFileSelect = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Валидация размера (макс 10MB)
+    const maxSize = 10 * 1024 * 1024;
+    if (file.size > maxSize) {
+      addToast('Файл слишком большой. Максимум 10 МБ', 'error');
+      return;
+    }
+
+    setUploadingFile(true);
+
+    try {
+      // Читаем файл как base64
+      const reader = new FileReader();
+      reader.onload = async (event) => {
+        const base64 = event.target.result;
+
+        // Отправляем сообщение с файлом
+        const res = await fetch(`/tasks/${activeTaskId}/messages`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            text: messageText.trim() || `📎 ${file.name}`,
+            file_url: base64,
+            file_name: file.name,
+            file_type: file.type
+          }),
+        });
+
+        if (!res.ok) throw new Error('Не удалось отправить файл');
+
+        setMessageText('');
+        addToast('Файл отправлен!', 'success');
+      };
+
+      reader.onerror = () => {
+        throw new Error('Не удалось прочитать файл');
+      };
+
+      reader.readAsDataURL(file);
+    } catch (err) {
+      addToast(err.message, 'error');
+    } finally {
+      setUploadingFile(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
     }
   };
 
@@ -401,6 +559,36 @@ export default function ChatsPage({ user, token, onOpenAuth }) {
                                 : 'bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-bl-none border border-slate-200 dark:border-slate-600'
                             }`}
                           >
+                            {/* File attachment */}
+                            {m.file_url && (
+                              <div className="mb-2">
+                                {m.file_type?.startsWith('image/') ? (
+                                  <img
+                                    src={m.file_url}
+                                    alt={m.file_name}
+                                    className="max-w-xs rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
+                                    onClick={() => window.open(m.file_url, '_blank')}
+                                  />
+                                ) : (
+                                  <a
+                                    href={m.file_url}
+                                    download={m.file_name}
+                                    className={`flex items-center gap-2 px-3 py-2 rounded-lg ${
+                                      isMe ? 'bg-indigo-500 hover:bg-indigo-400' : 'bg-slate-100 dark:bg-slate-600 hover:bg-slate-200 dark:hover:bg-slate-500'
+                                    } transition-colors`}
+                                  >
+                                    <span className="text-2xl">📎</span>
+                                    <div className="flex-1 min-w-0">
+                                      <div className="font-semibold text-xs truncate">{m.file_name}</div>
+                                      <div className={`text-[10px] ${isMe ? 'text-indigo-200' : 'text-slate-400'}`}>
+                                        Скачать файл
+                                      </div>
+                                    </div>
+                                  </a>
+                                )}
+                              </div>
+                            )}
+
                             <p className="whitespace-pre-wrap break-words">{m.text}</p>
                             <span className={`block text-[10px] mt-1 ${isMe ? 'text-indigo-200' : 'text-slate-400'}`}>
                               {formatMessageTime(m.created_at)}
@@ -413,6 +601,18 @@ export default function ChatsPage({ user, token, onOpenAuth }) {
                 )}
                 <div ref={messagesEndRef} />
               </div>
+
+              {/* Typing Indicator */}
+              {Object.keys(typingUsers).length > 0 && (
+                <div className="px-4 py-2 text-xs text-slate-500 dark:text-slate-400 italic">
+                  {Object.values(typingUsers).map(u => u.name).join(', ')} печатает
+                  <span className="inline-flex ml-1">
+                    <span className="animate-bounce" style={{ animationDelay: '0ms' }}>.</span>
+                    <span className="animate-bounce" style={{ animationDelay: '150ms' }}>.</span>
+                    <span className="animate-bounce" style={{ animationDelay: '300ms' }}>.</span>
+                  </span>
+                </div>
+              )}
 
               {/* Quick Templates */}
               <div className="px-4 py-2 border-t border-slate-100 dark:border-slate-700/40 bg-slate-50/50 dark:bg-slate-900/20">
@@ -431,10 +631,56 @@ export default function ChatsPage({ user, token, onOpenAuth }) {
 
               {/* Input Area */}
               <form onSubmit={handleSendMessage} className="p-4 border-t border-slate-200 dark:border-slate-700/60 bg-white dark:bg-slate-800">
-                <div className="flex gap-2">
+                <div className="flex gap-2 items-end relative">
+                  {/* Emoji Picker Button */}
+                  <div className="relative" ref={emojiPickerRef}>
+                    <button
+                      type="button"
+                      onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                      className="p-3 text-2xl hover:bg-slate-100 dark:hover:bg-slate-700 rounded-xl transition-colors"
+                      title="Добавить эмодзи"
+                    >
+                      😊
+                    </button>
+
+                    {/* Emoji Picker Popup */}
+                    {showEmojiPicker && (
+                      <div className="absolute bottom-full left-0 mb-2 z-50">
+                        <EmojiPicker
+                          onEmojiClick={handleEmojiClick}
+                          width={320}
+                          height={400}
+                          theme="auto"
+                          searchPlaceHolder="Поиск эмодзи..."
+                          previewConfig={{ showPreview: false }}
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* File Upload Button */}
+                  <div>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      onChange={handleFileSelect}
+                      className="hidden"
+                      accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.zip,.rar"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={uploadingFile}
+                      className="p-3 text-xl hover:bg-slate-100 dark:hover:bg-slate-700 rounded-xl transition-colors disabled:opacity-50"
+                      title="Прикрепить файл"
+                    >
+                      {uploadingFile ? '⏳' : '📎'}
+                    </button>
+                  </div>
+
                   <textarea
                     value={messageText}
-                    onChange={(e) => setMessageText(e.target.value)}
+                    onChange={handleInputChange}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' && !e.shiftKey) {
                         e.preventDefault();
@@ -444,10 +690,11 @@ export default function ChatsPage({ user, token, onOpenAuth }) {
                     placeholder="Введите сообщение... (Enter для отправки)"
                     className="flex-1 px-4 py-3 bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-700 rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
                     rows="2"
+                    disabled={uploadingFile}
                   />
                   <button
                     type="submit"
-                    disabled={!messageText.trim()}
+                    disabled={!messageText.trim() || uploadingFile}
                     className="px-6 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold rounded-xl transition-colors self-end"
                   >
                     Отправить

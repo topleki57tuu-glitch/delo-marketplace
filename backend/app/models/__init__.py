@@ -146,6 +146,9 @@ class Message(Base):
     task_id = Column(Integer, index=True)
     sender_id = Column(Integer)
     text = Column(String)
+    file_url = Column(String, nullable=True)
+    file_name = Column(String, nullable=True)
+    file_type = Column(String, nullable=True)
     is_read = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
