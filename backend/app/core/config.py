@@ -1,5 +1,9 @@
 import os
 from typing import List
+from dotenv import load_dotenv
+
+# Загрузка переменных из .env файла
+load_dotenv()
 
 
 def _parse_origins(raw: str) -> List[str]:
