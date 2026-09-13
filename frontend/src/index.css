@@ -48,6 +48,30 @@
     border: 1px solid var(--color-border);
 }
 
+/* Accessibility: Screen reader only */
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border-width: 0;
+}
+
+.focus\:not-sr-only:focus {
+    position: static;
+    width: auto;
+    height: auto;
+    padding: initial;
+    margin: initial;
+    overflow: visible;
+    clip: auto;
+    white-space: normal;
+}
+
 /* Subtle dot-grid background */
 @utility dot-grid {
     background-image: radial-gradient(circle, rgba(139, 149, 167, 0.14) 1px, transparent 1px);

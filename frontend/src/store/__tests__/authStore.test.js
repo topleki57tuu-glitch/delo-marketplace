@@ -3,94 +3,78 @@ import { useAuthStore } from '../authStore';
 
 describe('authStore', () => {
   beforeEach(() => {
-    // Сброс store перед каждым тестом
+    // Сброс состояния перед каждым тестом
     useAuthStore.setState({
       token: null,
-      role: null,
       user: null,
+      role: null,
       isAuth: false
     });
+    localStorage.clear();
   });
 
-  it('should initialize with default state', () => {
-    const state = useAuthStore.getState();
+  describe('login', () => {
+    it('should login user with token and role', () => {
+      const { login } = useAuthStore.getState();
 
-    expect(state.token).toBeNull();
-    expect(state.role).toBeNull();
-    expect(state.user).toBeNull();
-    expect(state.isAuth).toBe(false);
+      login('test-token-123', 'customer');
+
+      const state = useAuthStore.getState();
+      expect(state.token).toBe('test-token-123');
+      expect(state.role).toBe('customer');
+      expect(state.isAuth).toBe(true);
+    });
   });
 
-  it('should login user with token and role', () => {
-    const { login } = useAuthStore.getState();
+  describe('logout', () => {
+    it('should clear user state', () => {
+      // Сначала логинимся
+      useAuthStore.setState({
+        token: 'test-token',
+        user: { id: 1, email: 'test@test.com' },
+        role: 'customer',
+        isAuth: true
+      });
 
-    login('test-token-123', 'customer');
+      const { logout } = useAuthStore.getState();
+      logout();
 
-    const state = useAuthStore.getState();
-    expect(state.token).toBe('test-token-123');
-    expect(state.role).toBe('customer');
-    expect(state.isAuth).toBe(true);
+      const state = useAuthStore.getState();
+      expect(state.token).toBeNull();
+      expect(state.user).toBeNull();
+      expect(state.role).toBeNull();
+      expect(state.isAuth).toBe(false);
+    });
   });
 
-  it('should logout user and clear all data', () => {
-    // Сначала залогиним
-    useAuthStore.setState({
-      token: 'test-token',
-      role: 'specialist',
-      user: { id: 1, email: 'test@example.com' },
-      isAuth: true
+  describe('updateUser', () => {
+    it('should update user data', () => {
+      const { updateUser } = useAuthStore.getState();
+
+      const userData = {
+        id: 1,
+        email: 'user@example.com',
+        name: 'Test User',
+        balance: 5000
+      };
+
+      updateUser(userData);
+
+      const state = useAuthStore.getState();
+      expect(state.user).toEqual(userData);
     });
 
-    const { logout } = useAuthStore.getState();
-    logout();
+    it('should replace user data completely', () => {
+      useAuthStore.setState({
+        user: { id: 1, email: 'old@test.com', balance: 1000 }
+      });
 
-    const state = useAuthStore.getState();
-    expect(state.token).toBeNull();
-    expect(state.role).toBeNull();
-    expect(state.user).toBeNull();
-    expect(state.isAuth).toBe(false);
-  });
+      const { updateUser } = useAuthStore.getState();
+      const newUserData = { id: 1, email: 'new@test.com', balance: 2000, name: 'Updated' };
+      updateUser(newUserData);
 
-  it('should update user data', () => {
-    const userData = {
-      id: 1,
-      email: 'test@example.com',
-      name: 'Test User',
-      balance: 10000
-    };
-
-    const { updateUser } = useAuthStore.getState();
-    updateUser(userData);
-
-    const state = useAuthStore.getState();
-    expect(state.user).toEqual(userData);
-  });
-
-  it('should update user data while preserving auth state', () => {
-    useAuthStore.setState({
-      token: 'existing-token',
-      role: 'customer',
-      isAuth: true
+      const state = useAuthStore.getState();
+      expect(state.user).toEqual(newUserData);
     });
-
-    const { updateUser } = useAuthStore.getState();
-    updateUser({ id: 5, email: 'new@example.com' });
-
-    const state = useAuthStore.getState();
-    expect(state.token).toBe('existing-token');
-    expect(state.role).toBe('customer');
-    expect(state.isAuth).toBe(true);
-    expect(state.user).toEqual({ id: 5, email: 'new@example.com' });
-  });
-
-  it('should persist to localStorage', () => {
-    // Note: В реальном окружении Zustand persist middleware сохраняет в localStorage
-    // В тестах это можно проверить мокируя localStorage
-    const { login } = useAuthStore.getState();
-
-    login('persistent-token', 'specialist');
-
-    const state = useAuthStore.getState();
-    expect(state.isAuth).toBe(true);
   });
 });

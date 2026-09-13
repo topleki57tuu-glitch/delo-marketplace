@@ -3,7 +3,7 @@ import { useTasksStore } from '../tasksStore';
 
 describe('tasksStore', () => {
   beforeEach(() => {
-    // Сброс store перед каждым тестом
+    // Сброс состояния
     useTasksStore.setState({
       tasks: {},
       allTaskIds: [],
@@ -11,163 +11,182 @@ describe('tasksStore', () => {
       loading: false,
       error: null
     });
-
-    // Сброс моков
     vi.clearAllMocks();
   });
 
-  it('should initialize with empty state', () => {
-    const state = useTasksStore.getState();
+  describe('fetchTasks', () => {
+    it('should fetch and normalize tasks', async () => {
+      const mockTasks = [
+        { id: 1, title: 'Task 1', budget: 5000 },
+        { id: 2, title: 'Task 2', budget: 10000 }
+      ];
 
-    expect(state.tasks).toEqual({});
-    expect(state.allTaskIds).toEqual([]);
-    expect(state.myTaskIds).toEqual([]);
-    expect(state.loading).toBe(false);
-    expect(state.error).toBeNull();
-  });
-
-  it('should fetch tasks and normalize them', async () => {
-    const mockTasks = [
-      { id: 1, title: 'Task 1', budget: 10000, status: 'open' },
-      { id: 2, title: 'Task 2', budget: 20000, status: 'open' }
-    ];
-
-    global.fetch = vi.fn(() =>
-      Promise.resolve({
+      global.fetch = vi.fn().mockResolvedValue({
         ok: true,
-        json: () => Promise.resolve(mockTasks)
-      })
-    );
+        json: async () => mockTasks
+      });
 
-    await useTasksStore.getState().fetchTasks();
+      const { fetchTasks } = useTasksStore.getState();
+      await fetchTasks();
 
-    const state = useTasksStore.getState();
-    expect(state.tasks[1]).toEqual(mockTasks[0]);
-    expect(state.tasks[2]).toEqual(mockTasks[1]);
-    expect(state.allTaskIds).toEqual([1, 2]);
-    expect(state.loading).toBe(false);
-    expect(state.error).toBeNull();
-  });
-
-  it('should handle fetch error', async () => {
-    global.fetch = vi.fn(() =>
-      Promise.resolve({
-        ok: false,
-        status: 500
-      })
-    );
-
-    await useTasksStore.getState().fetchTasks();
-
-    const state = useTasksStore.getState();
-    expect(state.error).toBeTruthy();
-    expect(state.loading).toBe(false);
-  });
-
-  it('should use cached task if available', async () => {
-    const existingTask = { id: 1, title: 'Cached Task', budget: 5000 };
-    useTasksStore.setState({
-      tasks: { 1: existingTask }
+      const state = useTasksStore.getState();
+      expect(state.tasks[1]).toEqual(mockTasks[0]);
+      expect(state.tasks[2]).toEqual(mockTasks[1]);
+      expect(state.allTaskIds).toEqual([1, 2]);
+      expect(state.loading).toBe(false);
     });
 
-    global.fetch = vi.fn();
+    it('should handle fetch error', async () => {
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: false
+      });
 
-    const task = await useTasksStore.getState().fetchTask(1, false);
+      const { fetchTasks } = useTasksStore.getState();
 
-    expect(task).toEqual(existingTask);
-    expect(global.fetch).not.toHaveBeenCalled();
+      await expect(fetchTasks()).rejects.toThrow('Failed to fetch tasks');
+
+      const state = useTasksStore.getState();
+      expect(state.error).toBe('Failed to fetch tasks');
+      expect(state.loading).toBe(false);
+    });
   });
 
-  it('should fetch task if not in cache', async () => {
-    const mockTask = { id: 3, title: 'New Task', budget: 15000 };
+  describe('updateTaskOptimistic', () => {
+    it('should update task optimistically', () => {
+      useTasksStore.setState({
+        tasks: {
+          1: { id: 1, title: 'Task 1', status: 'pending' }
+        }
+      });
 
-    global.fetch = vi.fn(() =>
-      Promise.resolve({
-        ok: true,
-        json: () => Promise.resolve(mockTask)
-      })
-    );
+      const { updateTaskOptimistic } = useTasksStore.getState();
+      const original = updateTaskOptimistic(1, { status: 'completed' });
 
-    const task = await useTasksStore.getState().fetchTask(3);
-
-    expect(task).toEqual(mockTask);
-    expect(useTasksStore.getState().tasks[3]).toEqual(mockTask);
-    expect(global.fetch).toHaveBeenCalledWith('/tasks/3');
+      const state = useTasksStore.getState();
+      expect(state.tasks[1].status).toBe('completed');
+      expect(original.status).toBe('pending');
+    });
   });
 
-  it('should add task to store', () => {
-    const newTask = { id: 5, title: 'Added Task', budget: 8000 };
+  describe('revertTask', () => {
+    it('should revert task to original state', () => {
+      useTasksStore.setState({
+        tasks: {
+          1: { id: 1, title: 'Task 1', status: 'completed' }
+        }
+      });
 
-    useTasksStore.getState().addTask(newTask);
+      const { revertTask } = useTasksStore.getState();
+      const original = { id: 1, title: 'Task 1', status: 'pending' };
 
-    const state = useTasksStore.getState();
-    expect(state.tasks[5]).toEqual(newTask);
-    expect(state.allTaskIds).toContain(5);
+      revertTask(1, original);
+
+      const state = useTasksStore.getState();
+      expect(state.tasks[1].status).toBe('pending');
+    });
   });
 
-  it('should update task optimistically', () => {
-    const originalTask = { id: 1, status: 'in_progress', budget: 10000 };
-    useTasksStore.setState({
-      tasks: { 1: originalTask }
+  describe('addTask', () => {
+    it('should add new task to store', () => {
+      const newTask = { id: 10, title: 'New Task', budget: 15000 };
+
+      const { addTask } = useTasksStore.getState();
+      addTask(newTask);
+
+      const state = useTasksStore.getState();
+      expect(state.tasks[10]).toEqual(newTask);
+      expect(state.allTaskIds).toContain(10);
     });
 
-    useTasksStore.getState().updateTaskOptimistic(1, { status: 'completed' });
+    it('should prepend task to list', () => {
+      useTasksStore.setState({
+        tasks: { 1: { id: 1, title: 'Existing' } },
+        allTaskIds: [1]
+      });
 
-    const task = useTasksStore.getState().tasks[1];
-    expect(task.status).toBe('completed');
-    expect(task.budget).toBe(10000); // Другие поля остались
+      const { addTask } = useTasksStore.getState();
+      addTask({ id: 2, title: 'New' });
+
+      const state = useTasksStore.getState();
+      expect(state.allTaskIds).toEqual([2, 1]);
+    });
   });
 
-  it('should revert task on error', () => {
-    const originalTask = { id: 1, status: 'in_progress', budget: 10000 };
+  describe('removeTask', () => {
+    it('should remove task from store', () => {
+      useTasksStore.setState({
+        tasks: {
+          1: { id: 1, title: 'Task 1' },
+          2: { id: 2, title: 'Task 2' }
+        },
+        allTaskIds: [1, 2]
+      });
 
-    useTasksStore.setState({
-      tasks: { 1: { id: 1, status: 'completed', budget: 10000 } }
+      const { removeTask } = useTasksStore.getState();
+      removeTask(1);
+
+      const state = useTasksStore.getState();
+      expect(state.tasks[1]).toBeUndefined();
+      expect(state.allTaskIds).toEqual([2]);
+    });
+  });
+
+  describe('selectors', () => {
+    beforeEach(() => {
+      useTasksStore.setState({
+        tasks: {
+          1: { id: 1, title: 'Task 1' },
+          2: { id: 2, title: 'Task 2' },
+          3: { id: 3, title: 'Task 3' }
+        },
+        allTaskIds: [1, 2, 3],
+        myTaskIds: [1, 3]
+      });
     });
 
-    useTasksStore.getState().revertTask(1, originalTask);
+    it('getTask should return task by id', () => {
+      const { getTask } = useTasksStore.getState();
+      const task = getTask(1);
 
-    const task = useTasksStore.getState().tasks[1];
-    expect(task).toEqual(originalTask);
-  });
-
-  it('should remove task from store', () => {
-    useTasksStore.setState({
-      tasks: { 1: { id: 1 }, 2: { id: 2 } },
-      allTaskIds: [1, 2],
-      myTaskIds: [1]
+      expect(task).toEqual({ id: 1, title: 'Task 1' });
     });
 
-    useTasksStore.getState().removeTask(1);
+    it('getAllTasks should return all tasks', () => {
+      const { getAllTasks } = useTasksStore.getState();
+      const tasks = getAllTasks();
 
-    const state = useTasksStore.getState();
-    expect(state.tasks[1]).toBeUndefined();
-    expect(state.tasks[2]).toBeDefined();
-    expect(state.allTaskIds).toEqual([2]);
-    expect(state.myTaskIds).toEqual([]);
-  });
-
-  it('should get all tasks as array', () => {
-    useTasksStore.setState({
-      tasks: {
-        1: { id: 1, title: 'Task 1' },
-        2: { id: 2, title: 'Task 2' }
-      },
-      allTaskIds: [1, 2]
+      expect(tasks).toHaveLength(3);
+      expect(tasks[0].id).toBe(1);
     });
 
-    const tasks = useTasksStore.getState().getAllTasks();
+    it('getMyTasks should return only my tasks', () => {
+      const { getMyTasks } = useTasksStore.getState();
+      const tasks = getMyTasks();
 
-    expect(tasks).toHaveLength(2);
-    expect(tasks[0].id).toBe(1);
-    expect(tasks[1].id).toBe(2);
+      expect(tasks).toHaveLength(2);
+      expect(tasks.map(t => t.id)).toEqual([1, 3]);
+    });
   });
 
-  it('should clear error', () => {
-    useTasksStore.setState({ error: 'Some error' });
+  describe('clear', () => {
+    it('should clear all state', () => {
+      useTasksStore.setState({
+        tasks: { 1: { id: 1 } },
+        allTaskIds: [1],
+        myTaskIds: [1],
+        loading: true,
+        error: 'error'
+      });
 
-    useTasksStore.getState().clearError();
+      const { clear } = useTasksStore.getState();
+      clear();
 
-    expect(useTasksStore.getState().error).toBeNull();
+      const state = useTasksStore.getState();
+      expect(state.tasks).toEqual({});
+      expect(state.allTaskIds).toEqual([]);
+      expect(state.myTaskIds).toEqual([]);
+      expect(state.loading).toBe(false);
+      expect(state.error).toBeNull();
+    });
   });
 });

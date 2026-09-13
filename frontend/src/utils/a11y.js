@@ -1,42 +1,35 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 
 /**
- * Хук для создания focus trap в модальных окнах.
- * Удерживает фокус внутри контейнера при навигации Tab/Shift+Tab.
- *
- * @param {boolean} isOpen - Активен ли trap
- * @param {React.RefObject} containerRef - Ref на контейнер (опционально)
+ * Хук для управления focus trap в модальных окнах
+ * Ограничивает фокус внутри модального окна для keyboard navigation
  */
-export function useFocusTrap(isOpen, containerRef = null) {
+export function useFocusTrap(isOpen, containerRef) {
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen || !containerRef?.current) return;
 
-    const container = containerRef?.current || document;
-    const focusableSelector = 'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
+    const container = containerRef.current;
+    const focusableSelector =
+      'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
-    const focusableElements = Array.from(
-      container.querySelectorAll(focusableSelector)
-    );
-
-    if (focusableElements.length === 0) return;
-
+    const focusableElements = container.querySelectorAll(focusableSelector);
     const firstElement = focusableElements[0];
     const lastElement = focusableElements[focusableElements.length - 1];
 
-    // Устанавливаем фокус на первый элемент
+    // Установить фокус на первый элемент
     firstElement?.focus();
 
     const handleTab = (e) => {
       if (e.key !== 'Tab') return;
 
       if (e.shiftKey) {
-        // Shift + Tab (назад)
+        // Shift + Tab
         if (document.activeElement === firstElement) {
           e.preventDefault();
           lastElement?.focus();
         }
       } else {
-        // Tab (вперёд)
+        // Tab
         if (document.activeElement === lastElement) {
           e.preventDefault();
           firstElement?.focus();
@@ -44,20 +37,49 @@ export function useFocusTrap(isOpen, containerRef = null) {
       }
     };
 
-    document.addEventListener('keydown', handleTab);
-    return () => document.removeEventListener('keydown', handleTab);
+    container.addEventListener('keydown', handleTab);
+    return () => container.removeEventListener('keydown', handleTab);
   }, [isOpen, containerRef]);
 }
 
 /**
- * Хук для закрытия модального окна по Escape.
- *
- * @param {function} callback - Функция закрытия
- * @param {boolean} enabled - Включён ли хук
+ * Комбинированный хук для модальных окон
+ * Объединяет escape key, lock scroll и focus management
  */
-export function useEscapeKey(callback, enabled = true) {
+export function useModal(isOpen, onClose, options = {}) {
+  const {
+    escapeEnabled = true,
+    lockScroll = true,
+    restoreFocus = true
+  } = options;
+
+  // Escape key
+  useEscapeKey(onClose, isOpen && escapeEnabled);
+
+  // Lock body scroll
+  useLockBodyScroll(isOpen && lockScroll);
+
+  // Restore focus on close
   useEffect(() => {
-    if (!enabled) return;
+    if (!restoreFocus || !isOpen) return;
+
+    const previousActiveElement = document.activeElement;
+
+    return () => {
+      if (previousActiveElement && typeof previousActiveElement.focus === 'function') {
+        previousActiveElement.focus();
+      }
+    };
+  }, [isOpen, restoreFocus]);
+}
+
+/**
+ * Хук для обработки клавиши Escape
+ * Используется для закрытия модальных окон и выпадающих меню
+ */
+export function useEscapeKey(callback, isActive = true) {
+  useEffect(() => {
+    if (!isActive) return;
 
     const handleEscape = (e) => {
       if (e.key === 'Escape') {
@@ -67,117 +89,67 @@ export function useEscapeKey(callback, enabled = true) {
 
     document.addEventListener('keydown', handleEscape);
     return () => document.removeEventListener('keydown', handleEscape);
-  }, [callback, enabled]);
+  }, [callback, isActive]);
 }
 
 /**
- * Хук для блокировки скролла body при открытом модальном окне.
- *
- * @param {boolean} isOpen - Открыто ли модальное окно
+ * Хук для блокировки скролла body при открытии модального окна
  */
-export function useLockBodyScroll(isOpen) {
+export function useLockBodyScroll(isLocked) {
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isLocked) return;
 
     const originalOverflow = document.body.style.overflow;
+    const originalPaddingRight = document.body.style.paddingRight;
+
+    // Вычисляем ширину scrollbar для компенсации сдвига
+    const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+
     document.body.style.overflow = 'hidden';
+    document.body.style.paddingRight = `${scrollbarWidth}px`;
 
     return () => {
       document.body.style.overflow = originalOverflow;
+      document.body.style.paddingRight = originalPaddingRight;
     };
-  }, [isOpen]);
+  }, [isLocked]);
 }
 
 /**
- * Хук для восстановления фокуса на элементе при закрытии модального окна.
- *
- * @param {boolean} isOpen - Открыто ли модальное окно
+ * Хук для объявления изменений для screen readers
+ * Используется для live regions (уведомления, статусы)
  */
-export function useRestoreFocus(isOpen) {
+export function useAnnounce() {
   useEffect(() => {
-    if (!isOpen) return;
+    // Создаём live region если его ещё нет
+    if (!document.getElementById('a11y-announcer')) {
+      const announcer = document.createElement('div');
+      announcer.id = 'a11y-announcer';
+      announcer.setAttribute('role', 'status');
+      announcer.setAttribute('aria-live', 'polite');
+      announcer.setAttribute('aria-atomic', 'true');
+      announcer.className = 'sr-only';
+      document.body.appendChild(announcer);
+    }
+  }, []);
 
-    const previouslyFocusedElement = document.activeElement;
-
-    return () => {
-      // Восстанавливаем фокус при размонтировании
-      if (previouslyFocusedElement instanceof HTMLElement) {
-        previouslyFocusedElement.focus();
-      }
-    };
-  }, [isOpen]);
+  return (message) => {
+    const announcer = document.getElementById('a11y-announcer');
+    if (announcer) {
+      announcer.textContent = message;
+      // Очистить через 1 секунду
+      setTimeout(() => {
+        announcer.textContent = '';
+      }, 1000);
+    }
+  };
 }
 
 /**
- * Комбинированный хук для модальных окон.
- * Включает focus trap, Escape handling, lock scroll и restore focus.
- *
- * @param {boolean} isOpen - Открыто ли модальное окно
- * @param {function} onClose - Функция закрытия
- * @param {object} options - Опции { escapeEnabled, lockScroll, restoreFocus }
- */
-export function useModal(isOpen, onClose, options = {}) {
-  const {
-    escapeEnabled = true,
-    lockScroll = true,
-    restoreFocus = true,
-    containerRef = null
-  } = options;
-
-  useFocusTrap(isOpen, containerRef);
-  useEscapeKey(onClose, escapeEnabled && isOpen);
-
-  if (lockScroll) {
-    useLockBodyScroll(isOpen);
-  }
-
-  if (restoreFocus) {
-    useRestoreFocus(isOpen);
-  }
-}
-
-/**
- * Хук для объявления live region обновлений (для screen readers).
- *
- * @param {string} message - Сообщение для объявления
- * @param {string} politeness - 'polite' | 'assertive' | 'off'
- */
-export function useAnnounce(message, politeness = 'polite') {
-  useEffect(() => {
-    if (!message) return;
-
-    const announcer = document.createElement('div');
-    announcer.setAttribute('role', 'status');
-    announcer.setAttribute('aria-live', politeness);
-    announcer.setAttribute('aria-atomic', 'true');
-    announcer.className = 'sr-only';
-    announcer.textContent = message;
-
-    document.body.appendChild(announcer);
-
-    // Удаляем через 1 секунду (после объявления)
-    const timer = setTimeout(() => {
-      document.body.removeChild(announcer);
-    }, 1000);
-
-    return () => {
-      clearTimeout(timer);
-      if (document.body.contains(announcer)) {
-        document.body.removeChild(announcer);
-      }
-    };
-  }, [message, politeness]);
-}
-
-/**
- * Хук для управления ID элемента (для связывания label с input через htmlFor).
- *
- * @param {string} prefix - Префикс ID
- * @returns {string} Уникальный ID
+ * Генерирует уникальный ID для связывания label и input
  */
 let idCounter = 0;
-export function useId(prefix = 'id') {
-  const { useState } = require('react');
+export function useUniqueId(prefix = 'id') {
   const [id] = useState(() => `${prefix}-${++idCounter}`);
   return id;
 }
