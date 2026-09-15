@@ -25,6 +25,10 @@ const DisputesPage = lazy(() => import('./pages/DisputesPage'));
 const ResetPasswordPage = lazy(() => import('./pages/ResetPasswordPage'));
 const ChatsPage = lazy(() => import('./pages/ChatsPage'));
 const AdminDashboardPage = lazy(() => import('./pages/AdminDashboardPage'));
+const ProductsPage = lazy(() => import('./pages/ProductsPage'));
+const ProductDetailPage = lazy(() => import('./pages/ProductDetailPage'));
+const CreateProductPage = lazy(() => import('./pages/CreateProductPage'));
+const MyOrdersPage = lazy(() => import('./pages/MyOrdersPage'));
 
 const API_URL = import.meta.env.VITE_API_URL || '';
 
@@ -66,6 +70,16 @@ function NavigationBar({ user, token, onOpenAuth, onOpenChatsDrawer, onLogout })
             }`}
           >
             Специалисты
+          </Link>
+          <Link
+            to="/products"
+            className={`px-3.5 py-2 rounded-xl transition-colors ${
+              location.pathname.startsWith('/products')
+                ? 'bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400'
+                : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+            }`}
+          >
+            🛍️ Товары
           </Link>
           <Link
             to="/create-task"
@@ -610,6 +624,22 @@ export default function App() {
                       onOpenAuth={handleOpenAuth}
                     />
                   }
+                />
+                <Route
+                  path="/products"
+                  element={<ProductsPage />}
+                />
+                <Route
+                  path="/products/:id"
+                  element={<ProductDetailPage />}
+                />
+                <Route
+                  path="/create-product"
+                  element={<CreateProductPage />}
+                />
+                <Route
+                  path="/my-orders"
+                  element={<MyOrdersPage />}
                 />
                 <Route
                   path="/disputes"
