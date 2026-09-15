@@ -24,6 +24,7 @@ from app.models import (
     User, Task, Response, Message, Review, Notification, Transaction,
     UserRole, TaskStatus, TaskCategory, TransactionType,
     Dispute, DisputeStatus, WithdrawalRequest, WithdrawalStatus,
+    Product, Order, ProductCategory, ProductCondition, OrderStatus,
 )
 
 NOW = datetime.utcnow()
@@ -50,6 +51,7 @@ def main():
         "payment_records", "password_reset_tokens", "stored_files", "disputes",
         "verification_requests",
         "withdrawal_requests",
+        "orders", "products",
         "tasks", "users",
     ]
     for t in tables:
@@ -429,6 +431,140 @@ def main():
                    WithdrawalStatus.rejected, days_ago=15,
                    comment="Имя получателя не совпадает с владельцем счёта")
 
+    # ---------- Товары (маркетплейс) ----------
+    products = {}
+
+    def add_product(key, seller, title, description, category, condition, price, stock=1, city=None, delivery="both", images=None):
+        """Создаёт товар. Цена в рублях, конвертируется в копейки."""
+        import json
+        p = Product(
+            seller_id=users[seller].id,
+            title=title,
+            description=description,
+            category=ProductCategory[category],
+            condition=ProductCondition[condition],
+            price=price * 100,  # в копейках
+            stock=stock,
+            city=city,
+            delivery_options=delivery,
+            images=json.dumps(images) if images else None,
+            status="active",
+            created_at=NOW - timedelta(days=7)
+        )
+        db.add(p)
+        products[key] = p
+        return p
+
+    # Электроника
+    add_product("p1", "igor", "iPhone 14 Pro 256GB Space Black",
+                "Новый iPhone 14 Pro в заводской упаковке. Запечатан. Гарантия Apple 1 год. Цвет Space Black, память 256 ГБ.",
+                "electronics", "new", 85000, stock=1, city="Москва", delivery="both")
+
+    add_product("p2", "maria", "MacBook Air M2 2023",
+                "Б/у MacBook Air M2, использовался 3 месяца. Состояние отличное, царапин нет. 8GB RAM, 256GB SSD. Полный комплект + чехол в подарок.",
+                "electronics", "used", 95000, stock=1, city="Москва", delivery="both")
+
+    add_product("p3", "alexey", "AirPods Pro 2-го поколения",
+                "Новые AirPods Pro 2 в запечатанной коробке. Оригинал, чек есть. Активное шумоподавление, до 6 часов работы.",
+                "electronics", "new", 21000, stock=2, city="Санкт-Петербург", delivery="delivery")
+
+    # Одежда
+    add_product("p4", "elena", "Кожаная куртка Zara, размер M",
+                "Женская кожаная куртка Zara, чёрная, размер M. Носила 1 сезон, состояние отличное. Натуральная кожа.",
+                "clothing", "used", 8500, stock=1, city="Казань", delivery="both")
+
+    add_product("p5", "sergey", "Кроссовки Nike Air Max 270, размер 42",
+                "Новые мужские кроссовки Nike Air Max 270. Размер 42, цвет чёрно-белый. Оригинал, бирки на месте.",
+                "clothing", "new", 12000, stock=1, city="Москва", delivery="delivery")
+
+    # Товары для дома
+    add_product("p6", "dmitry", "Кофемашина Delonghi ECAM 22.110",
+                "Автоматическая кофемашина Delonghi. Б/у, работает отлично. Недавно была чистка. Капучинатор, 15 бар.",
+                "home", "used", 18000, stock=1, city="Санкт-Петербург", delivery="pickup")
+
+    add_product("p7", "olga", "Пылесос Dyson V11 Absolute",
+                "Беспроводной пылесос Dyson V11 Absolute. Новый, в упаковке. Полный комплект насадок, 60 минут работы.",
+                "home", "new", 45000, stock=1, city="Казань", delivery="both")
+
+    # Хобби и развлечения
+    add_product("p8", "igor", "PlayStation 5 + 2 игры",
+                "PS5 Digital Edition. Б/у 6 месяцев. В комплекте 2 игры (Spider-Man, God of War). Состояние идеальное.",
+                "hobby", "used", 38000, stock=1, city="Москва", delivery="both")
+
+    add_product("p9", "sergey", "Электрогитара Fender Stratocaster",
+                "Электрогитара Fender Stratocaster, цвет Sunburst. Б/у, 2019 год. Звукосниматели оригинал, чехол в комплекте.",
+                "hobby", "used", 55000, stock=1, city="Москва", delivery="pickup")
+
+    # Авто
+    add_product("p10", "alexey", "Комплект зимних шин Michelin R17",
+                "Зимние шины Michelin X-Ice North 4, 225/55 R17. Б/у 2 сезона, протектор 7мм. Комплект 4 шт.",
+                "auto", "used", 22000, stock=1, city="Санкт-Петербург", delivery="pickup")
+
+    # Детские товары
+    add_product("p11", "elena", "Коляска 3 в 1 Tutis Zippy",
+                "Детская коляска 3 в 1: люлька, прогулочный блок, автокресло. Б/у 1 год. Состояние хорошее, все механизмы работают.",
+                "kids", "used", 28000, stock=1, city="Казань", delivery="both")
+
+    add_product("p12", "olga", "Конструктор LEGO City Police Station",
+                "Новый конструктор LEGO City 60316 (Полицейский участок). Запечатан. 743 детали, 6 минифигурок.",
+                "kids", "new", 7500, stock=2, city="Казань", delivery="delivery")
+
+    db.flush()
+
+    # ---------- Заказы товаров ----------
+    # Завершённый заказ (деньги переведены продавцу)
+    order1 = Order(
+        product_id=products["p3"].id,
+        buyer_id=users["anna"].id,
+        seller_id=users["alexey"].id,
+        quantity=1,
+        total_price=2100000,  # в копейках
+        delivery_method="delivery",
+        delivery_address="Москва, ул. Тверская, 10, кв. 5",
+        tracking_number="SDEK123456789",
+        status=OrderStatus.completed,
+        platform_fee=105000,  # 5%
+        created_at=NOW - timedelta(days=8)
+    )
+    db.add(order1)
+    db.flush()
+
+    # Транзакции для завершённого заказа
+    add_tx("anna", -2100000, "escrow_hold", days_ago=8)  # покупатель заплатил
+    add_tx("alexey", 1995000, "escrow_release", days_ago=1, fee=105000)  # продавцу 95%, платформе 5%
+
+    # Заказ в процессе (отправлен)
+    order2 = Order(
+        product_id=products["p7"].id,
+        buyer_id=users["dmitry"].id,
+        seller_id=users["olga"].id,
+        quantity=1,
+        total_price=4500000,
+        delivery_method="delivery",
+        delivery_address="Санкт-Петербург, Невский проспект, 100, кв. 25",
+        tracking_number="SDEK987654321",
+        status=OrderStatus.shipped,
+        platform_fee=225000,
+        created_at=NOW - timedelta(days=3)
+    )
+    db.add(order2)
+    db.flush()
+
+    # Эскроу для заказа в процессе
+    add_tx("dmitry", -4500000, "escrow_hold", days_ago=3)
+
+    # Уведомления для товаров
+    add_notif("alexey", "new_order", "Новый заказ!",
+              "Получен заказ на товар «AirPods Pro 2-го поколения» на сумму 21000 ₽", hours_ago=192)
+    add_notif("alexey", "order_completed", "Заказ завершён!",
+              "Покупатель подтвердил получение заказа. 19950 ₽ переведены на ваш баланс (комиссия 5%: 1050 ₽)", hours_ago=24)
+    add_notif("anna", "order_shipped", "Товар отправлен",
+              "Ваш заказ «AirPods Pro 2-го поколения» отправлен. Трек-номер: SDEK123456789", hours_ago=168)
+    add_notif("olga", "new_order", "Новый заказ!",
+              "Получен заказ на товар «Пылесос Dyson V11 Absolute» на сумму 45000 ₽", hours_ago=72)
+    add_notif("dmitry", "order_shipped", "Товар отправлен",
+              "Ваш заказ «Пылесос Dyson V11 Absolute» отправлен. Трек-номер: SDEK987654321", hours_ago=48)
+
     db.commit()
 
     # ---------- Итоги ----------
@@ -446,6 +582,10 @@ def main():
     print(f"Уведомления: {db.query(Notification).count()}")
     print(f"Заявки на вывод: {db.query(WithdrawalRequest).count()} "
           f"(pending={db.query(WithdrawalRequest).filter(WithdrawalRequest.status == WithdrawalStatus.pending).count()})")
+    print(f"Товары: {db.query(Product).count()}")
+    print(f"Заказы: {db.query(Order).count()} "
+          f"(completed={db.query(Order).filter(Order.status == OrderStatus.completed).count()}, "
+          f"shipped={db.query(Order).filter(Order.status == OrderStatus.shipped).count()})")
     print("\nАккаунты для входа:")
     for u in users.values():
         tag = "PRO " if u.is_pro else ""

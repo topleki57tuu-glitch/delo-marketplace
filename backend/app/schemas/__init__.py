@@ -288,3 +288,112 @@ class VerificationStatusOut(BaseModel):
 class AIChatRequest(BaseModel):
     prompt: str
     current_task: Optional[dict] = None
+
+
+# ============================================================================
+# MARKETPLACE ТОВАРОВ
+# ============================================================================
+
+from app.models import ProductCategory, ProductCondition, OrderStatus
+
+MAX_PRODUCT_IMAGES = 10
+
+class ProductCreate(BaseModel):
+    title: str = Field(min_length=3, max_length=200)
+    description: str = Field(min_length=10, max_length=5000)
+    category: ProductCategory = ProductCategory.other
+    condition: ProductCondition = ProductCondition.new
+    price: int = Field(gt=0, description="Цена в копейках")
+    stock: int = Field(ge=1, default=1, description="Количество на складе")
+    images: Optional[str] = None  # JSON array URLs
+    city: Optional[str] = None
+    delivery_options: str = "both"  # pickup, delivery, both
+
+    @field_validator("images")
+    @classmethod
+    def _validate_images(cls, v: Optional[str]) -> Optional[str]:
+        if v is None or v == "":
+            return None
+        try:
+            parsed = json.loads(v)
+        except (TypeError, ValueError):
+            raise ValueError("Поле images должно быть JSON-массивом")
+
+        if not isinstance(parsed, list):
+            raise ValueError("Поле images должно быть JSON-массивом")
+        if len(parsed) > MAX_PRODUCT_IMAGES:
+            raise ValueError(f"Не больше {MAX_PRODUCT_IMAGES} изображений")
+
+        for item in parsed:
+            if not isinstance(item, str):
+                raise ValueError("Элементы images должны быть строками")
+            if len(item) > MAX_IMAGE_PATH_LEN:
+                raise ValueError("Слишком длинный путь к изображению")
+
+        return json.dumps(parsed, ensure_ascii=False)
+
+    @field_validator("delivery_options")
+    @classmethod
+    def _validate_delivery(cls, v: str) -> str:
+        if v not in ["pickup", "delivery", "both"]:
+            raise ValueError("delivery_options: pickup, delivery или both")
+        return v
+
+
+class ProductOut(BaseModel):
+    id: int
+    seller_id: int
+    title: str
+    description: str
+    category: str
+    condition: str
+    price: int
+    stock: int
+    images: Optional[str]
+    city: Optional[str]
+    delivery_options: str
+    status: str
+    created_at: str
+    seller_name: Optional[str] = None
+    seller_avatar: Optional[str] = None
+    seller_rating: Optional[float] = None
+    seller_verified: Optional[bool] = False
+
+    class Config:
+        from_attributes = True
+
+
+class OrderCreate(BaseModel):
+    product_id: int = Field(gt=0)
+    quantity: int = Field(ge=1, default=1)
+    delivery_method: str  # pickup или delivery
+    delivery_address: Optional[str] = None
+
+    @field_validator("delivery_method")
+    @classmethod
+    def _validate_delivery_method(cls, v: str) -> str:
+        if v not in ["pickup", "delivery"]:
+            raise ValueError("delivery_method: pickup или delivery")
+        return v
+
+
+class OrderOut(BaseModel):
+    id: int
+    product_id: int
+    buyer_id: int
+    seller_id: int
+    quantity: int
+    total_price: int
+    delivery_method: str
+    delivery_address: Optional[str]
+    tracking_number: Optional[str]
+    status: str
+    platform_fee: int
+    created_at: str
+    product_title: Optional[str] = None
+    product_image: Optional[str] = None
+    buyer_name: Optional[str] = None
+    seller_name: Optional[str] = None
+
+    class Config:
+        from_attributes = True

@@ -241,3 +241,82 @@ class RefreshToken(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     revoked = Column(Boolean, default=False)  # Отозван ли токен
     revoked_at = Column(DateTime, nullable=True)
+
+
+# ============================================================================
+# MARKETPLACE ТОВАРОВ
+# ============================================================================
+
+class ProductCondition(str, PyEnum):
+    """Состояние товара"""
+    new = "new"
+    used = "used"
+
+
+class ProductCategory(str, PyEnum):
+    """Категории товаров"""
+    electronics = "electronics"  # 📱 Электроника
+    clothing = "clothing"        # 👕 Одежда и обувь
+    home = "home"                # 🏠 Товары для дома
+    hobby = "hobby"              # 🎮 Хобби и развлечения
+    auto = "auto"                # 🚗 Авто и мото
+    kids = "kids"                # 👶 Детские товары
+    other = "other"              # 📦 Другое
+
+
+class OrderStatus(str, PyEnum):
+    """Статусы заказа товара"""
+    pending = "pending"           # заказ создан, ожидает подтверждения продавца
+    confirmed = "confirmed"       # продавец подтвердил
+    shipped = "shipped"           # отправлено
+    delivered = "delivered"       # доставлено (покупатель может подтвердить)
+    completed = "completed"       # завершено, деньги переведены продавцу
+    disputed = "disputed"         # открыт спор
+    cancelled = "cancelled"       # отменено
+
+
+class Product(Base):
+    """Товар для продажи на маркетплейсе.
+
+    Продавец создаёт товар, покупатель оформляет заказ.
+    Деньги замораживаются в эскроу до подтверждения получения.
+    """
+    __tablename__ = "products"
+    id = Column(Integer, primary_key=True, index=True)
+    seller_id = Column(Integer, index=True)
+    title = Column(String, nullable=False)
+    description = Column(Text, nullable=False)
+    category = Column(SqlaEnum(ProductCategory), index=True)
+    condition = Column(SqlaEnum(ProductCondition), default=ProductCondition.new)
+    price = Column(Integer, nullable=False)  # в копейках
+    stock = Column(Integer, default=1)       # количество на складе
+    images = Column(Text, nullable=True)     # JSON array URLs
+    city = Column(String, nullable=True, index=True)
+    delivery_options = Column(String, default="both")  # "pickup", "delivery", "both"
+    status = Column(String, default="active")  # active, sold_out, removed
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class Order(Base):
+    """Заказ товара.
+
+    Покупатель создаёт заказ → деньги замораживаются в эскроу →
+    продавец подтверждает → отправляет → покупатель получает →
+    деньги переводятся продавцу (минус комиссия 5%).
+    """
+    __tablename__ = "orders"
+    id = Column(Integer, primary_key=True, index=True)
+    product_id = Column(Integer, index=True)
+    buyer_id = Column(Integer, index=True)
+    seller_id = Column(Integer, index=True)
+    quantity = Column(Integer, default=1)
+    total_price = Column(Integer, nullable=False)  # цена * количество
+    delivery_method = Column(String)  # "pickup" или "delivery"
+    delivery_address = Column(Text, nullable=True)
+    tracking_number = Column(String, nullable=True)
+    status = Column(SqlaEnum(OrderStatus), default=OrderStatus.pending)
+    escrow_transaction_id = Column(Integer, nullable=True)  # ID транзакции эскроу
+    platform_fee = Column(Integer, default=0)  # комиссия 5%
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

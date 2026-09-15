@@ -29,7 +29,8 @@ from app.api import (
     disputes_router,
     verification_router,
     withdrawals_router,
-    admin_router
+    admin_router,
+    products_router
 )
 from file_utils import UPLOAD_DIR
 from jose import jwt
@@ -230,6 +231,7 @@ app.include_router(disputes_router)
 app.include_router(verification_router)
 app.include_router(withdrawals_router)
 app.include_router(admin_router)
+app.include_router(products_router)
 
 @app.get("/health")
 def health():
