@@ -29,6 +29,7 @@ const ProductsPage = lazy(() => import('./pages/ProductsPage'));
 const ProductDetailPage = lazy(() => import('./pages/ProductDetailPage'));
 const CreateProductPage = lazy(() => import('./pages/CreateProductPage'));
 const MyOrdersPage = lazy(() => import('./pages/MyOrdersPage'));
+const MyProductsPage = lazy(() => import('./pages/MyProductsPage'));
 
 const API_URL = import.meta.env.VITE_API_URL || '';
 
@@ -101,6 +102,30 @@ function NavigationBar({ user, token, onOpenAuth, onOpenChatsDrawer, onLogout })
               }`}
             >
               Мои заказы
+            </Link>
+          )}
+          {user && (
+            <Link
+              to="/my-orders"
+              className={`px-3.5 py-2 rounded-xl transition-colors ${
+                location.pathname === '/my-orders'
+                  ? 'bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400'
+                  : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              Мои покупки
+            </Link>
+          )}
+          {user && (
+            <Link
+              to="/my-products"
+              className={`px-3.5 py-2 rounded-xl transition-colors ${
+                location.pathname === '/my-products'
+                  ? 'bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400'
+                  : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              Мои товары
             </Link>
           )}
           {user && (
@@ -640,6 +665,10 @@ export default function App() {
                 <Route
                   path="/my-orders"
                   element={<MyOrdersPage />}
+                />
+                <Route
+                  path="/my-products"
+                  element={<MyProductsPage />}
                 />
                 <Route
                   path="/disputes"
