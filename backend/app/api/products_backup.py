@@ -173,6 +173,110 @@ def get_products(
     return result
 
 
+@router.get("/{product_id}")
+def get_product_detail(product_id: int, db: Session = Depends(get_db)):
+    """Детали товара"""
+    product = db.query(Product).filter(Product.id == product_id).first()
+    if not product:
+        raise HTTPException(404, "Товар не найден")
+
+    seller = db.query(User).filter(User.id == product.seller_id).first()
+
+    # Рейтинг продавца
+    from sqlalchemy import func
+    from app.models import Review
+    seller_rating = None
+    seller_reviews_count = 0
+    if seller:
+        rating_data = db.query(
+            func.avg(Review.rating).label("avg_rating"),
+            func.count(Review.id).label("count")
+        ).filter(Review.specialist_id == seller.id).first()
+
+        if rating_data and rating_data.count > 0:
+            seller_rating = round(float(rating_data.avg_rating), 1)
+            seller_reviews_count = rating_data.count
+
+    return {
+        "id": product.id,
+        "seller_id": product.seller_id,
+        "title": product.title,
+        "description": product.description,
+        "category": product.category.value if hasattr(product.category, "value") else str(product.category),
+        "condition": product.condition.value if hasattr(product.condition, "value") else str(product.condition),
+        "price": product.price,
+        "stock": product.stock,
+        "images": product.images,
+        "city": product.city,
+        "delivery_options": product.delivery_options,
+        "status": product.status,
+        "created_at": product.created_at.isoformat() if product.created_at else None,
+        "seller_name": seller.name if seller else None,
+        "seller_avatar": seller.avatar if seller else None,
+        "seller_rating": seller_rating,
+        "seller_reviews_count": seller_reviews_count,
+        "seller_verified": seller.verified if seller else False
+    }
+
+
+@router.put("/{product_id}")
+def update_product(
+    product_id: int,
+    product: ProductCreate,
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db),
+    _csrf: None = Depends(verify_csrf)
+):
+    """Редактировать товар (только владелец)"""
+    payload = decode_token_or_401(token)
+    user_id = int(payload.get("sub"))
+
+    existing = db.query(Product).filter(Product.id == product_id).first()
+    if not existing:
+        raise HTTPException(404, "Товар не найден")
+    if existing.seller_id != user_id:
+        raise HTTPException(403, "Редактировать может только владелец")
+
+    existing.title = product.title
+    existing.description = product.description
+    existing.category = product.category
+    existing.condition = product.condition
+    existing.price = product.price
+    existing.stock = product.stock
+    existing.images = product.images
+    existing.city = product.city
+    existing.delivery_options = product.delivery_options
+
+    db.commit()
+    cache.invalidate_pattern("products:list:*")
+
+    return {"message": "Товар обновлён"}
+
+
+@router.delete("/{product_id}")
+def delete_product(
+    product_id: int,
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db),
+    _csrf: None = Depends(verify_csrf)
+):
+    """Удалить товар (пометить как removed)"""
+    payload = decode_token_or_401(token)
+    user_id = int(payload.get("sub"))
+
+    product = db.query(Product).filter(Product.id == product_id).first()
+    if not product:
+        raise HTTPException(404, "Товар не найден")
+    if product.seller_id != user_id:
+        raise HTTPException(403, "Удалить может только владелец")
+
+    product.status = "removed"
+    db.commit()
+    cache.invalidate_pattern("products:list:*")
+
+    return {"message": "Товар удалён"}
+
+
 # ============================================================================
 # ЗАКАЗЫ
 # ============================================================================
@@ -578,109 +682,3 @@ def cancel_order(
     cache.invalidate_pattern("products:list:*")
 
     return {"message": "Заказ отменён, средства возвращены"}
-
-
-@router.get("/{product_id}")
-def get_product_detail(product_id: int, db: Session = Depends(get_db)):
-    """Детали товара"""
-    product = db.query(Product).filter(Product.id == product_id).first()
-    if not product:
-        raise HTTPException(404, "Товар не найден")
-
-    seller = db.query(User).filter(User.id == product.seller_id).first()
-
-    # Рейтинг продавца
-    from sqlalchemy import func
-    from app.models import Review
-    seller_rating = None
-    seller_reviews_count = 0
-    if seller:
-        rating_data = db.query(
-            func.avg(Review.rating).label("avg_rating"),
-            func.count(Review.id).label("count")
-        ).filter(Review.specialist_id == seller.id).first()
-
-        if rating_data and rating_data.count > 0:
-            seller_rating = round(float(rating_data.avg_rating), 1)
-            seller_reviews_count = rating_data.count
-
-    return {
-        "id": product.id,
-        "seller_id": product.seller_id,
-        "title": product.title,
-        "description": product.description,
-        "category": product.category.value if hasattr(product.category, "value") else str(product.category),
-        "condition": product.condition.value if hasattr(product.condition, "value") else str(product.condition),
-        "price": product.price,
-        "stock": product.stock,
-        "images": product.images,
-        "city": product.city,
-        "delivery_options": product.delivery_options,
-        "status": product.status,
-        "created_at": product.created_at.isoformat() if product.created_at else None,
-        "seller_name": seller.name if seller else None,
-        "seller_avatar": seller.avatar if seller else None,
-        "seller_rating": seller_rating,
-        "seller_reviews_count": seller_reviews_count,
-        "seller_verified": seller.verified if seller else False
-    }
-
-
-@router.put("/{product_id}")
-def update_product(
-    product_id: int,
-    product: ProductCreate,
-    token: str = Depends(oauth2_scheme),
-    db: Session = Depends(get_db),
-    _csrf: None = Depends(verify_csrf)
-):
-    """Редактировать товар (только владелец)"""
-    payload = decode_token_or_401(token)
-    user_id = int(payload.get("sub"))
-
-    existing = db.query(Product).filter(Product.id == product_id).first()
-    if not existing:
-        raise HTTPException(404, "Товар не найден")
-    if existing.seller_id != user_id:
-        raise HTTPException(403, "Редактировать может только владелец")
-
-    existing.title = product.title
-    existing.description = product.description
-    existing.category = product.category
-    existing.condition = product.condition
-    existing.price = product.price
-    existing.stock = product.stock
-    existing.images = product.images
-    existing.city = product.city
-    existing.delivery_options = product.delivery_options
-
-    db.commit()
-    cache.invalidate_pattern("products:list:*")
-
-    return {"message": "Товар обновлён"}
-
-
-@router.delete("/{product_id}")
-def delete_product(
-    product_id: int,
-    token: str = Depends(oauth2_scheme),
-    db: Session = Depends(get_db),
-    _csrf: None = Depends(verify_csrf)
-):
-    """Удалить товар (пометить как removed)"""
-    payload = decode_token_or_401(token)
-    user_id = int(payload.get("sub"))
-
-    product = db.query(Product).filter(Product.id == product_id).first()
-    if not product:
-        raise HTTPException(404, "Товар не найден")
-    if product.seller_id != user_id:
-        raise HTTPException(403, "Удалить может только владелец")
-
-    product.status = "removed"
-    db.commit()
-    cache.invalidate_pattern("products:list:*")
-
-    return {"message": "Товар удалён"}
-
-
