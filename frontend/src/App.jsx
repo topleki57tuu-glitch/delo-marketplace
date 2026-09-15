@@ -30,6 +30,7 @@ const ProductDetailPage = lazy(() => import('./pages/ProductDetailPage'));
 const CreateProductPage = lazy(() => import('./pages/CreateProductPage'));
 const MyOrdersPage = lazy(() => import('./pages/MyOrdersPage'));
 const MyProductsPage = lazy(() => import('./pages/MyProductsPage'));
+const EditProductPage = lazy(() => import('./pages/EditProductPage'));
 
 const API_URL = import.meta.env.VITE_API_URL || '';
 
@@ -669,6 +670,10 @@ export default function App() {
                 <Route
                   path="/my-products"
                   element={<MyProductsPage />}
+                />
+                <Route
+                  path="/products/:id/edit"
+                  element={<EditProductPage />}
                 />
                 <Route
                   path="/disputes"
