@@ -112,21 +112,21 @@ export default function ProductsPage() {
 
         <div className="filter-group">
           <h3>Цена</h3>
-          <div className="price-filter">
+          <div className="price-inputs">
             <input
               type="number"
-              placeholder="От"
-              value={filters.price_min || ''}
+              placeholder="От (₽)"
+              value={filters.price_min ? filters.price_min / 100 : ''}
               onChange={(e) => setFilters({ price_min: e.target.value ? parseInt(e.target.value) * 100 : null })}
             />
             <span>—</span>
             <input
               type="number"
-              placeholder="До"
-              value={filters.price_max || ''}
+              placeholder="До (₽)"
+              value={filters.price_max ? filters.price_max / 100 : ''}
               onChange={(e) => setFilters({ price_max: e.target.value ? parseInt(e.target.value) * 100 : null })}
             />
-            <button className="btn btn-secondary" onClick={handlePriceFilter}>
+            <button onClick={handlePriceFilter}>
               Применить
             </button>
           </div>
@@ -134,25 +134,32 @@ export default function ProductsPage() {
 
         <div className="filter-group">
           <h3>Город</h3>
-          <input
-            type="text"
-            placeholder="Введите город"
-            value={filters.city || ''}
-            onChange={(e) => {
-              setFilters({ city: e.target.value });
-              fetchProducts({ city: e.target.value });
-            }}
-          />
+          <div className="city-input">
+            <input
+              type="text"
+              placeholder="Введите город..."
+              value={filters.city || ''}
+              onChange={(e) => {
+                setFilters({ city: e.target.value });
+                fetchProducts({ city: e.target.value });
+              }}
+            />
+          </div>
         </div>
       </div>
 
       {/* Список товаров */}
       {loading ? (
-        <div className="loading">Загрузка товаров...</div>
+        <div className="loading">
+          <div className="loading-spinner"></div>
+          <p>Загрузка товаров...</p>
+        </div>
       ) : products.length === 0 ? (
         <div className="no-products">
-          <p>Товары не найдены</p>
-          <button className="btn" onClick={() => {
+          <div className="no-products-icon">🛍️</div>
+          <h2>Товары не найдены</h2>
+          <p>Попробуйте изменить параметры поиска</p>
+          <button className="btn btn-primary" onClick={() => {
             setFilters({ category: null, condition: null, city: null, price_min: null, price_max: null, search: '' });
             setLocalSearch('');
             fetchProducts({});
@@ -168,45 +175,37 @@ export default function ProductsPage() {
               className="product-card"
               onClick={() => navigate(`/products/${product.id}`)}
             >
-              <div className="product-image">
+              <div className="product-image-container">
                 {product.first_image ? (
                   <img src={product.first_image} alt={product.title} />
                 ) : (
                   <div className="no-image">📦</div>
                 )}
-                <div className="product-condition">
+                <div className={`product-condition-badge ${product.condition}`}>
                   {product.condition === 'new' ? '🆕 Новое' : '♻️ Б/У'}
                 </div>
               </div>
 
-              <div className="product-info">
+              <div className="product-details">
                 <h3 className="product-title">{product.title}</h3>
                 <p className="product-description">
-                  {product.description.length > 100
-                    ? product.description.substring(0, 100) + '...'
+                  {product.description.length > 80
+                    ? product.description.substring(0, 80) + '...'
                     : product.description}
                 </p>
 
+                <div className="product-price">{formatPrice(product.price)}</div>
+
                 <div className="product-meta">
-                  <div className="product-location">📍 {product.city || 'Не указан'}</div>
-                  <div className="product-delivery">
-                    {product.delivery_options === 'both' && '🚚 Доставка • 📍 Самовывоз'}
-                    {product.delivery_options === 'delivery' && '🚚 Доставка'}
-                    {product.delivery_options === 'pickup' && '📍 Самовывоз'}
+                  <div className="product-city">
+                    📍 {product.city || 'Не указан'}
                   </div>
                 </div>
 
                 <div className="product-seller">
-                  <span className="seller-name">
-                    {product.seller_verified && '✓ '}
-                    {product.seller_name}
-                  </span>
-                  {product.seller_rating && (
-                    <span className="seller-rating">⭐ {product.seller_rating}</span>
-                  )}
+                  {product.seller_verified && <span className="seller-verified">✓</span>}
+                  <span>{product.seller_name}</span>
                 </div>
-
-                <div className="product-price">{formatPrice(product.price)}</div>
               </div>
             </div>
           ))}
