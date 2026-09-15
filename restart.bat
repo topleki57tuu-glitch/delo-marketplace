@@ -1,14 +1,13 @@
 @echo off
-chcp 65001 >nul
 echo ================================================
-echo   ДЕЛО Marketplace - Перезапуск приложения
+echo   DELO Marketplace - Restart Application
 echo ================================================
 echo.
 
-echo [Шаг 1/2] Остановка приложения...
+echo [Step 1/2] Stopping application...
 call stop.bat
 echo.
 
-echo [Шаг 2/2] Запуск приложения...
+echo [Step 2/2] Starting application...
 timeout /t 2 >nul
 call start.bat

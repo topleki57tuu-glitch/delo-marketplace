@@ -1,17 +1,15 @@
 @echo off
-chcp 65001 >nul
 echo ================================================
-echo   ДЕЛО Marketplace - Открыть Admin Dashboard
+echo   DELO Marketplace - Open Admin Dashboard
 echo ================================================
 echo.
 
-:: Проверка запущен ли backend
-echo Проверка сервисов...
+echo Checking services...
 curl -s http://localhost:8000/health >nul 2>&1
 if %errorlevel% neq 0 (
-    echo ❌ Backend не запущен!
+    echo Backend is not running!
     echo.
-    echo Запустите приложение с помощью start.bat
+    echo Please start the application using start.bat
     echo.
     pause
     exit /b 1
@@ -19,43 +17,42 @@ if %errorlevel% neq 0 (
 
 curl -s http://localhost:3000 >nul 2>&1
 if %errorlevel% neq 0 (
-    echo ❌ Frontend не запущен!
+    echo Frontend is not running!
     echo.
-    echo Запустите приложение с помощью start.bat
+    echo Please start the application using start.bat
     echo.
     pause
     exit /b 1
 )
 
-echo ✅ Сервисы работают
+echo Services are running
 echo.
-echo 🛡️  Открываю Admin Dashboard...
+echo Opening Admin Dashboard...
 echo.
 echo ================================================
-echo   Учетные данные для входа:
+echo   Login credentials:
 echo ================================================
 echo.
 echo   Email:    admin@delo.ru
-echo   Пароль:   demo123
+echo   Password: demo123
 echo.
 echo ================================================
 echo.
 
-:: Открытие браузера с админ дашбордом
 start http://localhost:3000/admin/dashboard
 
-echo ✅ Браузер открыт с Admin Dashboard
+echo Browser opened with Admin Dashboard
 echo.
-echo 📊 Доступные функции:
-echo    - Статистика платформы в реальном времени
-echo    - Графики (рост пользователей, доход, категории)
-echo    - Управление пользователями
-echo    - Очереди (споры, верификация, выводы)
-echo    - Последняя активность
+echo Available features:
+echo    - Real-time platform statistics
+echo    - Charts (user growth, revenue, categories)
+echo    - User management
+echo    - Queues (disputes, verification, withdrawals)
+echo    - Recent activity
 echo.
-echo 💡 Если не вошли автоматически:
-echo    1. Нажмите "Вход" в правом верхнем углу
-echo    2. Введите admin@delo.ru / demo123
-echo    3. Нажмите кнопку "🛡️ Admin" в навигации
+echo If not logged in automatically:
+echo    1. Click "Login" in the top right corner
+echo    2. Enter admin@delo.ru / demo123
+echo    3. Click "Admin" button in navigation
 echo.
 pause

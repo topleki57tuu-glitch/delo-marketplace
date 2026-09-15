@@ -1,105 +1,98 @@
 @echo off
-chcp 65001 >nul
 echo ================================================
-echo   ДЕЛО Marketplace - Статус приложения
+echo   DELO Marketplace - Application Status
 echo ================================================
 echo.
 
-:: Проверка Backend
 echo [Backend - http://localhost:8000]
 curl -s http://localhost:8000/health >nul 2>&1
 if %errorlevel% equ 0 (
-    echo ✅ Работает
+    echo Running
     curl -s http://localhost:8000/health
 ) else (
-    echo ❌ Не запущен
+    echo Not running
 )
 echo.
 
-:: Проверка Frontend
 echo [Frontend - http://localhost:3000]
 curl -s http://localhost:3000 >nul 2>&1
 if %errorlevel% equ 0 (
-    echo ✅ Работает
+    echo Running
 ) else (
-    echo ❌ Не запущен
+    echo Not running
 )
 echo.
 
-:: Проверка портов
-echo [Занятые порты]
+echo [Ports]
 netstat -ano | findstr ":8000" >nul 2>&1
 if %errorlevel% equ 0 (
-    echo ✅ Порт 8000 (Backend) - ЗАНЯТ
+    echo Port 8000 (Backend) - BUSY
     for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":8000" ^| findstr "LISTENING"') do (
         echo    PID: %%a
     )
 ) else (
-    echo ⚪ Порт 8000 (Backend) - СВОБОДЕН
+    echo Port 8000 (Backend) - FREE
 )
 
 netstat -ano | findstr ":3000" >nul 2>&1
 if %errorlevel% equ 0 (
-    echo ✅ Порт 3000 (Frontend) - ЗАНЯТ
+    echo Port 3000 (Frontend) - BUSY
     for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":3000" ^| findstr "LISTENING"') do (
         echo    PID: %%a
     )
 ) else (
-    echo ⚪ Порт 3000 (Frontend) - СВОБОДЕН
+    echo Port 3000 (Frontend) - FREE
 )
 echo.
 
-:: Проверка процессов
-echo [Запущенные процессы]
+echo [Processes]
 tasklist | findstr "uvicorn.exe" >nul 2>&1
 if %errorlevel% equ 0 (
-    echo ✅ uvicorn.exe (Backend) запущен
+    echo uvicorn.exe (Backend) is running
 ) else (
-    echo ⚪ uvicorn.exe не найден
+    echo uvicorn.exe not found
 )
 
 tasklist | findstr "node.exe" >nul 2>&1
 if %errorlevel% equ 0 (
-    echo ✅ node.exe (Frontend) запущен
+    echo node.exe (Frontend) is running
 ) else (
-    echo ⚪ node.exe не найден
+    echo node.exe not found
 )
 echo.
 
-:: Проверка базы данных
-echo [База данных]
+echo [Database]
 if exist "backend\delo.db" (
-    echo ✅ backend\delo.db существует
+    echo backend\delo.db exists
 ) else (
-    echo ❌ backend\delo.db не найдена
+    echo backend\delo.db not found
 )
 echo.
 
-:: Проверка логов
-echo [Логи]
+echo [Logs]
 if exist "backend\backend.log" (
-    echo ✅ backend\backend.log
-    for %%A in (backend\backend.log) do echo    Размер: %%~zA байт
+    echo backend\backend.log
+    for %%A in (backend\backend.log) do echo    Size: %%~zA bytes
 ) else (
-    echo ⚪ backend\backend.log не найден
+    echo backend\backend.log not found
 )
 
 if exist "frontend\frontend.log" (
-    echo ✅ frontend\frontend.log
-    for %%A in (frontend\frontend.log) do echo    Размер: %%~zA байт
+    echo frontend\frontend.log
+    for %%A in (frontend\frontend.log) do echo    Size: %%~zA bytes
 ) else (
-    echo ⚪ frontend\frontend.log не найден
+    echo frontend\frontend.log not found
 )
 echo.
 
 echo ================================================
-echo   Доступные команды:
+echo   Available commands:
 echo ================================================
-echo   start.bat       - Запустить приложение
-echo   stop.bat        - Остановить приложение
-echo   restart.bat     - Перезапустить приложение
-echo   open-admin.bat  - Открыть Admin Dashboard
-echo   status.bat      - Показать статус (этот файл)
+echo   start.bat       - Start application
+echo   stop.bat        - Stop application
+echo   restart.bat     - Restart application
+echo   open-admin.bat  - Open Admin Dashboard
+echo   status.bat      - Show status (this file)
 echo ================================================
 echo.
 pause
