@@ -1,10 +1,8 @@
 /* Страница создания товара */
 .create-product-page {
-  max-width: 900px;
+  max-width: 56rem;
   margin: 0 auto;
   padding: 20px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  min-height: 100vh;
 }
 
 .page-header {
@@ -32,17 +30,14 @@
 }
 
 .page-header h1 {
-  font-size: 2.5rem;
+  font-size: 1.75rem;
   font-weight: 900;
   background: rgba(255, 255, 255, 0.98);
   padding: 30px;
   border-radius: 20px;
   margin: 0;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  color: #0f172a;
 }
 
 /* Форма */
@@ -68,7 +63,7 @@
   margin-bottom: 24px;
   color: #2d3748;
   padding-bottom: 12px;
-  border-bottom: 3px solid #667eea;
+  border-bottom: 3px solid #4f46e5;
   display: inline-block;
 }
 
@@ -102,19 +97,19 @@
 .form-group select {
   width: 100%;
   padding: 16px 20px;
-  border: 2px solid #e9ecef;
+  border: 2px solid #e2e8f0;
   border-radius: 12px;
   font-size: 1rem;
   font-family: inherit;
   transition: all 0.3s ease;
-  background: #f8f9fa;
+  background: #f8fafc;
 }
 
 .form-group input:focus,
 .form-group textarea:focus,
 .form-group select:focus {
   outline: none;
-  border-color: #667eea;
+  border-color: #4f46e5;
   background: white;
   box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.15);
 }
@@ -164,8 +159,8 @@
   align-items: center;
   gap: 12px;
   padding: 16px 20px;
-  background: #f8f9fa;
-  border: 2px solid #e9ecef;
+  background: #f8fafc;
+  border: 2px solid #e2e8f0;
   border-radius: 12px;
   cursor: pointer;
   transition: all 0.3s ease;
@@ -173,14 +168,14 @@
 }
 
 .radio-label:hover {
-  border-color: #667eea;
+  border-color: #4f46e5;
   background: white;
 }
 
 .radio-label input[type="radio"] {
   width: 22px;
   height: 22px;
-  accent-color: #667eea;
+  accent-color: #4f46e5;
 }
 
 .radio-label input[type="radio"]:checked {
@@ -208,7 +203,7 @@
 }
 
 .form-actions .btn-primary {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: #4f46e5;
   color: white;
   box-shadow: 0 8px 24px rgba(102, 126, 234, 0.4);
 }
@@ -219,15 +214,15 @@
 }
 
 .form-actions .btn-secondary {
-  background: #f8f9fa;
+  background: #f8fafc;
   color: #495057;
-  border: 2px solid #e9ecef;
+  border: 2px solid #e2e8f0;
 }
 
 .form-actions .btn-secondary:hover {
   background: white;
-  border-color: #667eea;
-  color: #667eea;
+  border-color: #4f46e5;
+  color: #4f46e5;
 }
 
 .form-actions .btn:disabled {
@@ -258,7 +253,7 @@
 
 .auth-required .btn-primary {
   padding: 16px 40px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: #4f46e5;
   color: white;
   border: none;
   border-radius: 14px;

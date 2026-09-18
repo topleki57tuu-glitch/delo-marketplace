@@ -1,4 +1,4 @@
-import React, { useState, useEffect, Suspense, lazy } from 'react';
+import React, { useState, useEffect, useRef, Suspense, lazy } from 'react';
 import { BrowserRouter, Routes, Route, Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from './store/authStore';
 import { useTasksStore } from './store/tasksStore';
@@ -37,133 +37,91 @@ const API_URL = import.meta.env.VITE_API_URL || '';
 function NavigationBar({ user, token, onOpenAuth, onOpenChatsDrawer, onLogout }) {
   const navigate = useNavigate();
   const location = useLocation();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef(null);
+
+  // Закрываем меню по клику вне и по Escape
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onClick = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target)) setMenuOpen(false);
+    };
+    const onKey = (e) => {
+      if (e.key === 'Escape') setMenuOpen(false);
+    };
+    document.addEventListener('mousedown', onClick);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onClick);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [menuOpen]);
+
+  // Раньше в шапке было восемь ссылок в одну строку — они не влезали и
+  // переносились на вторую строку. Разделы остались в шапке, личное
+  // (заказы, покупки, товары, сообщения) убрано в выпадающее меню.
+  const isActive = (path) =>
+    location.pathname === path || location.pathname.startsWith(`${path}/`);
+
+  const navLinkClass = (path) =>
+    `px-3 py-2 rounded-lg text-sm font-semibold transition-colors ${
+      isActive(path)
+        ? 'bg-indigo-50 text-indigo-600 dark:bg-indigo-500/15 dark:text-indigo-300'
+        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-300 dark:hover:text-white dark:hover:bg-slate-800'
+    }`;
+
+  const menuItemClass =
+    'flex items-center gap-2.5 w-full px-3 py-2 rounded-lg text-sm font-semibold text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-700 transition-colors text-left';
+
+  const isAdmin = !!user?.email && ['admin@delo.ru'].includes(user.email);
 
   return (
-    <header className="sticky top-0 z-40 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 transition-colors">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-        {/* Brand Logo */}
-        <Link to="/" className="flex items-center gap-2.5">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-600 to-amber-500 flex items-center justify-center text-white font-black text-lg shadow-md shadow-indigo-500/20">
+    <header className="sticky top-0 z-40 bg-white/85 dark:bg-slate-900/85 backdrop-blur-xl border-b border-slate-200/80 dark:border-slate-800">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center gap-4 sm:gap-6">
+        {/* Логотип */}
+        <Link to="/" className="flex items-center gap-2.5 shrink-0">
+          <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-600 to-amber-500 flex items-center justify-center text-white font-black text-lg shadow-md shadow-indigo-500/25">
             Д
           </div>
           <span className="font-extrabold text-xl tracking-tight text-slate-900 dark:text-white">
-            ДЕЛО<span className="text-amber-500 font-bold">.</span>
+            ДЕЛО<span className="text-amber-500">.</span>
           </span>
         </Link>
 
-        {/* Desktop Links */}
-        <nav className="hidden md:flex items-center gap-1 text-sm font-semibold">
-          <Link
-            to="/tasks"
-            className={`px-3.5 py-2 rounded-xl transition-colors ${
-              location.pathname === '/tasks'
-                ? 'bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400'
-                : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
-            }`}
-          >
+        {/* Разделы */}
+        <nav className="hidden md:flex items-center gap-0.5">
+          <Link to="/tasks" className={navLinkClass('/tasks')}>
             Все задания
           </Link>
-          <Link
-            to="/specialists"
-            className={`px-3.5 py-2 rounded-xl transition-colors ${
-              location.pathname === '/specialists'
-                ? 'bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400'
-                : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
-            }`}
-          >
+          <Link to="/specialists" className={navLinkClass('/specialists')}>
             Специалисты
           </Link>
-          <Link
-            to="/products"
-            className={`px-3.5 py-2 rounded-xl transition-colors ${
-              location.pathname.startsWith('/products')
-                ? 'bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400'
-                : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
-            }`}
-          >
-            🛍️ Товары
+          <Link to="/products" className={navLinkClass('/products')}>
+            Товары
           </Link>
-          <Link
-            to="/create-task"
-            className={`px-3.5 py-2 rounded-xl transition-colors ${
-              location.pathname === '/create-task'
-                ? 'bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400'
-                : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
-            }`}
-          >
-            Создать задание
-          </Link>
-          {user && (
-            <Link
-              to="/my-tasks"
-              className={`px-3.5 py-2 rounded-xl transition-colors ${
-                location.pathname === '/my-tasks'
-                  ? 'bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400'
-                  : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
-              }`}
-            >
-              Мои заказы
-            </Link>
-          )}
-          {user && (
-            <Link
-              to="/my-orders"
-              className={`px-3.5 py-2 rounded-xl transition-colors ${
-                location.pathname === '/my-orders'
-                  ? 'bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400'
-                  : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
-              }`}
-            >
-              Мои покупки
-            </Link>
-          )}
-          {user && (
-            <Link
-              to="/my-products"
-              className={`px-3.5 py-2 rounded-xl transition-colors ${
-                location.pathname === '/my-products'
-                  ? 'bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400'
-                  : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
-              }`}
-            >
-              Мои товары
-            </Link>
-          )}
-          {user && (
-            <Link
-              to="/chats"
-              className={`px-3.5 py-2 rounded-xl transition-colors ${
-                location.pathname === '/chats'
-                  ? 'bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400'
-                  : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
-              }`}
-            >
-              Сообщения
-            </Link>
-          )}
-          {user && user.email && ['admin@delo.ru'].includes(user.email) && (
-            <Link
-              to="/admin/dashboard"
-              className={`px-3.5 py-2 rounded-xl transition-colors ${
-                location.pathname === '/admin/dashboard'
-                  ? 'bg-red-50 dark:bg-red-900/40 text-red-600 dark:text-red-400'
-                  : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
-              }`}
-            >
-              🛡️ Admin
-            </Link>
-          )}
         </nav>
 
-        {/* User / Actions */}
-        <div className="flex items-center gap-3">
+        <div className="flex-1" />
+
+        {/* Действия */}
+        <div className="flex items-center gap-2 sm:gap-3">
           {token && <NotificationBell token={token} />}
 
+          <Link
+            to="/create-task"
+            className="hidden sm:inline-flex btn btn-primary !px-4 !py-2 !text-xs sm:!text-sm"
+          >
+            + Создать задание
+          </Link>
+
           {user ? (
-            <div className="flex items-center gap-3">
-              <Link
-                to="/profile"
-                className="flex items-center gap-2 p-1.5 pr-3 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            <div className="relative" ref={menuRef}>
+              <button
+                type="button"
+                onClick={() => setMenuOpen((v) => !v)}
+                aria-expanded={menuOpen}
+                aria-haspopup="menu"
+                className="flex items-center gap-2 p-1.5 pr-2.5 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
               >
                 <Avatar user={user} size="sm" />
                 <div className="hidden sm:block text-left">
@@ -174,25 +132,63 @@ function NavigationBar({ user, token, onOpenAuth, onOpenChatsDrawer, onLogout })
                     {(user.balance || 0).toLocaleString('ru-RU')} ₽
                   </span>
                 </div>
-              </Link>
-              <button
-                onClick={onLogout}
-                className="text-xs font-semibold text-slate-400 hover:text-red-500 transition-colors hidden sm:block"
-              >
-                Выйти
+                <span className="text-slate-400 text-[10px]">▼</span>
               </button>
+
+              {menuOpen && (
+                <div
+                  role="menu"
+                  className="absolute right-0 mt-2 w-56 p-1.5 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-pop"
+                >
+                  <Link to="/profile" className={menuItemClass} onClick={() => setMenuOpen(false)}>
+                    👤 Мой профиль
+                  </Link>
+                  <Link to="/my-tasks" className={menuItemClass} onClick={() => setMenuOpen(false)}>
+                    📋 Мои заказы
+                  </Link>
+                  <Link to="/my-orders" className={menuItemClass} onClick={() => setMenuOpen(false)}>
+                    🧾 Мои покупки
+                  </Link>
+                  <Link to="/my-products" className={menuItemClass} onClick={() => setMenuOpen(false)}>
+                    📦 Мои товары
+                  </Link>
+                  <Link to="/chats" className={menuItemClass} onClick={() => setMenuOpen(false)}>
+                    💬 Сообщения
+                  </Link>
+                  {isAdmin && (
+                    <Link
+                      to="/admin/dashboard"
+                      className={`${menuItemClass} text-red-600 dark:text-red-400`}
+                      onClick={() => setMenuOpen(false)}
+                    >
+                      🛡️ Админ-панель
+                    </Link>
+                  )}
+                  <div className="my-1.5 h-px bg-slate-200 dark:bg-slate-700" />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      onLogout();
+                    }}
+                    className={`${menuItemClass} text-slate-500 hover:text-red-600 dark:text-slate-400`}
+                  >
+                    Выйти
+                  </button>
+                </div>
+              )}
             </div>
           ) : (
             <div className="flex items-center gap-2">
               <button
                 onClick={() => onOpenAuth('login')}
-                className="px-4 py-2 text-xs sm:text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors"
+                className="btn btn-secondary !px-4 !py-2 !text-xs sm:!text-sm"
               >
                 Вход
               </button>
               <button
                 onClick={() => onOpenAuth('register')}
-                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs sm:text-sm font-bold rounded-xl shadow-md shadow-indigo-600/20 transition-all"
+                className="btn btn-primary !px-4 !py-2 !text-xs sm:!text-sm"
               >
                 Регистрация
               </button>

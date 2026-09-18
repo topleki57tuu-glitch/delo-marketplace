@@ -165,7 +165,9 @@ export default function TasksPage({
         </div>
 
         {/* Categories Chips */}
-        <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none pt-2 border-t border-slate-100 dark:border-slate-700/50">
+        {/* Категории: раньше это была одна прокручиваемая строка, и на широком
+            экране хвост списка просто обрезался. Переносим по строкам. */}
+        <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-slate-100 dark:border-slate-700/50">
           {CATEGORIES.map((cat) => {
             const active = selectedCategory === cat.id;
             return (

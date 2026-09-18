@@ -15,7 +15,7 @@ export const useUserStore = create((set, get) => ({
     set({ loading: true, error: null });
     try {
       const headers = token ? { Authorization: `Bearer ${token}` } : {};
-      const res = await fetch(`/api/users/${userId}/public`, { headers });
+      const res = await fetch(`/users/${userId}/public`, { headers });
 
       if (!res.ok) throw new Error('Failed to fetch user');
       const user = await res.json();

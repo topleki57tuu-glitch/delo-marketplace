@@ -49,3 +49,7 @@ backend/uploads/
 uploads/
 bot/subscriptions.json*
 bot/subs.json*
+
+# ---- Временные файлы Vite/Vitest ----
+# Остаются после пересборки конфигов, в репозитории им делать нечего
+*.timestamp-*.mjs

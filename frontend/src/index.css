@@ -1,237 +1,407 @@
 @import "tailwindcss";
 
+/* ============================================================================
+   Токены темы
+   ========================================================================== */
 @theme {
-    --font-display: "Unbounded", "Arial Black", sans-serif;
-    --font-sans: "Manrope", system-ui, sans-serif;
+    --font-sans: "Manrope", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --font-display: "Unbounded", "Manrope", system-ui, sans-serif;
 
-    /* Dark modern palette */
-    --color-base: #0A0E17;
-    --color-surface: #111827;
-    --color-surface-2: #1A2332;
-    --color-elevated: #202B3D;
-    --color-border: #2A3648;
-    --color-border-bright: #3D4C63;
+    /* Акцент — индиго: на нём построены все страницы */
+    --color-accent: #4f46e5;
+    --color-accent-hover: #6366f1;
+    --color-accent-soft: #eef2ff;
+    --color-gold: #f59e0b;
 
-    --color-ink: #E8ECF4;
-    --color-muted: #8B95A7;
+    --radius-card: 1rem;
+    --radius-control: 0.75rem;
 
-    --color-accent: #7C6CFF;
-    --color-accent-bright: #9D8DFF;
-    --color-accent-glow: rgba(124, 108, 255, 0.35);
-    --color-success: #34D399;
-    --color-danger: #F87171;
-    --color-star: #FBBF24;
+    --shadow-card: 0 1px 2px rgba(15, 23, 42, 0.04), 0 8px 24px -12px rgba(15, 23, 42, 0.12);
+    --shadow-card-hover: 0 2px 4px rgba(15, 23, 42, 0.05), 0 18px 40px -16px rgba(15, 23, 42, 0.22);
+    --shadow-pop: 0 24px 60px -24px rgba(15, 23, 42, 0.35);
 }
 
-/* Soft elevation shadows with a hint of glow */
-@utility shadow-card {
-    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.35);
-}
-
-@utility shadow-pop {
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45), 0 0 0 1px var(--color-border);
-}
-
-@utility glow-accent {
-    box-shadow: 0 0 24px var(--color-accent-glow);
-}
-
-@utility glow-accent-sm {
-    box-shadow: 0 0 14px var(--color-accent-glow);
-}
-
-/* Glassmorphism panel */
-@utility glass {
-    background: rgba(26, 35, 50, 0.72);
-    backdrop-filter: blur(14px);
-    -webkit-backdrop-filter: blur(14px);
-    border: 1px solid var(--color-border);
-}
-
-/* Дополнительные стили для маркетплейса */
-* {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
-}
-
-body {
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-        'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
-}
-
-/* Универсальные классы кнопок */
-.btn {
-    padding: 12px 24px;
-    border: none;
-    border-radius: 10px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.3s ease;
-    font-size: 1rem;
-}
-
-.btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-}
-
-.btn-primary {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
-}
-
-.btn-secondary {
-    background: #f8f9fa;
-    color: #495057;
-}
-
-.btn-danger {
-    background: linear-gradient(135deg, #f87171 0%, #dc2626 100%);
-    color: white;
-}
-
-/* Скроллбары */
-::-webkit-scrollbar {
-    width: 10px;
-    height: 10px;
-}
-
-::-webkit-scrollbar-track {
-    background: rgba(0, 0, 0, 0.05);
-}
-
-::-webkit-scrollbar-thumb {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    border-radius: 10px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-    background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
-}
-
-
-/* Accessibility: Screen reader only */
-.sr-only {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    padding: 0;
-    margin: -1px;
-    overflow: hidden;
-    clip: rect(0, 0, 0, 0);
-    white-space: nowrap;
-    border-width: 0;
-}
-
-.focus\:not-sr-only:focus {
-    position: static;
-    width: auto;
-    height: auto;
-    padding: initial;
-    margin: initial;
-    overflow: visible;
-    clip: auto;
-    white-space: normal;
-}
-
-/* Subtle dot-grid background */
+/* ============================================================================
+   Утилиты
+   ========================================================================== */
 @utility dot-grid {
-    background-image: radial-gradient(circle, rgba(139, 149, 167, 0.14) 1px, transparent 1px);
+    background-image: radial-gradient(circle, rgba(100, 116, 139, 0.16) 1px, transparent 1px);
     background-size: 26px 26px;
 }
 
-/* Aurora gradient hero backdrop */
 @utility aurora {
     background:
-        radial-gradient(ellipse 60% 50% at 20% 0%, rgba(124, 108, 255, 0.18), transparent),
-        radial-gradient(ellipse 50% 40% at 85% 20%, rgba(56, 189, 248, 0.12), transparent),
-        radial-gradient(ellipse 70% 60% at 50% 100%, rgba(124, 108, 255, 0.08), transparent);
+        radial-gradient(ellipse 60% 50% at 20% 0%, rgba(79, 70, 229, 0.10), transparent),
+        radial-gradient(ellipse 50% 40% at 85% 20%, rgba(56, 189, 248, 0.08), transparent),
+        radial-gradient(ellipse 70% 60% at 50% 100%, rgba(79, 70, 229, 0.06), transparent);
 }
 
-/* Utility to hide scrollbars while maintaining scroll functionality */
-.no-scrollbar::-webkit-scrollbar {
-    display: none;
-}
-.no-scrollbar {
+@utility no-scrollbar {
     -ms-overflow-style: none;
     scrollbar-width: none;
+    &::-webkit-scrollbar {
+        display: none;
+    }
 }
 
-/* Mobile tap touch target optimizations */
-button, a, input, select, textarea {
-    touch-action: manipulation;
-    -webkit-tap-highlight-color: transparent;
+/* ============================================================================
+   База
+   ========================================================================== */
+@layer base {
+    html {
+        -webkit-text-size-adjust: 100%;
+        scroll-behavior: smooth;
+    }
+
+    body {
+        background-color: var(--color-slate-50);
+        color: var(--color-slate-900);
+        font-family: var(--font-sans);
+        font-synthesis-weight: none;
+        text-rendering: optimizeLegibility;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+    }
+
+    @media (prefers-color-scheme: dark) {
+        body {
+            background-color: var(--color-slate-950);
+            color: var(--color-slate-100);
+        }
+    }
+
+    /* Видимый фокус для клавиатуры — на всех интерактивных элементах */
+    :focus-visible {
+        outline: 2px solid var(--color-accent);
+        outline-offset: 2px;
+        border-radius: 4px;
+    }
+
+    ::selection {
+        background-color: var(--color-accent);
+        color: #fff;
+    }
+
+    /* Один набор стилей скроллбара (раньше их было два, дублировали друг друга) */
+    ::-webkit-scrollbar {
+        width: 10px;
+        height: 10px;
+    }
+
+    ::-webkit-scrollbar-track {
+        background: transparent;
+    }
+
+    ::-webkit-scrollbar-thumb {
+        background: var(--color-slate-300);
+        border: 2px solid transparent;
+        background-clip: content-box;
+        border-radius: 8px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+        background: var(--color-slate-400);
+        background-clip: content-box;
+    }
+
+    @media (prefers-color-scheme: dark) {
+        ::-webkit-scrollbar-thumb {
+            background: var(--color-slate-700);
+            background-clip: content-box;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--color-slate-600);
+            background-clip: content-box;
+        }
+    }
+
+    /* Поля ввода: аккуратный автозаполнитель в светлой теме.
+       Раньше здесь стоял color-scheme: dark на всех полях — при светлых
+       страницах нативные контролы рисовались тёмными. */
+    input:-webkit-autofill,
+    input:-webkit-autofill:hover,
+    input:-webkit-autofill:focus,
+    select:-webkit-autofill,
+    textarea:-webkit-autofill {
+        -webkit-text-fill-color: var(--color-slate-900);
+        -webkit-box-shadow: 0 0 0 1000px #fff inset;
+        transition: background-color 5000s ease-in-out 0s;
+    }
+
+    @media (prefers-color-scheme: dark) {
+        input:-webkit-autofill,
+        input:-webkit-autofill:hover,
+        input:-webkit-autofill:focus,
+        select:-webkit-autofill,
+        textarea:-webkit-autofill {
+            -webkit-text-fill-color: var(--color-slate-100);
+            -webkit-box-shadow: 0 0 0 1000px var(--color-slate-800) inset;
+        }
+    }
+
+    /* Тач-таргеты на мобильных */
+    button,
+    a,
+    input,
+    select,
+    textarea {
+        touch-action: manipulation;
+        -webkit-tap-highlight-color: transparent;
+    }
 }
 
-/* Body & Safe area styling */
-body {
-    background-color: var(--color-base);
-    color: var(--color-ink);
-    font-family: var(--font-sans);
-    min-height: 100vh;
-    min-height: 100dvh;
-}
+/* ============================================================================
+   Компоненты
+   ----------------------------------------------------------------------------
+   Всё лежит в @layer components: утилиты Tailwind из @layer utilities идут
+   позже и потому могут переопределить любую из этих базовых заготовок.
+   Нелейерных правил здесь быть не должно — они бьют слои независимо от
+   специфичности и ломают утилиты (именно на этом ломался mx-auto).
+   ========================================================================== */
+@layer components {
+    /* Единый контейнер страницы */
+    .container-page {
+        width: 100%;
+        max-width: 80rem;
+        margin-inline: auto;
+        padding-inline: 1rem;
+    }
 
-::selection {
-    background-color: var(--color-accent);
-    color: #fff;
-}
+    @media (min-width: 640px) {
+        .container-page {
+            padding-inline: 1.5rem;
+        }
+    }
 
-/* Scrollbars */
-::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
-}
+    @media (min-width: 1024px) {
+        .container-page {
+            padding-inline: 2rem;
+        }
+    }
 
-::-webkit-scrollbar-track {
-    background: var(--color-base);
-}
+    /* Карточка */
+    .card {
+        background-color: #fff;
+        border: 1px solid var(--color-slate-200);
+        border-radius: var(--radius-card);
+        box-shadow: var(--shadow-card);
+        transition: box-shadow 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+    }
 
-::-webkit-scrollbar-thumb {
-    background: var(--color-border);
-    border-radius: 8px;
-}
+    .card-hover:hover {
+        box-shadow: var(--shadow-card-hover);
+        border-color: var(--color-slate-300);
+        transform: translateY(-2px);
+    }
 
-::-webkit-scrollbar-thumb:hover {
-    background: var(--color-border-bright);
-}
+    /* Кнопки. Классы .btn* сохранены: их использует большинство страниц. */
+    .btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+        padding: 0.625rem 1.125rem;
+        border: 1px solid transparent;
+        border-radius: var(--radius-control);
+        font-size: 0.875rem;
+        font-weight: 700;
+        line-height: 1.25rem;
+        white-space: nowrap;
+        cursor: pointer;
+        transition: background-color 0.18s ease, border-color 0.18s ease,
+            color 0.18s ease, box-shadow 0.18s ease, transform 0.12s ease;
+    }
 
-/* Inputs: dark autofill */
-input, select, textarea {
-    color-scheme: dark;
-}
+    .btn:active:not(:disabled) {
+        transform: translateY(1px);
+    }
 
-input:-webkit-autofill,
-input:-webkit-autofill:hover,
-input:-webkit-autofill:focus {
-    -webkit-text-fill-color: var(--color-ink);
-    -webkit-box-shadow: 0 0 0 1000px var(--color-surface-2) inset;
-    transition: background-color 5000s ease-in-out 0s;
-}
+    .btn:disabled {
+        opacity: 0.55;
+        cursor: not-allowed;
+    }
 
-/* Accessibility: Screen Reader Only класс */
-.sr-only {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    padding: 0;
-    margin: -1px;
-    overflow: hidden;
-    clip: rect(0, 0, 0, 0);
-    white-space: nowrap;
-    border-width: 0;
-}
+    .btn-primary {
+        background-color: var(--color-accent);
+        color: #fff;
+        box-shadow: 0 6px 16px -8px rgba(79, 70, 229, 0.6);
+    }
 
-.focus\:not-sr-only:focus {
-    position: static;
-    width: auto;
-    height: auto;
-    padding: 0.5rem 1rem;
-    margin: 0;
-    overflow: visible;
-    clip: auto;
-    white-space: normal;
+    .btn-primary:hover:not(:disabled) {
+        background-color: var(--color-accent-hover);
+    }
+
+    .btn-secondary {
+        background-color: #fff;
+        border-color: var(--color-slate-200);
+        color: var(--color-slate-700);
+    }
+
+    .btn-secondary:hover:not(:disabled) {
+        background-color: var(--color-slate-50);
+        border-color: var(--color-slate-300);
+    }
+
+    .btn-danger {
+        background-color: var(--color-red-600);
+        color: #fff;
+    }
+
+    .btn-danger:hover:not(:disabled) {
+        background-color: var(--color-red-500);
+    }
+
+    .btn-ghost {
+        background-color: transparent;
+        color: var(--color-slate-600);
+    }
+
+    .btn-ghost:hover:not(:disabled) {
+        background-color: var(--color-slate-100);
+        color: var(--color-slate-900);
+    }
+
+    /* Поля ввода */
+    .input,
+    .select,
+    .textarea {
+        width: 100%;
+        padding: 0.625rem 0.875rem;
+        background-color: #fff;
+        border: 1px solid var(--color-slate-200);
+        border-radius: var(--radius-control);
+        color: var(--color-slate-900);
+        font-size: 0.9375rem;
+        line-height: 1.5rem;
+        transition: border-color 0.18s ease, box-shadow 0.18s ease;
+    }
+
+    .input::placeholder,
+    .textarea::placeholder {
+        color: var(--color-slate-400);
+    }
+
+    .input:focus,
+    .select:focus,
+    .textarea:focus {
+        outline: none;
+        border-color: var(--color-accent);
+        box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.14);
+    }
+
+    /* Чипсы фильтров */
+    .chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.375rem;
+        padding: 0.375rem 0.75rem;
+        background-color: #fff;
+        border: 1px solid var(--color-slate-200);
+        border-radius: 9999px;
+        color: var(--color-slate-600);
+        font-size: 0.8125rem;
+        font-weight: 600;
+        white-space: nowrap;
+        cursor: pointer;
+        transition: background-color 0.16s ease, border-color 0.16s ease, color 0.16s ease;
+    }
+
+    .chip:hover {
+        border-color: var(--color-slate-300);
+        color: var(--color-slate-900);
+    }
+
+    .chip-active {
+        background-color: var(--color-accent-soft);
+        border-color: var(--color-accent);
+        color: var(--color-accent);
+    }
+
+    /* Бейдж статуса */
+    .badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.25rem;
+        padding: 0.1875rem 0.5rem;
+        border-radius: 9999px;
+        font-size: 0.6875rem;
+        font-weight: 700;
+        letter-spacing: 0.01em;
+        text-transform: uppercase;
+    }
+
+    /* Заголовок страницы */
+    .page-title {
+        font-size: 1.75rem;
+        line-height: 2.125rem;
+        font-weight: 800;
+        letter-spacing: -0.02em;
+        color: var(--color-slate-900);
+    }
+
+    .page-subtitle {
+        margin-top: 0.25rem;
+        font-size: 0.9375rem;
+        color: var(--color-slate-500);
+    }
+
+    /* Тёмная тема для компонентов */
+    @media (prefers-color-scheme: dark) {
+        .card {
+            background-color: var(--color-slate-800);
+            border-color: var(--color-slate-700);
+        }
+
+        .card-hover:hover {
+            border-color: var(--color-slate-600);
+        }
+
+        .btn-secondary {
+            background-color: var(--color-slate-800);
+            border-color: var(--color-slate-700);
+            color: var(--color-slate-200);
+        }
+
+        .btn-secondary:hover:not(:disabled) {
+            background-color: var(--color-slate-700);
+        }
+
+        .btn-ghost {
+            color: var(--color-slate-300);
+        }
+
+        .btn-ghost:hover:not(:disabled) {
+            background-color: var(--color-slate-800);
+            color: #fff;
+        }
+
+        .input,
+        .select,
+        .textarea {
+            background-color: var(--color-slate-800);
+            border-color: var(--color-slate-700);
+            color: var(--color-slate-100);
+        }
+
+        .chip {
+            background-color: var(--color-slate-800);
+            border-color: var(--color-slate-700);
+            color: var(--color-slate-300);
+        }
+
+        .chip-active {
+            background-color: rgba(79, 70, 229, 0.18);
+            border-color: var(--color-accent);
+            color: #a5b4fc;
+        }
+
+        .page-title {
+            color: #fff;
+        }
+
+        .page-subtitle {
+            color: var(--color-slate-400);
+        }
+    }
 }

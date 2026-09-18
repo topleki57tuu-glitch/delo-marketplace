@@ -1,10 +1,8 @@
 /* Общие стили страницы */
 .products-page {
-  max-width: 1400px;
+  max-width: 80rem;
   margin: 0 auto;
   padding: 20px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  min-height: 100vh;
 }
 
 /* Заголовок */
@@ -21,19 +19,16 @@
 }
 
 .products-header h1 {
-  font-size: 2.8rem;
+  font-size: 1.75rem;
   margin: 0;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  color: #0f172a;
   font-weight: 900;
   letter-spacing: -0.5px;
 }
 
 .products-header .btn-primary {
   padding: 14px 32px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: #4f46e5;
   color: white;
   border: none;
   border-radius: 12px;
@@ -67,14 +62,14 @@
   border: 2px solid transparent;
   border-radius: 14px;
   font-size: 1.05rem;
-  background: #f8f9fa;
+  background: #f8fafc;
   transition: all 0.3s ease;
   font-family: inherit;
 }
 
 .search-bar input:focus {
   outline: none;
-  border-color: #667eea;
+  border-color: #4f46e5;
   background: white;
   box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.15);
 }
@@ -85,7 +80,7 @@
 
 .search-bar button {
   padding: 18px 36px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: #4f46e5;
   color: white;
   border: none;
   border-radius: 14px;
@@ -138,7 +133,7 @@
   align-items: center;
   gap: 12px;
   padding: 18px 24px;
-  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+  background: #f8fafc;
   border: 2px solid transparent;
   border-radius: 14px;
   cursor: pointer;
@@ -151,13 +146,13 @@
 .category-btn:hover {
   transform: translateY(-3px);
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
-  background: linear-gradient(135deg, #fff 0%, #f8f9fa 100%);
+  background: linear-gradient(135deg, #fff 0%, #f8fafc 100%);
 }
 
 .category-btn.active {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: #4f46e5;
   color: white;
-  border-color: #667eea;
+  border-color: #4f46e5;
   box-shadow: 0 8px 24px rgba(102, 126, 234, 0.4);
   transform: translateY(-2px);
 }
@@ -176,7 +171,7 @@
 
 .condition-btn {
   padding: 14px 32px;
-  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+  background: #f8fafc;
   border: 2px solid transparent;
   border-radius: 12px;
   cursor: pointer;
@@ -208,23 +203,23 @@
 .price-inputs input {
   width: 180px;
   padding: 14px 20px;
-  border: 2px solid #e9ecef;
+  border: 2px solid #e2e8f0;
   border-radius: 12px;
   font-size: 1rem;
-  background: #f8f9fa;
+  background: #f8fafc;
   transition: all 0.3s ease;
 }
 
 .price-inputs input:focus {
   outline: none;
-  border-color: #667eea;
+  border-color: #4f46e5;
   background: white;
   box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.1);
 }
 
 .price-inputs button {
   padding: 14px 28px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: #4f46e5;
   color: white;
   border: none;
   border-radius: 12px;
@@ -243,16 +238,16 @@
   width: 100%;
   max-width: 400px;
   padding: 14px 20px;
-  border: 2px solid #e9ecef;
+  border: 2px solid #e2e8f0;
   border-radius: 12px;
   font-size: 1rem;
-  background: #f8f9fa;
+  background: #f8fafc;
   transition: all 0.3s ease;
 }
 
 .city-input input:focus {
   outline: none;
-  border-color: #667eea;
+  border-color: #4f46e5;
   background: white;
   box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.1);
 }
@@ -286,7 +281,7 @@
   width: 100%;
   height: 240px;
   overflow: hidden;
-  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+  background: #f8fafc;
   position: relative;
 }
 
@@ -374,10 +369,7 @@
 .product-price {
   font-size: 1.8rem;
   font-weight: 900;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  color: #0f172a;
 }
 
 .product-city {
@@ -443,8 +435,8 @@
 .loading-spinner {
   width: 60px;
   height: 60px;
-  border: 5px solid #e9ecef;
-  border-top: 5px solid #667eea;
+  border: 5px solid #e2e8f0;
+  border-top: 5px solid #4f46e5;
   border-radius: 50%;
   animation: spin 1s linear infinite;
   margin: 0 auto 20px;

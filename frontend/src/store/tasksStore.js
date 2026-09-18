@@ -1,5 +1,9 @@
 import { create } from 'zustand';
 
+// Пути без префикса /api: у бэкенда его нет (роуты объявлены как /tasks/,
+// /users/ и т.д.). С префиксом запрос попадал в SPA-fallback, сервер отвечал
+// index.html со статусом 200, res.json() падал — и лента заданий всегда была
+// пустой («Найдено заданий: 0»), хотя задания в базе есть.
 export const useTasksStore = create((set, get) => ({
   // Нормализованное хранилище: id -> task
   tasks: {},
@@ -15,7 +19,7 @@ export const useTasksStore = create((set, get) => ({
     set({ loading: true, error: null });
     try {
       const headers = token ? { Authorization: `Bearer ${token}` } : {};
-      const res = await fetch('/api/tasks/', { headers });
+      const res = await fetch('/tasks/', { headers });
       if (!res.ok) throw new Error('Failed to fetch tasks');
       const data = await res.json();
 
@@ -42,7 +46,7 @@ export const useTasksStore = create((set, get) => ({
     set({ loading: true, error: null });
     try {
       const headers = token ? { Authorization: `Bearer ${token}` } : {};
-      const res = await fetch(`/api/tasks/${taskId}`, { headers });
+      const res = await fetch(`/tasks/${taskId}`, { headers });
       if (!res.ok) throw new Error('Task not found');
       const task = await res.json();
 
@@ -62,9 +66,8 @@ export const useTasksStore = create((set, get) => ({
   fetchMyTasks: async (token, role) => {
     set({ loading: true, error: null });
     try {
-      const endpoint = role === 'specialist'
-        ? '/api/tasks/my-tasks'
-        : '/api/tasks/my-tasks';
+      // Роут называется /tasks/my и принимает роль параметром запроса
+      const endpoint = `/tasks/my?role=${role === 'specialist' ? 'executor' : 'customer'}`;
 
       const res = await fetch(endpoint, {
         headers: { Authorization: `Bearer ${token}` }
