@@ -1,0 +1,9 @@
+# Батники для Windows требуют CRLF: cmd.exe спотыкается на LF-концах
+# (последняя строка не выполняется, команды склеиваются). Без этого правила
+# git может нормализовать их в LF при клонировании на Linux/macOS.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Unix-скрипты, наоборот, должны остаться с LF — иначе shebang ломается
+# и на сервере появляется «/usr/bin/env: 'bash\r': No such file or directory».
+*.sh text eol=lf
