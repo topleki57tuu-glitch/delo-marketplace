@@ -154,6 +154,71 @@ export default function ProfilePage({ user, token, onUpdateUser, onLogout, onOpe
     }
   }, [user, token]);
 
+  // Возврат из ЮMoney после оплаты (successURL в платёжной форме ведёт сюда
+  // с параметром `payment=return`). Само по себе возвращение денег не
+  // зачисляет: вебхук может ещё не прийти, а зачисление — отдельный шаг.
+  // Раньше пользователь оставался на сайте ЮMoney и должен был сам нажать
+  // «Проверить оплату» — если закрывал вкладку, деньги уходили в никуда.
+  // Теперь подтверждение запускается автоматически по факту возврата.
+  useEffect(() => {
+    if (!token) return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('payment') !== 'return') return;
+
+    // Параметр из адреса убираем сразу: подтверждение должно сработать
+    // один раз, а не при каждом обновлении страницы или возврате по «назад».
+    params.delete('payment');
+    const query = params.toString();
+    window.history.replaceState(
+      {},
+      '',
+      `${window.location.pathname}${query ? `?${query}` : ''}`
+    );
+
+    // Платёж, оформленный перед уходом на оплату. Без него подтверждать
+    // нечего — пользователь мог просто вернуться на страницу профиля.
+    let pending = null;
+    try {
+      pending = JSON.parse(sessionStorage.getItem('delo_pending_payment') || 'null');
+    } catch {
+      pending = null;
+    }
+    if (!pending?.payment_id || !pending?.confirmation_url) return;
+
+    (async () => {
+      try {
+        const confirmParams = new URLSearchParams({
+          payment_id: pending.payment_id,
+          provider: pending.provider || 'yoomoney',
+          confirmation_url: pending.confirmation_url,
+        });
+        const res = await fetch(`/payments/confirm?${confirmParams}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+        });
+        const data = await res.json().catch(() => ({}));
+
+        if (res.ok && data.credited) {
+          addToast(`Баланс пополнен на ${pending.amount} ₽!`, 'success');
+          sessionStorage.removeItem('delo_pending_payment');
+          onUpdateUser();
+        } else if (res.ok) {
+          // Платёж ещё не подтверждён провайдером: ЮMoney может присылать
+          // данные с задержкой. Запись оставляем — пользователь нажмёт
+          // «Проверить оплату» или вернётся позже.
+          addToast('Оплата ещё обрабатывается. Нажмите «Проверить оплату» через несколько секунд.', 'info');
+        } else {
+          addToast(data.detail || 'Не удалось подтвердить платёж', 'error');
+        }
+      } catch {
+        addToast('Не удалось подтвердить платёж. Нажмите «Проверить оплату».', 'error');
+      }
+    })();
+  }, [token, addToast, onUpdateUser]);
+
   const loadVerificationStatus = () => {
     if (!token) return;
     setLoadingVerification(true);

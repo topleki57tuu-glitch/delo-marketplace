@@ -49,6 +49,24 @@ export function PaymentModal({ onClose, onSuccess, token }) {
         amount: amt
       });
 
+      // Дублируем в sessionStorage: пользователь уходит на сайт ЮMoney, а
+      // `successURL` возвращает его на страницу профиля — и та должна знать,
+      // какой именно платёж подтверждать. Состояние модального окна к тому
+      // моменту уже потеряно (страница перезагружается). Именно sessionStorage,
+      // а не localStorage: платёж относится к текущему сеансу и не должен
+      // всплыть через неделю в другом окне.
+      try {
+        sessionStorage.setItem('delo_pending_payment', JSON.stringify({
+          payment_id: data.payment_id,
+          confirmation_url: data.confirmation_url,
+          amount: amt,
+          provider: 'yoomoney',
+        }));
+      } catch {
+        // Приватный режим браузера может запретить запись — тогда останется
+        // только ручная кнопка «Проверить оплату», что не хуже прежнего.
+      }
+
       // Открываем форму оплаты ЮMoney в новом окне
       window.open(data.confirmation_url, '_blank');
 
@@ -89,6 +107,13 @@ export function PaymentModal({ onClose, onSuccess, token }) {
 
       if (data.credited) {
         addToast(`Баланс пополнен на ${paymentData.amount} ₽!`, 'success');
+        // Подтверждено — запись для автоподтверждения при возврате больше
+        // не нужна, иначе она всплывёт при следующем заходе на профиль.
+        try {
+          sessionStorage.removeItem('delo_pending_payment');
+        } catch {
+          // см. комментарий при setItem — отказ хранилища не критичен
+        }
         onSuccess();
         onClose();
       } else {

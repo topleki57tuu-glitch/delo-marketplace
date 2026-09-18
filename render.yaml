@@ -27,6 +27,43 @@ services:
           name: marketplace-postgres
           property: connectionString
 
+      # ---- Приём платежей (ЮMoney) ------------------------------------
+      # Читаются напрямую через os.getenv (app/integrations/yoomoney.py),
+      # а не через settings, поэтому их отсутствие не роняет старт — оно
+      # молча отключает оплату: is_configured() вернёт False, а /payments/create
+      # начнёт отвечать 400 «ЮMoney не настроен».
+      #
+      # ACCESS_TOKEN — из https://yoomoney.ru/myservices/online (OAuth).
+      - key: YOOMONEY_ACCESS_TOKEN
+        sync: false
+      - key: YOOMONEY_CLIENT_ID
+        sync: false
+      # Регистрируется в кабинете ЮMoney; в коде не используется, нужен
+      # только для получения токена.
+      - key: YOOMONEY_REDIRECT_URI
+        sync: false
+      # Секрет подписи вебхука. ОБЯЗАТЕЛЕН: без него /payments/webhook/yoomoney
+      # возвращает 403 на всё, и пополнения через вебхук не зачисляются.
+      # Должен совпадать со значением в кабинете ЮMoney — этот же секрет
+      # используется там как «Секрет для проверки подписи».
+      - key: YOOMONEY_NOTIFICATION_SECRET
+        sync: false
+      # Куда вернуть плательщика после оплаты (подставляется в successURL).
+      # Путь на фронтенде; по умолчанию /profile — на нём же сработает
+      # автоматическое подтверждение платежа.
+      - key: YOOMONEY_RETURN_PATH
+        value: /profile
+
+      # ---- Redis -------------------------------------------------------
+      # Без него приложение работает, но деградирует: счётчики rate-limit
+      # уезжают в память процесса (лимит умножается на число воркеров),
+      # а кэш отключается целиком. См. app/core/security.py и app/core/cache.py.
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: marketplace-redis
+          property: connectionString
+
   # ---------------- FRONTEND SPA ----------------
   - type: web
     name: marketplace-frontend
@@ -44,8 +81,47 @@ services:
           name: marketplace-backend
           property: host
 
+  # ---------------- TELEGRAM BOT (Радар заказов) ----------------
+  # type: web, а не worker: бот поднимает собственный health-сервер на $PORT
+  # (bot/bot.py), иначе Render считает сервис мёртвым.
+  #
+  # ВНИМАНИЕ: подписки радара лежат в файле `subscriptions.json` внутри
+  # контейнера. На Render файловая система эфемерна — при каждом деплое
+  # файл исчезает, и все подписки обнуляются. Для сохранности нужен
+  # persistent disk (на бесплатном плане недоступен) либо перенос
+  # хранилища в базу. Сейчас — как есть.
+  - type: web
+    name: marketplace-bot
+    runtime: python
+    buildCommand: cd bot && pip install -r requirements.txt
+    startCommand: cd bot && python bot.py
+    envVars:
+      # Токен от @BotFather.
+      - key: TG_BOT_TOKEN
+        sync: false
+      # Без этой переменной бот уйдёт на захардкоженный дефолт
+      # (delos-backend.onrender.com) — то есть в чужое окружение, и будет
+      # молча работать не с той базой. Поэтому адрес берём из сервиса.
+      - key: API_URL
+        fromService:
+          type: web
+          name: marketplace-backend
+          property: hostport
+      - key: FRONTEND_URL
+        fromService:
+          type: web
+          name: marketplace-frontend
+          property: host
+
 databases:
   - name: marketplace-postgres
     databaseName: marketplace_db
     user: marketplace
     plan: free
+
+  # Redis под rate-limit и кэш. Если план не позволяет — удалите и уберите
+  # REDIS_URL у backend: приложение поднимется, но с деградацией (см. выше).
+  - name: marketplace-redis
+    type: redis
+    plan: free
+    ipAllowList: []

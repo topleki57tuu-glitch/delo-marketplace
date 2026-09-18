@@ -36,10 +36,34 @@ class YooMoneyClient:
         self.redirect_uri = os.getenv("YOOMONEY_REDIRECT_URI")
         self.notification_secret = os.getenv("YOOMONEY_NOTIFICATION_SECRET")  # Для проверки вебхуков
 
+        # Куда вернуть плательщика после успешной оплаты. Пустой `successURL`
+        # оставлял его на странице ЮMoney, и в приложение он не возвращался —
+        # зачисление тогда зависело от того, нажмёт ли он кнопку «Проверить
+        # оплату» сам. Возврат делает круг замкнутым: фронт по параметру
+        # в адресе сам дёргает подтверждение.
+        self.frontend_url = os.getenv("FRONTEND_URL", "").rstrip("/")
+        self.return_path = os.getenv("YOOMONEY_RETURN_PATH", "/profile")
+
         self.enabled = bool(self.access_token)
 
         if not self.enabled:
             logger.warning("ЮMoney not configured: YOOMONEY_ACCESS_TOKEN not set")
+
+    def build_return_url(self) -> str:
+        """Адрес возврата после оплаты.
+
+        Возвращает пустую строку, если `FRONTEND_URL` не задан: ЮMoney
+        принимает пустой `successURL` (остаться у себя), но не принимает
+        относительный путь — он должен быть абсолютным URL.
+        """
+        if not self.frontend_url:
+            return ""
+        # Слэши нормализуем с обеих сторон: `FRONTEND_URL` обычно пишут со
+        # слэшем на конце, а `YOOMONEY_RETURN_PATH` — с ведущим. Без этого
+        # в адресе получается `//profile`.
+        base = self.frontend_url.rstrip("/")
+        path = self.return_path.strip("/")
+        return f"{base}/{path}?payment=return" if path else f"{base}?payment=return"
 
     def is_configured(self) -> bool:
         """Проверка что ЮMoney настроен."""
@@ -124,7 +148,10 @@ class YooMoneyClient:
             "paymentType": "AC",  # AC = банковская карта, PC = ЮMoney кошелек
             "sum": amount,
             "label": label,  # Уникальный ID для идентификации платежа
-            "successURL": ""  # Пустой = остаться на странице ЮMoney после оплаты
+            # Абсолютный адрес возврата (см. build_return_url). ЮMoney
+            # отправит плательщика сюда сразу после оплаты — тогда фронт
+            # подтвердит платёж сам, без ручной кнопки.
+            "successURL": self.build_return_url(),
         }
 
         # Формируем URL с параметрами

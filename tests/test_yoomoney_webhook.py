@@ -303,6 +303,79 @@ def main():
         client.verify_notification({"sha1_hash": "anything"}) is False,
     )
 
+    # --- 7. successURL: возврат пользователя после оплаты ------------------
+    # Пустой successURL означал, что плательщик остаётся на сайте ЮMoney и в
+    # приложение не возвращается: зачисление зависело от того, нажмёт ли он
+    # «Проверить оплату» сам. Проверяем, что адрес возврата собирается и
+    # попадает в платёжную ссылку.
+    print("\n  -- Возврат пользователя после оплаты (successURL) --")
+
+    client = YooMoneyClient()
+    client.frontend_url = "https://delo.example.ru"
+    client.return_path = "/profile"
+    check(
+        "адрес возврата указывает на фронтенд",
+        client.build_return_url() == "https://delo.example.ru/profile?payment=return",
+        client.build_return_url() or "(пусто)",
+    )
+
+    # Слэши по краям часто лишние, и без нормализации получается `//profile`
+    # — браузер это стерпит, а ЮMoney может отклонить как невалидный URL.
+    for frontend, path, expected in [
+        ("https://delo.example.ru/", "profile", "https://delo.example.ru/profile?payment=return"),
+        ("https://delo.example.ru///", "//profile//", "https://delo.example.ru/profile?payment=return"),
+    ]:
+        client.frontend_url, client.return_path = frontend, path
+        check(
+            f"слэши нормализуются: {frontend!r} + {path!r}",
+            client.build_return_url() == expected,
+            client.build_return_url(),
+        )
+
+    # FRONTEND_URL не задан: относительный адрес ЮMoney не примет, поэтому
+    # честнее вернуть пусто (остаться у себя), чем сломанный URL.
+    client.frontend_url = ""
+    check("без FRONTEND_URL адрес возврата пуст", client.build_return_url() == "")
+
+    # И главное: адрес возврата действительно попадает в ссылку на оплату.
+    # `enabled` выставляем руками: реального токена у теста нет, а
+    # `request_payment` без него выходит раньше сборки URL. Аккаунт
+    # подменяем заглушкой — иначе был бы поход в интернет за номером кошелька.
+    client.frontend_url = "https://delo.example.ru"
+    client.return_path = "/profile"
+    client.enabled = True
+    client.get_account_info = lambda: {"account": "4100111111111111"}
+    result = client.request_payment(amount=500, label=f"ret-{ts}", comment="тест возврата")
+    payment_url = result.get("payment_url", "")
+
+    # Разбираем ссылку как URL, а не ищем подстроки: `successURL` кодируется
+    # вместе с вложенным `?payment=return`, поэтому сырая строка выглядит как
+    # `successURL=https%3A%2F%2F...%3Fpayment%3Dreturn`, и проверка на
+    # незакодированный `payment=return` дала бы ложное падение.
+    from urllib.parse import urlparse, parse_qs  # noqa: E402
+
+    query = parse_qs(urlparse(payment_url).query)
+    check(
+        "successURL присутствует в платёжной ссылке",
+        query.get("successURL") == ["https://delo.example.ru/profile?payment=return"],
+        (query.get("successURL") or ["(нет)"])[0],
+    )
+    check(
+        "label попадает в платёжную ссылку",
+        query.get("label") == [f"ret-{ts}"],
+        (query.get("label") or ["(нет)"])[0],
+    )
+    check(
+        "сумма попадает в платёжную ссылку",
+        query.get("sum") == ["500"],
+        (query.get("sum") or ["(нет)"])[0],
+    )
+    check(
+        "кошелёк-получатель подставлен",
+        query.get("receiver") == ["4100111111111111"],
+        (query.get("receiver") or ["(нет)"])[0],
+    )
+
     # --- Уборка --------------------------------------------------------------
     cleanup_record(label)
     cleanup_record(mislabel)
