@@ -165,6 +165,69 @@ def mask_requisites(value: Optional[str]) -> Optional[str]:
     return "•" * (len(clean) - 4) + clean[-4:]
 
 
+# ---------------------------------------------------------------------------
+# Подпись ссылок на приватные файлы.
+#
+# `GET /files/{id}` публичен, а `id` — последовательное целое. Для аватаров и
+# фотографий товаров это нормально, для вложений в личной переписке — нет.
+# Токен ниже даёт доступ к конкретному файлу, не требуя заголовка Authorization:
+# картинка в чате отрисовывается через `<img src>`, а он заголовки не шлёт.
+#
+# Подпись не хранится в БД и не выдаётся по запросу «дайте токен» — её считает
+# сервер и подставляет в те ответы, где у получателя уже проверено право видеть
+# файл (участник сделки в `app/api/chat.py`). Значит, обладание токеном
+# равносильно праву на файл, и перебрать его нельзя.
+#
+# Оговорка: подпись выводится из SECRET_KEY, а в development ключ генерируется
+# случайным при каждом старте. Ссылки на приватные файлы после перезапуска
+# перестают работать — на dev это приемлемо, в production ключ фиксирован.
+# ---------------------------------------------------------------------------
+
+_FILE_TOKEN_PREFIX = "f1"
+
+
+def sign_file_token(file_id: int) -> str:
+    """Подпись для доступа к приватному файлу."""
+    import hashlib
+    import hmac
+
+    digest = hmac.new(
+        settings.SECRET_KEY.encode("utf-8"),
+        f"file:{file_id}".encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+    return f"{_FILE_TOKEN_PREFIX}{digest}"
+
+
+def verify_file_token(file_id: int, token: Optional[str]) -> bool:
+    """Проверяет подпись файла. Сравнение постоянного времени."""
+    import hmac
+
+    if not token:
+        return False
+    return hmac.compare_digest(sign_file_token(file_id), token)
+
+
+def file_url_with_token(url: Optional[str]) -> Optional[str]:
+    """Дописывает подпись к внутренней ссылке `/files/<id>`.
+
+    Нужна там, где файл отдаётся получателю с уже проверенным правом доступа —
+    сейчас это сообщения чата. Для публичных файлов лишняя подпись безвредна:
+    `GET /files/{id}` её просто не смотрит. Значения другого вида (например,
+    унаследованные data-URL из старых сообщений) возвращаются как есть.
+    """
+    if not url or not url.startswith("/files/"):
+        return url
+
+    rest = url[len("/files/"):]
+    file_id_part, _, _query = rest.partition("?")
+    if not file_id_part.isdigit():
+        return url
+
+    token = sign_file_token(int(file_id_part))
+    return f"/files/{file_id_part}?token={token}"
+
+
 def is_admin(user) -> bool:
     """Права модератора платформы.
 

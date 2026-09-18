@@ -4,13 +4,22 @@ Handles image uploads and storage
 """
 
 import os
-import uuid
 from pathlib import Path
 from typing import Optional
 from fastapi import UploadFile, HTTPException
 
-# Configuration
-UPLOAD_DIR = Path("uploads")
+# Каталог backend/ — якорь для относительных путей к файлам.
+#
+# Раньше здесь стояло `Path("uploads")`, то есть путь зависел от текущей рабочей
+# директории процесса: запуск из корня проекта создавал `./uploads`, а uvicorn
+# из `backend/` читал `backend/uploads`. Ровно эту ошибку уже починили для
+# DATABASE_URL в `app/core/config.py`, но для загрузок половина фикса осталась
+# не сделанной — в дереве лежали оба каталога. Хуже того, на эти же пути
+# смотрит celery-задача очистки: она удаляла бы файлы из одного каталога, пока
+# приложение пишет в другой.
+BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
+UPLOAD_DIR = Path(BACKEND_DIR) / "uploads"
+
 MAX_FILE_SIZE = 5 * 1024 * 1024  # 5MB
 
 # Разрешённые типы: сигнатура (magic bytes) -> безопасный content-type.
@@ -35,26 +44,43 @@ def sniff_image_type(head: bytes) -> Optional[str]:
     return None
 
 
+# Вложения в чате — не только картинки: люди присылают сметы и чеки PDF-ом,
+# архивы с материалами. Раньше это «работало» случайно: файл целиком уходил
+# в поле сообщения как data-URL, и серверная проверка содержимого не
+# участвовала вообще. Когда вложение переехало на загрузку через API,
+# документы нужно проверять так же строго, как изображения, — иначе отказ
+# от base64 отнял бы возможность отправлять PDF.
+#
+# Допускаем только форматы с однозначной сигнатурой. Всё, что по содержимому
+# не опознано, отклоняется: тип по расширению не подтверждаем.
+_DOCUMENT_SIGNATURES = (
+    (b"%PDF", "application/pdf"),
+    # OLE2 (doc, xls, ppt старых форматов)
+    (b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1", "application/octet-stream"),
+    # ZIP-контейнеры: docx, xlsx, pptx, обычный zip. Различить их по сигнатуре
+    # нельзя, и это не нужно: такие файлы отдаются только как attachment,
+    # браузер их не исполняет.
+    (b"PK\x03\x04", "application/zip"),
+    # RAR 4 и 5 — общий префикс "Rar!\x1a\x07".
+    (b"Rar!\x1a\x07", "application/vnd.rar"),
+)
+
+
+def sniff_document_type(head: bytes) -> Optional[str]:
+    """Определяет тип документа по сигнатуре или None."""
+    for sig, ctype in _DOCUMENT_SIGNATURES:
+        if head.startswith(sig):
+            return ctype
+    return None
+
+
 # Create upload directories
 (UPLOAD_DIR / "avatars").mkdir(parents=True, exist_ok=True)
 (UPLOAD_DIR / "tasks").mkdir(parents=True, exist_ok=True)
 (UPLOAD_DIR / "portfolio").mkdir(parents=True, exist_ok=True)
 
-def validate_image(file: UploadFile) -> str:
-    """Проверяет размер и реальную сигнатуру файла.
 
-    Возвращает безопасный content-type, определённый по содержимому.
-
-    Тип определяется ТОЛЬКО по magic bytes. Расширение из имени файла не
-    используется для решения о допуске: мобильные браузеры отдают файлы из
-    камеры и галереи с именем без расширения ("image", "blob", "photo") или
-    в формате камеры (IMG_1234.HEIC). Раньше такие загрузки отклонялись с
-    "Invalid file type", и на телефоне аватар не сохранялся вообще.
-
-    Расширение остаётся лишь для сборки имени сохранённого файла — и берётся
-    из определённого типа, а не из исходного имени (см. save_upload_file).
-    """
-    # Check file size
+def _check_size(file: UploadFile) -> int:
     file.file.seek(0, 2)  # Seek to end
     size = file.file.tell()
     file.file.seek(0)  # Reset to beginning
@@ -64,8 +90,22 @@ def validate_image(file: UploadFile) -> str:
         raise HTTPException(400, f"Файл слишком большой. Максимум {mb} МБ")
     if size == 0:
         raise HTTPException(400, "Пустой файл")
+    return size
 
-    # Проверяем реальное содержимое по magic bytes, а не по расширению/заголовку клиента
+
+def validate_image(file: UploadFile) -> str:
+    """Проверяет размер и реальную сигнатуру изображения.
+
+    Возвращает безопасный content-type, определённый по содержимому.
+
+    Тип определяется ТОЛЬКО по magic bytes. Расширение из имени файла не
+    используется для решения о допуске: мобильные браузеры отдают файлы из
+    камеры и галереи с именем без расширения ("image", "blob", "photo") или
+    в формате камеры (IMG_1234.HEIC). Раньше такие загрузки отклонялись с
+    "Invalid file type", и на телефоне аватар не сохранялся вообще.
+    """
+    _check_size(file)
+
     head = file.file.read(16)
     file.file.seek(0)
     safe_ctype = sniff_image_type(head)
@@ -79,49 +119,28 @@ def validate_image(file: UploadFile) -> str:
     return safe_ctype
 
 
-# Расширение для имени сохранённого файла — по определённому content-type.
-# Исходное имя клиента не используется: у мобильных оно бывает пустым или без
-# расширения, а ".." в имени давало бы выход за пределы каталога загрузок.
-_CTYPE_EXTENSION = {
-    "image/jpeg": ".jpg",
-    "image/png": ".png",
-    "image/gif": ".gif",
-    "image/webp": ".webp",
-}
+def validate_document(file: UploadFile) -> str:
+    """Проверяет размер и сигнатуру документа, возвращает content-type.
 
-def save_upload_file(file: UploadFile, category: str) -> str:
+    Возвращаемый тип всегда безопасен для отдачи: PDF и ZIP-контейнеры
+    отдаются с `Content-Disposition: attachment`, поэтому браузер их
+    скачивает, а не исполняет. `application/octet-stream` для OLE2-форматов
+    выбран намеренно — он не даёт браузеру повода пытаться что-то отрисовать.
     """
-    Save uploaded file and return relative path
+    _check_size(file)
 
-    Args:
-        file: FastAPI UploadFile
-        category: "avatars", "tasks", or "portfolio"
+    head = file.file.read(16)
+    file.file.seek(0)
+    safe_ctype = sniff_document_type(head)
+    if not safe_ctype:
+        raise HTTPException(
+            400,
+            "Недопустимый тип файла. Можно приложить изображение "
+            "(JPEG, PNG, GIF, WEBP), PDF, документ или архив.",
+        )
+    return safe_ctype
 
-    Returns:
-        Relative path to saved file (e.g., "uploads/avatars/uuid.jpg")
-    """
-    safe_ctype = validate_image(file)
 
-    # Расширение — из определённого типа, а не из имени клиента: у мобильных
-    # оно бывает пустым или без расширения, а произвольное имя с ".." увело бы
-    # запись за пределы UPLOAD_DIR.
-    ext = _CTYPE_EXTENSION.get(safe_ctype, ".jpg")
-    filename = f"{uuid.uuid4()}{ext}"
-
-    # Save to disk
-    file_path = UPLOAD_DIR / category / filename
-    with open(file_path, "wb") as f:
-        content = file.file.read()
-        f.write(content)
-
-    # Return relative path for database
-    return str(file_path).replace("\\", "/")
-
-def delete_file(file_path: str) -> None:
-    """Delete file if it exists"""
-    try:
-        path = Path(file_path)
-        if path.exists():
-            path.unlink()
-    except Exception as e:
-        print(f"Error deleting file {file_path}: {e}")
+def is_image_ctype(content_type: Optional[str]) -> bool:
+    """Можно ли отдавать файл инлайном (для `<img>`)."""
+    return bool(content_type) and content_type.startswith("image/")

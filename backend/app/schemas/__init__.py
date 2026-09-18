@@ -1,11 +1,67 @@
 from pydantic import BaseModel, EmailStr, field_validator, Field
 from typing import Optional, List
 import json
+import re
 
 from app.models import UserRole, TaskStatus, TaskCategory, TransactionType
 
 MAX_TASK_IMAGES = 10
 MAX_IMAGE_PATH_LEN = 500
+
+# Максимальная длина ссылки на вложение в сообщении чата.
+#
+# Раньше ограничения не было вообще, а фронтенд клал в это поле data-URL
+# целиком (`FileReader.readAsDataURL` с клиентским лимитом 10 МБ). Файл на
+# 10 МБ превращался в ~13.4 МБ base64 внутри одной строки БД, и столько же
+# приезжало на каждое чтение чата — ответ рос линейно от числа картинок
+# в переписке. Замер: вложение 1.5 МБ → ответ 1.5 МБ, два вложения → 3.0 МБ.
+#
+# Теперь вложение сначала загружается в `/upload/image` (лимит файла 5 МБ),
+# а в поле приходит короткая ссылка `/files/<id>` или `/files/<id>?token=...`.
+# Ограничение оставлено как страховка: оно закрывает путь и для старого
+# клиента, который всё ещё пробует отправить base64.
+MAX_MESSAGE_FILE_URL_LEN = 500
+
+# Ссылка на файл в БД: только наш внутренний путь. Внешние адреса здесь
+# запрещены намеренно — см. _check_file_url.
+FILE_PATH_RE = re.compile(r"^/files/\d+(\?[^\s]*)?$")
+
+
+def _check_file_url(
+    v: Optional[str], *, field: str, allow_external: bool = False
+) -> Optional[str]:
+    """Ссылка на файл — короткий путь к загруженному файлу, а не его содержимое.
+
+    Раньше проверки не было ни на одном таком поле, и через них в БД попадало
+    что угодно: data-URL целиком (весь файл base64 внутри строки), `javascript:`
+    и `data:text/html` — то есть заготовка под XSS в момент, когда значение
+    отрисуют без экранирования.
+
+    Почему это общая функция, а не валидатор одного поля: дефект уже чинили
+    точечно — поправили `MessageCreate.file_url`, а `VerificationSubmitRequest`
+    с тем же полем остался открыт. Поле верификации хуже: его значение уходит
+    модератору, то есть XSS прилетел бы на самый привилегированный экран.
+    Второй раз наступать на это не нужно — оба поля ходят сюда.
+    """
+    if v is None or v == "":
+        return None
+
+    if len(v) > MAX_MESSAGE_FILE_URL_LEN:
+        raise ValueError(
+            f"Ссылка в поле {field} слишком длинная — загрузите файл через "
+            "POST /upload/image и передайте полученный url"
+        )
+
+    if FILE_PATH_RE.match(v):
+        return v
+
+    if allow_external and v.startswith(("http://", "https://")):
+        return v
+
+    raise ValueError(
+        f"Недопустимая ссылка в поле {field}: ожидается /files/<id>"
+        + (" или http(s)-адрес" if allow_external else " (внешние адреса не принимаются)")
+    )
 
 # bcrypt молча обрезает всё после 72-го байта, поэтому два разных длинных пароля
 # с общим префиксом стали бы эквивалентны — длину проверяем явно.
@@ -189,6 +245,20 @@ class MessageCreate(BaseModel):
     file_name: Optional[str] = None
     file_type: Optional[str] = None
 
+    @field_validator("file_url")
+    @classmethod
+    def _validate_file_url(cls, v: Optional[str]) -> Optional[str]:
+        """Вложение — короткая внутренняя ссылка, а не содержимое файла.
+
+        Поле принимает только `/files/<id>` (с необязательной подписью) или
+        http(s)-адрес. Base64-строку оно больше не пропускает: раньше через
+        это поле в БД попадал весь файл, и каждое чтение чата возвращало его
+        целиком (см. MAX_MESSAGE_FILE_URL_LEN).
+        """
+        # Внешние ссылки в чате допустимы: пользователь может прислать ссылку
+        # на файлообменник, и это не наша ответственность.
+        return _check_file_url(v, field="file_url", allow_external=True)
+
 class MessageOut(BaseModel):
     id: int
     task_id: int
@@ -265,6 +335,23 @@ class VerificationSubmitRequest(BaseModel):
     document_number: Optional[str] = None
     file_url: Optional[str] = None
 
+    @field_validator("file_url")
+    @classmethod
+    def _validate_file_url(cls, v: Optional[str]) -> Optional[str]:
+        """Скан документа — только наш файл, внешние адреса не принимаются.
+
+        Поле уходило в БД без проверки вообще, хотя это единственное поле
+        заявки, которое отдаётся модератору (`GET /verification/admin/list`).
+        Через него можно было положить base64 (раздувая БД, как это было в
+        чате) или `javascript:`/`data:text/html` — заготовку под XSS на самом
+        привилегированном экране, которая сработала бы, как только скан начнут
+        показывать.
+
+        Внешние ссылки запрещены намеренно: документ должен лежать у нас, иначе
+        мы не можем ни закрыть к нему доступ, ни удалить его.
+        """
+        return _check_file_url(v, field="file_url", allow_external=False)
+
 class VerificationReviewRequest(BaseModel):
     action: str # "approve" or "reject"
     reason: Optional[str] = None
@@ -278,7 +365,11 @@ class VerificationRequestOut(BaseModel):
     file_url: Optional[str] = None
     status: str
     rejection_reason: Optional[str] = None
-    created_at: str
+    # `str`, а не datetime: схема отдаётся наружу как есть, и приведение делает
+    # `_request_out` через `.isoformat()`. Поле объявлено необязательным,
+    # потому что колонка в БД допускает NULL — иначе ответ падал бы на
+    # валидации, а не отдавал null.
+    created_at: Optional[str] = None
     resolved_at: Optional[str] = None
 
     class Config:
