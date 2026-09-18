@@ -40,18 +40,32 @@ echo "==> Проверка .env"
 # не экспортировано, и ${DOMAIN:-} подставил бы пустую строку — в .env уехал
 # бы YOOMONEY_REDIRECT_URI=https:///payments/oauth/yoomoney.
 ENV_DOMAIN="$(grep -m1 '^DOMAIN=' .env 2>/dev/null | cut -d= -f2- || true)"
+if [ -z "$ENV_DOMAIN" ]; then
+    echo "ВНИМАНИЕ: в .env нет DOMAIN — YOOMONEY_REDIRECT_URI будет дописан"
+    echo "          с пустым хостом. Впишите DOMAIN и удалите эту строку вручную."
+fi
+
+# Гарантируем перевод строки в конце файла. Без этого `>>` приклеит первый
+# ключ к последней существующей строке: получается
+# /profileYOOMONEY_REDIRECT_URI=https:///... — и обе переменные битые, молча.
+if [ -s .env ] && [ -n "$(tail -c 1 .env)" ]; then
+    echo "" >> .env
+fi
+
 changed_env=0
 for kv in \
     "YOOMONEY_RETURN_PATH=/profile" \
     "YOOMONEY_REDIRECT_URI=https://${ENV_DOMAIN}/payments/oauth/yoomoney"
 do
     k="${kv%%=*}"
-    if ! grep -q "^${k}=" .env; then
+    # ^[[:space:]]* — ключ может стоять с отступом; \r$ — на случай CRLF.
+    if ! grep -qE "^[[:space:]]*${k}=" .env; then
         echo "    дописываю $k"
         echo "$kv" >> .env
         changed_env=1
     fi
 done
+unset kv
 [ "$changed_env" = "1" ] && echo "    .env дополнен (проверьте значения вручную!)"
 
 echo "==> Сборка образов"
