@@ -508,6 +508,89 @@ DB_URL = _absolutize_sqlite(DB_URL)
 `DB_URL: sqlite:///...\backend\marketplace_v3.db`. Призрачный
 `./marketplace_v3.db` удалён, база пересоздана — все 4 e2e-набора зелёные.
 
+**5. `alembic upgrade head` не работал на PostgreSQL вообще.**
+Три отдельных дефекта в миграциях, каждый из которых делал развёртывание
+боевого контура невозможным. Ни один не виден на SQLite — а прод работает
+именно на PostgreSQL.
+
+Причина общей природы: миграции писались и проверялись только на SQLite, где
+enum — это просто `VARCHAR` без ограничений, а `datetime()`/`strftime()` —
+встроенные функции. В PostgreSQL ни того, ни другого нет.
+
+*5a. SQLite-функции в `b31957f1dbe9` (миграция ISO-строк в DateTime).*
+Строка 60: `SET {field}_temp = datetime({field})`. В PostgreSQL функции
+`datetime()` не существует. `alembic upgrade head` на чистой базе падал:
+
+```
+sqlalchemy.exc.ProgrammingError: (psycopg2.errors.UndefinedFunction)
+ОШИБКА: функция datetime(character varying) не существует
+```
+
+Исправлено: SQL выбирается по диалекту. PostgreSQL — регулярка + приведение
+(`CASE WHEN created_at ~ '^\d{4}-\d{2}-\d{2}' THEN btrim(created_at, '"')::timestamp
+ELSE NULL END`), SQLite — прежний `datetime()`, прочие СУБД — конвертация на
+стороне Python. Регулярка нужна, чтобы мусорное значение давало `NULL`, а не
+роняло всю миграцию: прежний SQLite-вариант вёл себя именно так.
+
+*5b. PG-тип `paymentstatus` никто не создавал (`c7a1e4b90d52`).*
+Миграция добавляет колонку `payment_records.status` типа
+`sa.Enum('created', 'paid', name='paymentstatus')`. В `create_table` SQLAlchemy
+печатает `CREATE TYPE` перед таблицей, а в `add_column` — **нет**. Типа в базе
+не было, падало:
+
+```
+psycopg2.errors.UndefinedObject: ОШИБКА: тип "paymentstatus" не существует
+[SQL: ALTER TABLE payment_records ADD COLUMN status paymentstatus]
+```
+
+Почему только на Postgres: в `4634d648e920` таблица `payment_records` создаётся
+вообще **без** колонки `status` (только `id`, `payment_id`, `user_id`, `amount`,
+`created_at`) — то есть тип не создаётся и по этому пути. На SQLite проблема
+невидима: enum там `VARCHAR`.
+
+Исправлено: явный `CREATE TYPE ... AS ENUM` в `DO $$ ... $$` перед добавлением
+колонки, идемпотентно.
+
+*5c. Расширение `transactiontype` не срабатывало (`58d19b210bdf`).*
+Миграция вызывала `alter_column(type_=sa.Enum(...5 значений..., 'withdraw_hold',
+'withdraw_refund', name='transactiontype'))`, рассчитывая расширить enum с 5
+значений до 7. На PostgreSQL `alter_column` в такой форме новых значений **не
+добавляет** — SQLAlchemy считает тип уже совпадающим и DDL не печатает. В
+результате тип оставался из пяти значений, и первая же транзакция вывода
+средств падала:
+
+```
+psycopg2.errors.InvalidTextRepresentation: ОШИБКА: неверное значение для
+перечисления transactiontype: "withdraw_hold"
+```
+
+Это ломало не только вывод средств, но и `seed_demo.py` — демо-данные содержат
+`withdraw_hold` и `withdraw_refund`.
+
+Исправлено: явный `ALTER TYPE transactiontype ADD VALUE` для каждого нового
+значения, идемпотентно, с проверкой `pg_enum`.
+
+**Как проверено.** Развёрнут реальный PostgreSQL 18, схема собрана с нуля:
+
+| Проверка | Результат |
+|---|---|
+| `alembic upgrade head` на чистой базе PostgreSQL | 10/10 миграций, 17 таблиц |
+| `upgrade head` → `downgrade base` → `upgrade head` | цикл проходит (важно: в PG DDL транзакционен, поэтому падение откатывало всё) |
+| `alembic upgrade head` на чистой SQLite | регресс не внесён |
+| Типы колонок после миграций | `users.created_at`, `tasks.created_at`, `payment_records.created_at` → `DATETIME`/`timestamp` |
+| PG-типы | 11 типов, включая `paymentstatus` и `transactiontype` с 7 значениями |
+| `seed_demo.py` (dev) | отработал, демо-аккаунты созданы |
+| `seed_demo.py` (ENV=production) | отказ, как и задумано |
+| Полный набор тестов на PostgreSQL | **87 проверок, 0 падений** |
+
+Последняя строка важна: раньше все прогоны шли на SQLite, то есть тестировалась
+не та СУБД, что в проде. Теперь проверено и на PostgreSQL.
+
+В CI добавлен отдельный джоб `migrations`: разворачивает схему с нуля на
+PostgreSQL и на SQLite, гоняет цикл `upgrade → downgrade → upgrade` и сверяет
+список таблиц и значения enum-типов с моделями. Без него дефекты этого класса
+вернутся молча — они не видны ни на SQLite, ни при инкрементальных прогонах.
+
 ### Тесты
 
 Общий хелпер `tests/_helpers.py` — `Session` с автоматической подстановкой
@@ -515,21 +598,47 @@ DB_URL = _absolutize_sqlite(DB_URL)
 `trust_env = False` (иначе локальные запросы уходят в системный прокси и
 получают 502), `register()`/`make_specialist()` с учётом нового контракта роли.
 
-Приведены в актуальное состояние все 4 существующих файла тестов + 1 новый:
+Приведены в актуальное состояние все 4 существующих файла тестов + 2 новых:
 
-| Файл | Результат |
-|------|-----------|
-| `tests/test_auth_flow.py` | 11 проверок OK (добавлен кейс «role=admin при регистрации игнорируется») |
-| `tests/test_csrf_coverage.py` | 9 проверок OK, все 403 (новый) |
-| `tests/test_chat_reviews_notifications.py` | 10 проверок OK |
-| `tests/e2e_api_test.py` | 48 OK, 0 FAIL (был 1 FAIL по WS) |
-| `tests/e2e_new_features_test.py` | 38 OK, 0 FAIL (были 2 FAIL; без seed — 31 OK, проверки арбитража SKIP) |
+| Файл | SQLite | PostgreSQL 18 |
+|------|--------|---------------|
+| `tests/test_auth_flow.py` | 11 OK | 11 OK |
+| `tests/test_csrf_coverage.py` | 9 OK, все 403 (новый) | 9 OK |
+| `tests/test_chat_reviews_notifications.py` | 10 OK | 10 OK |
+| `tests/e2e_api_test.py` | 48 OK, 0 FAIL | 48 OK |
+| `tests/e2e_new_features_test.py` | 38 OK, 0 FAIL | — |
+| `tests/test_yoomoney_webhook.py` | 9 OK (новый) | 9 OK |
 
-**Итого 116 проверок, 0 падений** на сидированной базе, при `CSRF_ENABLED=1`.
+**Итого 116 проверок на SQLite и 87 на PostgreSQL, 0 падений** при `CSRF_ENABLED=1`.
 
-Отдельно проверено: миграции `upgrade head` с нуля (10/10), идемпотентность,
-`downgrade`/`upgrade`; `vite build` проходит; `py_compile` по всем
+`e2e_new_features_test` на PostgreSQL не гонялся: он требует сидированной базы
+с арбитражными сценариями, а `seed_demo.py` в рамках этой проверки запускался
+отдельно. Остальные наборы прошли на обеих СУБД — специально, потому что
+SQLite до этого маскировал три дефекта миграций (см. п. 5 выше).
+
+Отдельно проверено: миграции `upgrade head` с нуля на Postgres и SQLite, цикл
+`upgrade`→`downgrade base`→`upgrade`, сверка таблиц и enum-типов с моделями;
+идемпотентность; `vite build` проходит; `py_compile` по всем
 изменённым `.py` — чисто; `bash -n scripts/vps_deploy.sh` — чисто.
+
+**Новый тест вебхука ЮMoney** (`tests/test_yoomoney_webhook.py`) — 9 проверок.
+Вебхук принимает деньги, поэтому проверяется не «отвечает ли он», а что деньги
+нельзя ни потерять, ни получить дважды:
+
+| Что проверяется | Ожидание |
+|---|---|
+| Верная подпись | 200, баланс зачислен **ровно** на записанную сумму (1500) |
+| Повторная доставка того же уведомления | 200, баланс не изменился (идемпотентность) |
+| Неверная подпись | 403, баланс не изменился |
+| Подпись верна, `label` не из нашей базы | 404, зачислять некому |
+| Прислана сумма 99999, записано 700 | зачислено 700, а не 99999 |
+| Секрет не настроен | подпись не считается валидной (fail-closed, не «пропускаем») |
+
+Подпись считается в тесте тем же алгоритмом, что на сервере (SHA-1 по
+конкатенации полей), поэтому проверка настоящая: подделать `label` без секрета
+нельзя, а расхождение подписанного и отправленного наборов полей даёт 403 —
+именно на этом тест сам поймал свою ошибку при написании (подписывал одни
+поля, отправлял другие).
 
 **Грабли прогона (чтобы не наступить снова):** тесты арбитража требуют
 `ADMIN_EMAILS` **в окружении backend-процесса**. Если задать переменную только

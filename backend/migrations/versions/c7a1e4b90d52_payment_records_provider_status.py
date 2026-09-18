@@ -22,6 +22,12 @@ Create Date: 2026-09-18 11:55:00.000000
 
 Миграция условная: на базе после create_all колонки уже есть — шаг
 пропускается. Так же сделаны fa7bd76d26f3, 93df710954af и ac15c32ceed1.
+
+ВАЖНО: тип `paymentstatus` создаётся вручную (см. `_ensure_payment_status_type`).
+На PostgreSQL `sa.Enum` внутри `add_column` не печатает `CREATE TYPE`, поэтому
+без этого шага развёртывание на чистой базе Postgres падало с «тип paymentstatus
+не существует» — а прод работает именно на Postgres. На SQLite, где enum —
+это просто VARCHAR, дефект не проявлялся.
 """
 from typing import Sequence, Union
 
@@ -44,6 +50,30 @@ def _columns(table: str) -> set:
     return {c["name"] for c in inspector.get_columns(table)}
 
 
+def _ensure_payment_status_type() -> None:
+    """Создать PG-тип `paymentstatus`, если его ещё нет.
+
+    На PostgreSQL `sa.Enum(..., name='paymentstatus')` в `add_column` НЕ создаёт
+    тип автоматически (в отличие от `create_table`, где SQLAlchemy печатает
+    `CREATE TYPE` перед таблицей). Из-за этого `alembic upgrade head` на чистой
+    базе Postgres падал с «тип paymentstatus не существует» — то есть
+    разворачивание боевого контура было невозможно, хотя на SQLite проходило.
+    """
+    if op.get_bind().dialect.name != "postgresql":
+        return
+    op.execute("""
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM pg_type WHERE typname = 'paymentstatus'
+            ) THEN
+                CREATE TYPE paymentstatus AS ENUM ('created', 'paid');
+            END IF;
+        END
+        $$;
+    """)
+
+
 def upgrade() -> None:
     """Upgrade schema."""
     if 'payment_records' not in sa.inspect(op.get_bind()).get_table_names():
@@ -60,6 +90,7 @@ def upgrade() -> None:
         )
 
     if not had_status:
+        _ensure_payment_status_type()
         op.add_column(
             'payment_records',
             sa.Column(

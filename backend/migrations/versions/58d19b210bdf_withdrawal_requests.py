@@ -4,6 +4,18 @@ Revision ID: 58d19b210bdf
 Revises: 4634d648e920
 Create Date: 2026-09-12 17:10:49.198202
 
+Заявки на вывод средств + расширение `transactiontype` двумя новыми
+значениями: `withdraw_hold` (заморозка под заявку) и `withdraw_refund`
+(возврат при отклонении).
+
+ВАЖНО про PostgreSQL: `alter_column(type_=sa.Enum(...))` НЕ добавляет новые
+значения в существующий PG-тип — SQLAlchemy считает тип уже совпадающим и
+пропускает DDL. Из-за этого на Postgres тип `transactiontype` оставался из
+пяти значений, а `seed_demo.py` и любой вывод средств падали с «неверное
+значение для перечисления transactiontype: withdraw_hold». На SQLite enum —
+это VARCHAR без ограничений, поэтому дефект не проявлялся.
+
+Добавляем значения явно через ALTER TYPE ... ADD VALUE, идемпотентно.
 """
 from typing import Sequence, Union
 
@@ -16,6 +28,32 @@ revision: str = '58d19b210bdf'
 down_revision: Union[str, Sequence[str], None] = '4634d648e920'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
+
+
+def _extend_transaction_type() -> None:
+    """Дописать значения в PG-тип `transactiontype`, если их там ещё нет.
+
+    `ALTER TYPE ... ADD VALUE` в PostgreSQL 12+ можно выполнять внутри
+    транзакции, но новое значение нельзя использовать в той же транзакции.
+    Здесь оно только добавляется — безопасно.
+    """
+    if op.get_bind().dialect.name != "postgresql":
+        return
+    for value in ("withdraw_hold", "withdraw_refund"):
+        op.execute(f"""
+            DO $$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1 FROM pg_enum e
+                    JOIN pg_type t ON t.oid = e.enumtypid
+                    WHERE t.typname = 'transactiontype'
+                      AND e.enumlabel = '{value}'
+                ) THEN
+                    ALTER TYPE transactiontype ADD VALUE '{value}';
+                END IF;
+            END
+            $$;
+        """)
 
 
 def upgrade() -> None:
@@ -36,6 +74,10 @@ def upgrade() -> None:
     with op.batch_alter_table('withdrawal_requests', schema=None) as batch_op:
         batch_op.create_index(batch_op.f('ix_withdrawal_requests_id'), ['id'], unique=False)
         batch_op.create_index(batch_op.f('ix_withdrawal_requests_user_id'), ['user_id'], unique=False)
+
+    # Сначала расширяем PG-тип, потом трогаем колонку: на PostgreSQL порядок
+    # обязателен, иначе ALTER COLUMN останется без новых значений.
+    _extend_transaction_type()
 
     with op.batch_alter_table('transactions', schema=None) as batch_op:
         batch_op.alter_column('type',

@@ -138,6 +138,120 @@ jobs:
         run: tail -n 200 /tmp/uvicorn.log
 
   # ---------------------------------------------------------------------------
+  # Миграции на чистой базе, на обеих СУБД.
+  #
+  # Джоб появился после двух реальных дефектов, которые SQLite не показывал:
+  #   1) миграция b31957f1dbe9 использовала функции datetime()/strftime() —
+  #      их нет в PostgreSQL, и `alembic upgrade head` падал на проде;
+  #   2) миграция c7a1e4b90d52 добавляла колонку типа `paymentstatus`, но сам
+  #      PG-тип никто не создавал (sa.Enum в add_column не печатает CREATE TYPE);
+  #   3) миграция 58d19b210bdf расширяла `transactiontype` новыми значениями,
+  #      но на PostgreSQL alter_column их не добавлял — падал вывод средств.
+  # Все три видны только на чистой базе и только на Postgres. Поэтому здесь мы
+  # разворачиваем схему с нуля на обеих СУБД и сверяем с моделями.
+  # ---------------------------------------------------------------------------
+  migrations:
+    name: Migrations on a clean database
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: marketplace
+          POSTGRES_PASSWORD: ci_password
+          POSTGRES_DB: marketplace_migrations
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U marketplace -d marketplace_migrations"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r backend/requirements.txt
+
+      - name: Migrate a clean PostgreSQL database
+        working-directory: backend
+        env:
+          ENV: development
+          DATABASE_URL: postgresql+psycopg2://marketplace:ci_password@localhost:5432/marketplace_migrations
+        run: |
+          alembic upgrade head
+          alembic downgrade base
+          alembic upgrade head
+          echo "PostgreSQL: схема разворачивается, откатывается и разворачивается снова"
+
+      - name: Migrate a clean SQLite database
+        working-directory: backend
+        env:
+          ENV: development
+          DATABASE_URL: sqlite:////tmp/migrations_check.db
+        run: |
+          rm -f /tmp/migrations_check.db
+          alembic upgrade head
+          echo "SQLite: схема разворачивается (регресс по диалекту не внесён)"
+
+      - name: Schema matches the models
+        working-directory: backend
+        env:
+          ENV: development
+          # Сверяем на Postgres: он единственный проверяет типы по-настоящему.
+          DATABASE_URL: postgresql+psycopg2://marketplace:ci_password@localhost:5432/marketplace_migrations
+        run: |
+          # После upgrade head схема обязана совпасть с моделями. Если разошлась —
+          # в проде отвалится запрос, который локально работал.
+          python - <<'PY'
+          import sys
+          sys.path.insert(0, ".")
+          from sqlalchemy import inspect, create_engine
+          from app.core.config import settings
+          from app.core.database import Base
+          from app import models  # noqa: F401 — регистрирует все таблицы
+
+          engine = create_engine(settings.DB_URL)
+          inspector = inspect(engine)
+          actual = set(inspector.get_table_names()) - {"alembic_version"}
+          expected = set(Base.metadata.tables)
+
+          missing = expected - actual
+          if missing:
+              raise SystemExit(f"Миграции не создали таблицы: {sorted(missing)}")
+          print(f"Все {len(expected)} таблиц из моделей присутствуют в схеме")
+
+          # Отдельно проверяем enum-типы: именно они ломались на Postgres.
+          with engine.connect() as conn:
+              rows = conn.exec_driver_sql(
+                  "SELECT t.typname, array_agg(e.enumlabel ORDER BY e.enumsortorder) "
+                  "FROM pg_type t JOIN pg_enum e ON e.enumtypid = t.oid "
+                  "GROUP BY t.typname"
+              ).fetchall()
+          pg_enums = {name: set(values) for name, values in rows}
+
+          # Значения, без которых приложение не работает (см. app/models).
+          required = {
+              "transactiontype": {"withdraw_hold", "withdraw_refund"},
+              "paymentstatus": {"created", "paid"},
+              "orderstatus": {"pending", "cancelled"},
+          }
+          for type_name, values in required.items():
+              assert type_name in pg_enums, f"PG-тип {type_name} не создан"
+              absent = values - pg_enums[type_name]
+              assert not absent, f"В PG-типе {type_name} нет значений: {sorted(absent)}"
+          print("PG-типы (включая transactiontype и paymentstatus) на месте")
+          PY
+
+  # ---------------------------------------------------------------------------
   # Боевой профиль: проверяем, что приложение вообще стартует с ENV=production
   # и что защитные механизмы включаются сами, без явных флагов. Это ловит
   # класс ошибок «локально всё работало, на сервере не поднялось»: например,
