@@ -1,12 +1,12 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.config import settings
-from app.core.security import oauth2_scheme, decode_token
-from app.core.money import credit_balance, debit_balance
+from app.core.security import oauth2_scheme, decode_token, rate_limit
+from app.core.money import credit_balance, debit_balance, claim
 from app.core.csrf import verify_csrf
 from app.core.logging import logger, log_escrow_operation
 from app.core.cache import cache
@@ -25,6 +25,17 @@ def decode_token_or_401(token: str) -> dict:
     return decode_token(token)
 
 DEMO_DEPOSIT_MAX = 100000
+
+# Сколько незачисленных платежей пользователя проверяем за один вызов
+# `POST /payments/confirm-pending`. Каждый — отдельное обращение к
+# провайдеру, поэтому список ограничен: больше трёх одновременно незакрытых
+# платежей у одного человека — уже аномалия, а не штатный случай.
+PENDING_LOOKBACK = 3
+
+# Насколько старый платёж ещё имеет смысл проверять. У ЮMoney операция не
+# появляется задним числом, а окно ограничивает число обращений к провайдеру
+# на каждый заход в профиль.
+PENDING_MAX_AGE_HOURS = 72
 
 # Схема платежей на пополнение баланса: как подтверждение перестало
 # доверять клиенту.
@@ -439,6 +450,118 @@ async def yoomoney_webhook(request: Request, db: Session = Depends(get_db)):
     logger.info(f"ЮMoney payment {label} credited: {amount} RUB to user {user_id}")
 
     return {"status": "ok"}
+
+
+@router.post("/payments/confirm-pending")
+def confirm_pending_payments(
+    request: Request,
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db),
+    _csrf: None = Depends(verify_csrf),
+):
+    """Дозачислить платежи, которые прошли у провайдера, но не дошли до нас.
+
+    Зачем отдельный эндпоинт. Зачисление держится на двух путях, и оба
+    отказывают молча:
+
+    * **вебхук** настраивается в кабинете провайдера отдельно от кода. Пока
+      там указан старый домен, уведомления не приходят вообще, и на нашей
+      стороне нет ни ошибки, ни записи в логе — только непополненный баланс;
+    * **возврат плательщика** в браузере приносил `payment_id` через
+      `sessionStorage`. Он теряется при переходе между вкладками (на iOS
+      форма оплаты открывается отдельной вкладкой) и в приватном режиме, а
+      кнопка «Проверить оплату» живёт только внутри модального окна — его
+      состояние исчезает при перезагрузке страницы. Восстановить такой платёж
+      из интерфейса было нечем.
+
+    Источник доверия здесь не запрос, а наши собственные записи
+    `PaymentRecord` этого пользователя плюс ответ провайдера. Из запроса не
+    принимается ничего: чужие платежи не перебираются, неоплаченные не
+    зачисляются. Повторный вызов безопасен — `credited_at` выставляется
+    атомарным `UPDATE` с условием, поэтому два параллельных вызова не
+    зачислят одну и ту же сумму дважды.
+    """
+    # Каждый вызов ходит к провайдеру, поэтому лимит строже обычного.
+    rate_limit(request, "confirm_pending", limit=12, window_sec=300)
+
+    payload = decode_token_or_401(token)
+    user_id = int(payload.get("sub"))
+
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(404, "Пользователь не найден")
+
+    since = datetime.utcnow() - timedelta(hours=PENDING_MAX_AGE_HOURS)
+    pending = (
+        db.query(PaymentRecord)
+        .filter(
+            PaymentRecord.user_id == user_id,
+            PaymentRecord.credited_at.is_(None),
+            PaymentRecord.created_at >= since,
+        )
+        .order_by(PaymentRecord.created_at.desc())
+        .limit(PENDING_LOOKBACK)
+        .all()
+    )
+
+    credited = []
+    for record in pending:
+        if record.provider == "yookassa":
+            status_result = payments.get_payment_status(record.payment_id)
+        else:
+            status_result = yoomoney.get_payment_status(record.payment_id)
+
+        if "error" in status_result:
+            # Провайдер недоступен или у токена нет нужной области доступа.
+            # Это не повод зачислять, но и не повод ронять весь вызов:
+            # остальные платежи могут проверяться нормально.
+            logger.warning(
+                f"confirm-pending: provider error for {record.payment_id}: "
+                f"{status_result['error']}"
+            )
+            continue
+
+        if not status_result.get("paid"):
+            continue
+
+        # Переход created -> paid атомарный. Вариант «прочитал credited_at,
+        # сравнил, записал» здесь не годится: два одновременных вызова
+        # увидели бы NULL оба и зачислили сумму дважды.
+        claimed = claim(
+            db,
+            PaymentRecord,
+            [PaymentRecord.id == record.id, PaymentRecord.credited_at.is_(None)],
+            {"credited_at": datetime.utcnow()},
+        )
+        if not claimed:
+            continue
+
+        amount = record.amount
+        record.status = PaymentStatus.paid
+        credit_balance(db, user_id, amount)
+        db.add(Transaction(user_id=user_id, amount=amount, type=TransactionType.deposit))
+        db.add(Notification(
+            user_id=user_id,
+            type="payment",
+            title="Баланс пополнен",
+            text=f"Ваш баланс пополнен на {amount} ₽",
+        ))
+        db.commit()
+
+        logger.info(
+            f"confirm-pending: credited {amount} RUB to user {user_id} "
+            f"(payment {record.payment_id})"
+        )
+        credited.append({"payment_id": record.payment_id, "amount": amount})
+
+    db.refresh(user)
+    return {
+        "credited": credited,
+        "total": sum(item["amount"] for item in credited),
+        "balance": user.balance,
+        "checked": len(pending),
+    }
+
 
 @router.put("/tasks/{task_id}/assign")
 def assign_task(task_id: int, specialist_id: int, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db), _csrf: None = Depends(verify_csrf)):

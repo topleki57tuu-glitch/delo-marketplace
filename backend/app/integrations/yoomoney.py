@@ -165,6 +165,41 @@ class YooMoneyClient:
             "amount": amount
         }
 
+    def _fetch_operations(
+        self, label: str, op_type: Optional[str], records: int
+    ) -> list:
+        """Операции по метке. `op_type=None` — без фильтра по типу.
+
+        Вынесено отдельно, потому что вызывается дважды: сначала узкий
+        запрос, потом широкий (см. `check_payment`).
+        """
+        payload = {"label": label, "records": records}
+        if op_type:
+            payload["type"] = op_type
+
+        response = requests.post(
+            f"{self.BASE_URL}/operation-history",
+            headers={
+                "Authorization": f"Bearer {self.access_token}",
+                "Content-Type": "application/x-www-form-urlencoded"
+            },
+            data=payload,
+            timeout=10
+        )
+
+        if response.status_code != 200:
+            raise RuntimeError(f"HTTP {response.status_code}")
+
+        return response.json().get("operations", []) or []
+
+    @staticmethod
+    def _match_operation(operations: list, label: str) -> Optional[Dict]:
+        """Первая успешная операция с нашей меткой."""
+        for op in operations:
+            if op.get("label") == label and op.get("status") == "success":
+                return op
+        return None
+
     def check_payment(self, label: str) -> Dict:
         """
         Проверить статус платежа по label.
@@ -184,39 +219,34 @@ class YooMoneyClient:
             return {"error": "ЮMoney not configured"}
 
         try:
-            # Получаем историю операций и ищем платеж с этим label
-            response = requests.post(
-                f"{self.BASE_URL}/operation-history",
-                headers={
-                    "Authorization": f"Bearer {self.access_token}",
-                    "Content-Type": "application/x-www-form-urlencoded"
-                },
-                data={
-                    "type": "deposition",  # Только входящие платежи
-                    "label": label,
-                    "records": 10  # Проверяем последние 10 операций
-                },
-                timeout=10
+            # Первый запрос узкий: только пополнения. Он и точнее — в лимит
+            # `records` попадают операции одного вида, — и покрывает обычный
+            # случай: оплату картой через форму quickpay.
+            operation = self._match_operation(
+                self._fetch_operations(label, "deposition", 10), label
             )
 
-            if response.status_code != 200:
-                logger.error(f"ЮMoney operation-history failed: {response.status_code}")
-                return {"error": f"HTTP {response.status_code}"}
+            if operation is None:
+                # Платёж мог прийти не депозитом, а, например, переводом с
+                # другого кошелька. Раньше такой платёж не находился НИКОГДА:
+                # подтверждение из браузера возвращало `not_found`, зачисление
+                # не проходило, и деньги оставались на счёте провайдера.
+                # Второй запрос идёт без фильтра по типу и с большим лимитом;
+                # точность не теряется — операция всё равно опознаётся по
+                # метке, а метку формируем мы и она уникальна.
+                operation = self._match_operation(
+                    self._fetch_operations(label, None, 50), label
+                )
 
-            data = response.json()
-            operations = data.get("operations", [])
-
-            # Ищем операцию с нашим label
-            for op in operations:
-                if op.get("label") == label and op.get("status") == "success":
-                    return {
-                        "status": "success",
-                        "paid": True,
-                        "amount": float(op.get("amount", 0)),
-                        "datetime": op.get("datetime"),
-                        "operation_id": op.get("operation_id"),
-                        "sender": op.get("sender")
-                    }
+            if operation is not None:
+                return {
+                    "status": "success",
+                    "paid": True,
+                    "amount": float(operation.get("amount", 0)),
+                    "datetime": operation.get("datetime"),
+                    "operation_id": operation.get("operation_id"),
+                    "sender": operation.get("sender")
+                }
 
             # Платеж не найден или не завершен
             return {
