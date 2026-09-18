@@ -111,6 +111,15 @@ class PaymentRecord(Base):
     источнику `user_id` нельзя — иначе переводом на 1 ₽ с чужим label можно
     зачислить деньги произвольному пользователю. `user_id` берём из этой
     строки (её создали мы), а `label` служит только ключом поиска.
+
+    `confirmation_url` решает вторую половину той же задачи — для
+    подтверждения платежа из браузера (`POST /payments/confirm`). Голый
+    `payment_id` оттуда не годится как доказательство: он приходит обратно
+    от клиента и никак не связан с нашей записью. URL же формируется
+    провайдером в момент создания, хранится здесь и клиенту только
+    выдаётся — значит, его предъявление и есть подтверждение, что мы
+    подтверждаем тот самый платёж. Подробности — в
+    `app/api/payments.py::_verify_local_record`.
     """
     __tablename__ = "payment_records"
     id = Column(Integer, primary_key=True, index=True)
@@ -119,6 +128,7 @@ class PaymentRecord(Base):
     amount = Column(Integer)
     provider = Column(String, default="yoomoney")
     status = Column(SqlaEnum(PaymentStatus), default=PaymentStatus.created)
+    confirmation_url = Column(String, nullable=True)  # выдаётся клиенту, служит доказательством
     credited_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 

@@ -26,6 +26,79 @@ def decode_token_or_401(token: str) -> dict:
 
 DEMO_DEPOSIT_MAX = 100000
 
+# Схема платежей на пополнение баланса: как подтверждение перестало
+# доверять клиенту.
+#
+# Раньше `/payments/confirm` брал `payment_id` из query-строки и передавал его
+# провайдеру. Если провайдер отвечал `paid: true`, баланс пополнялся. Запись
+# `PaymentRecord` искалась по тому же значению, которое прислал клиент, и
+# найденная строка молча принималась за достаточное доказательство оплаты.
+#
+# Дыра была не в самом ответе провайдера, а в отсутствии вопроса «а это точно
+# тот платёж, который мы создали?». У ЮKassa `confirmation_url` не сохранялся
+# и не проверялся нигде, поэтому подтвердить можно было, ни разу не открыв
+# страницу оплаты: достаточно было знать `payment_id`.
+#
+# Проверка ниже закрывает это, не обращаясь к провайдеру: `confirmation_url`
+# приходит в `/payments/create` от провайдера, сохраняется в записи и назад к
+# нам возвращается только через нашего же клиента. Клиент этот URL не
+# формирует и подделать не может — не зная его, подтверждение не пройдёт.
+#
+# Заодно проверяется владелец: иначе чужой платёж можно было бы подтвердить
+# из-под своего аккаунта.
+
+
+def _verify_local_record(
+    db: Session,
+    payment_id: str,
+    user_id: int,
+    confirmation_url: Optional[str],
+) -> PaymentRecord:
+    """Убедиться, что подтверждается НАШ платёж, и вернуть его запись.
+
+    Бросает 4xx, если строки нет, она принадлежит другому пользователю или
+    предъявленный `confirmation_url` не совпадает с сохранённым при создании.
+    """
+    record = db.query(PaymentRecord).filter(PaymentRecord.payment_id == payment_id).first()
+    if not record:
+        logger.warning(
+            f"Payment {payment_id} is paid but has no local record — crediting refused"
+        )
+        raise HTTPException(409, "Платёж не найден. Обратитесь в поддержку.")
+
+    if record.user_id != user_id:
+        raise HTTPException(403, "Платёж не принадлежит этому пользователю")
+
+    # Старые записи (созданные до появления этой колонки) не несут URL —
+    # для них подтверждение невозможно, и это честный отказ, а не пропуск
+    # проверки: доверять им значило бы оставить дыру открытой.
+    if not record.confirmation_url:
+        logger.warning(
+            f"Payment {payment_id} has no stored confirmation_url — "
+            f"confirmation refused (record created before the column existed)"
+        )
+        raise HTTPException(
+            409,
+            "Платёж нельзя подтвердить автоматически. Обратитесь в поддержку.",
+        )
+
+    if not confirmation_url:
+        raise HTTPException(
+            400,
+            "Не указан confirmation_url — повторный ответ провайдера не найден. "
+            "Начните оплату заново.",
+        )
+
+    if confirmation_url != record.confirmation_url:
+        logger.warning(
+            f"Payment {payment_id}: confirmation_url mismatch "
+            f"(given={confirmation_url!r}, stored={record.confirmation_url!r}) — refused"
+        )
+        raise HTTPException(403, "Платёж не соответствует созданному — подтверждение отклонено")
+
+    return record
+
+
 MONETIZATION_PACKAGES = {
     "resp_10": {"type": "responses", "title": "10 откликов", "credits": 10, "price": 190},
     "resp_50": {"type": "responses", "title": "50 откликов", "credits": 50, "price": 790},
@@ -183,12 +256,19 @@ def create_payment(
     # единственный достоверный источник user_id и суммы для вебхука.
     # Без этой записи вебхук вынужден доверять label из запроса, а его
     # формирует плательщик (см. комментарий к PaymentRecord).
+    #
+    # `confirmation_url` сохраняем ровно затем, чтобы при подтверждении было
+    # с чем сверить присланный клиентом `payment_id`. URL рождается здесь из
+    # ответа провайдера и через наш код больше не проходит — клиент его не
+    # формирует. Значит, совпадение подтверждает, что подтверждается именно
+    # тот платёж, который мы создали.
     db.add(PaymentRecord(
         payment_id=payment_id,
         user_id=user_id,
         amount=req.amount,
         provider=provider,
         status=PaymentStatus.created,
+        confirmation_url=confirmation_url,
     ))
     db.commit()
 
@@ -202,6 +282,7 @@ def create_payment(
 def confirm_payment(
     payment_id: str,
     provider: str = "yoomoney",
+    confirmation_url: Optional[str] = None,
     token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db),
     _csrf: None = Depends(verify_csrf)
@@ -212,9 +293,18 @@ def confirm_payment(
     Сумма и получатель берутся из записи, созданной нами при оформлении
     платежа, а не из ответа провайдера: метаданные платежа тоже уходят в
     браузер и не годятся как источник доверия.
+
+    `confirmation_url` — обязательный аргумент (приходит из `POST
+    /payments/create` для этого же `payment_id`). Без него запрос отклоняется:
+    см. `_verify_local_record` — он объясняет, почему одной записи в базе для
+    подтверждения недостаточно.
     """
     payload = decode_token_or_401(token)
     user_id = int(payload.get("sub"))
+
+    # Делаем это ДО обращения к провайдеру: незачем ходить во внешний сервис,
+    # если подтверждается не наша запись.
+    record = _verify_local_record(db, payment_id, user_id, confirmation_url)
 
     # Выбираем провайдера
     if provider == "yoomoney":
@@ -229,16 +319,6 @@ def confirm_payment(
 
     if not status_result.get("paid"):
         return {"status": status_result["status"], "credited": False}
-
-    record = db.query(PaymentRecord).filter(PaymentRecord.payment_id == payment_id).first()
-    if not record:
-        logger.warning(
-            f"Payment {payment_id} is paid but has no local record — crediting refused"
-        )
-        raise HTTPException(409, "Платёж не найден. Обратитесь в поддержку.")
-
-    if record.user_id != user_id:
-        raise HTTPException(403, "Платёж не принадлежит этому пользователю")
 
     # Идемпотентность: платёж мог уже быть зачислен вебхуком
     if record.credited_at is not None:

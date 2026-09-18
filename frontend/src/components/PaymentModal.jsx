@@ -65,7 +65,15 @@ export function PaymentModal({ onClose, onSuccess, token }) {
 
     setCheckingPayment(true);
     try {
-      const res = await fetch(`/payments/confirm?payment_id=${paymentData.payment_id}&provider=yoomoney`, {
+      // confirmation_url обязателен: сервер сверяет его с сохранённым при
+      // создании платежа. Без него подтверждение отклоняется — голый
+      // payment_id доказывает только то, что клиент знает его значение.
+      const params = new URLSearchParams({
+        payment_id: paymentData.payment_id,
+        provider: 'yoomoney',
+        confirmation_url: paymentData.confirmation_url,
+      });
+      const res = await fetch(`/payments/confirm?${params}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

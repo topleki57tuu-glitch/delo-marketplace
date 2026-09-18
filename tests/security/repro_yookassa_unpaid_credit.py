@@ -1,46 +1,37 @@
 """
-ВОСПРОИЗВЕДЕНИЕ УЯЗВИМОСТИ: зачисление баланса без оплаты через ЮKassa.
+РЕГРЕСС: подтверждение платежа ЮKassa без доказательства создания.
 
 Запуск (из корня репозитория):
     python tests/security/repro_yookassa_unpaid_credit.py
 
-Код возврата: 1 — уязвимость воспроизведена, 0 — защита работает.
+Код возврата: 0 — защита работает, 1 — уязвимость жива,
+2 — фикс переусердствовал и блокирует легальное подтверждение.
 
-Что проверяет
--------------
-`POST /payments/confirm?provider=yookassa` доверяет ответу
-`payments.get_payment_status(payment_id)` — единственному источнику истины о
-том, оплачен ли платёж.
+Было
+----
+`POST /payments/confirm?provider=yookassa` брал `payment_id` из query-строки
+(то есть от клиента) и передавал его в `payments.get_payment_status()`,
+который делает `GET /payments/{payment_id}` у провайдера. Ответ `paid: true`
+пополнял баланс.
 
-Проблема в том, ЧТО приходит параметром `payment_id`. В отличие от ветки
-ЮMoney, где контракт чистый (`create_payment` возвращает `request_id == label`,
-`check_payment(label)` ищет операцию по тому же label), ветка ЮKassa
-несогласована:
+Запись `PaymentRecord` искалась по тому же значению, которое прислал клиент,
+и найденная строка принималась за доказательство оплаты. `confirmation_url`
+не сохранялся и не проверялся нигде — значит, подтвердить платёж можно было,
+ни разу не открыв страницу оплаты. `IS_PRODUCTION` этот путь не закрывал:
+он гасит только демо-пополнение `POST /wallet/deposit`.
 
-    # app/api/payments.py:179 — в базу пишется ID провайдера
-    payment_id = result["payment_id"]          # payments.py:98 -> data["id"]
-    db.add(PaymentRecord(payment_id=payment_id, ...))
+Стало
+-----
+`confirmation_url` сохраняется при создании платежа (провайдер его выдал, к
+клиенту он попадает только через нас) и сверяется при подтверждении —
+`app/api/payments.py::_verify_local_record`. Без совпадения — 4xx.
 
-    # payments.py:104 — у провайдера запрашивается он же
-    requests.get(f"{YOOKASSA_API_URL}/payments/{payment_id}")
-
-`payment_id` возвращается пользователю в ответе `POST /payments/create` и снова
-приходит от него в `/payments/confirm` как query-параметр. Никакой связи с
-созданной НАМИ записью `PaymentRecord` эта проверка не использует: запись
-ищется по тому же значению, которое прислал клиент, и найденная запись
-принимается как подтверждение.
-
-`confirmation_url` из ответа на создание платежа — единственное, что реально
-уходит в браузер; он не сохраняется и при подтверждении не проверяется.
-Поэтому подтверждение не требует, чтобы пользователь хоть раз побывал на
-странице оплаты.
-
-`settings.IS_PRODUCTION` закрывает только ДЕМО-пополнение
-(`POST /wallet/deposit`) и к этому пути отношения не имеет.
-
-Ожидаемое поведение после исправления
--------------------------------------
-`/payments/confirm` обязан отказать (4xx) либо не изменить баланс.
+Что проверяет этот скрипт
+-------------------------
+1. голый `payment_id` без `confirmation_url` — зачисления быть не должно;
+2. выдуманный `confirmation_url` — зачисления быть не должно;
+3. верный `confirmation_url` — зачисление обязано пройти, иначе защита
+   сломала штатный путь (код возврата 2).
 """
 import os
 import sys
@@ -77,8 +68,15 @@ db.close()
 # Запись о платеже — как её создаёт /payments/create. Деньги НЕ уплачены:
 # пользователь не открывал confirmation_url и не вводил карту.
 FAKE_ID = "repro-yookassa-id-0001"
+STORED_URL = "https://yookassa.ru/checkout/repro-confirmation-url"
 db = SessionLocal()
-db.add(PaymentRecord(payment_id=FAKE_ID, user_id=uid, amount=50000, provider="yookassa"))
+db.add(PaymentRecord(
+    payment_id=FAKE_ID,
+    user_id=uid,
+    amount=50000,
+    provider="yookassa",
+    confirmation_url=STORED_URL,
+))
 db.commit()
 db.close()
 
@@ -93,30 +91,62 @@ payments.get_payment_status = lambda pid: {
 
 client = TestClient(main.app)
 token = create_access_token({"sub": str(uid)})
+headers = {"Authorization": f"Bearer {token}"}
 
+# Атака 1: подтверждение голым payment_id, без confirmation_url.
+# Именно этого хватало до исправления — URL не проверялся вообще.
 before = SessionLocal().query(User).filter(User.id == uid).first().balance
-
-r = client.post(
+r_bare = client.post(
     f"/payments/confirm?payment_id={FAKE_ID}&provider=yookassa",
-    headers={"Authorization": f"Bearer {token}"},
+    headers=headers,
 )
+after_bare = SessionLocal().query(User).filter(User.id == uid).first().balance
 
-after = SessionLocal().query(User).filter(User.id == uid).first().balance
+# Атака 2: подтверждение с ВЫДУМАННЫМ confirmation_url.
+r_fake = client.post(
+    f"/payments/confirm?payment_id={FAKE_ID}&provider=yookassa"
+    f"&confirmation_url=https://attacker.example/not-ours",
+    headers=headers,
+)
+after_fake = SessionLocal().query(User).filter(User.id == uid).first().balance
 
-print("=" * 66)
+# Атака 3: подтверждение с ВЕРНЫМ confirmation_url — так делает честный клиент.
+# Здесь важно, что защита не ломает штатный путь: реальный владелец с настоящим
+# URL должен получить зачисление, иначе фикс превратился бы в отказ всем.
+r_own = client.post(
+    f"/payments/confirm?payment_id={FAKE_ID}&provider=yookassa"
+    f"&confirmation_url={STORED_URL}",
+    headers=headers,
+)
+after_own = SessionLocal().query(User).filter(User.id == uid).first().balance
+
+print("=" * 68)
 print("РЕПРО: ЮKassa /payments/confirm — баланс без подтверждённой оплаты")
-print("=" * 66)
-print(f"баланс до:    {before}")
-print(f"ответ:        http={r.status_code} {r.text[:180]}")
-print(f"баланс после: {after}")
-print(f"зачислено:    {after - before}")
+print("=" * 68)
+print("Атака 1 — голый payment_id, confirmation_url не предъявлен")
+print(f"  http={r_bare.status_code}  {r_bare.text[:120]}")
+print(f"  баланс: {before} -> {after_bare}   (зачислено {after_bare - before})")
+print()
+print("Атака 2 — подделанный confirmation_url")
+print(f"  http={r_fake.status_code}  {r_fake.text[:120]}")
+print(f"  баланс: {after_bare} -> {after_fake}   (зачислено {after_fake - after_bare})")
+print()
+print("Штатный путь — верный confirmation_url от нашего же клиента")
+print(f"  http={r_own.status_code}  {r_own.text[:120]}")
+print(f"  баланс: {after_fake} -> {after_own}   (зачислено {after_own - after_fake})")
 print()
 
-if after > before:
-    print(f"УЯЗВИМОСТЬ ПОДТВЕРЖДЕНА: начислено {after - before} ₽.")
-    print("  confirmation_url не проверялся; то, что пользователь реально")
-    print("  оплатил платёж с этим ID, ниоткуда не следует.")
+stolen = (after_bare - before) + (after_fake - after_bare)
+if stolen > 0:
+    print(f"УЯЗВИМОСТЬ ПОДТВЕРЖДЕНА: без оплаты начислено {stolen} ₽.")
+    print("  Сверка confirmation_url не работает.")
     sys.exit(1)
 
-print("Защита работает: баланс не изменился.")
+if after_own - after_fake != 50000:
+    print("ФИКС СЛИШКОМ СТРОГИЙ: уязвимость закрыта, но и легальное")
+    print("  подтверждение своим confirmation_url не зачисляет деньги.")
+    sys.exit(2)
+
+print("Защита работает: без верного confirmation_url зачислений нет,")
+print("штатное подтверждение проходит и начисляет 50000 ₽.")
 sys.exit(0)
