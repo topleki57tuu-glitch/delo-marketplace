@@ -126,6 +126,6 @@ def set_csrf_cookie(response, token: str):
         value=signed,
         max_age=_TOKEN_MAX_AGE,
         httponly=True,
-        secure=settings.IS_PRODUCTION,  # HTTPS только в production
+        secure=settings.COOKIE_SECURE,  # HTTPS — задаётся явно, см. config.COOKIE_SECURE
         samesite="strict"
     )

@@ -29,8 +29,22 @@ def _parse_origins(raw: str) -> List[str]:
 
 
 class Settings:
-    ENV: str = os.environ.get("ENV", "development").lower()
-    IS_PRODUCTION: bool = ENV == "production"
+    # Определение окружения — fail-closed.
+    #
+    # Раньше было `IS_PRODUCTION = (ENV == "production")` при дефолте
+    # ENV=development. Это опасный дефолт: забыв выставить ENV на боевом
+    # контуре, получаешь выключенные CSRF и rate-limit, сгенерированный
+    # SECRET_KEY и разрешённое демо-пополнение кошелька — то есть приложение
+    # молча работает в небезопасном режиме вместо того, чтобы упасть.
+    #
+    # Теперь наоборот: прод — режим по умолчанию, а dev включается только
+    # явным ENV=development. Ошибка в сторону «приложение не стартовало»
+    # вместо «приложение работает без защиты». Требовать явности для
+    # production всё равно не нужно: без SECRET_KEY и CORS_ORIGINS оно
+    # не поднимется, и это правильный отказ.
+    _ENV_RAW: str = os.environ.get("ENV", "").strip().lower()
+    ENV: str = _ENV_RAW or "production"
+    IS_PRODUCTION: bool = ENV != "development"
 
     ALGORITHM: str = "HS256"
     SECRET_KEY: str = os.environ.get("SECRET_KEY", "")
@@ -80,6 +94,18 @@ class Settings:
     _csrf_raw: str = os.environ.get("CSRF_ENABLED", "")
     CSRF_ENABLED: bool = (
         IS_PRODUCTION if _csrf_raw == "" else _csrf_raw.strip().lower() in ("1", "true", "yes", "on")
+    )
+
+    # Флаг Secure у cookie. Раньше он молча выводился из IS_PRODUCTION, из-за
+    # чего на окружении с ENV=production, но без HTTPS (CI, локальный прогон
+    # боевого профиля, отладка за прокси без TLS) браузер отбрасывал cookie
+    # с CSRF — все изменяющие запросы падали с 403 «токен отсутствует».
+    # Теперь связь с HTTPS задаётся явно: COOKIE_SECURE=1/0, иначе — по ENV.
+    _cookie_secure_raw: str = os.environ.get("COOKIE_SECURE", "")
+    COOKIE_SECURE: bool = (
+        IS_PRODUCTION
+        if _cookie_secure_raw == ""
+        else _cookie_secure_raw.strip().lower() in ("1", "true", "yes", "on")
     )
 
     # Sentry для мониторинга ошибок в production

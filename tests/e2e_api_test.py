@@ -61,7 +61,11 @@ async def ws_test(task_id, listener_token, sender_token):
     """
     import websockets
 
-    uri = f"ws://localhost:8000/ws/tasks/{task_id}?token={listener_token}"
+    # Адрес берём из BASE, а не хардкодим localhost:8000 — иначе тест молча
+    # проверяет не тот сервер, что указан в DELO_BASE (например, при запуске
+    # на другом порту падал с WinError 1225 «соединение отклонено»).
+    ws_base = BASE.replace("https://", "wss://").replace("http://", "ws://").rstrip("/")
+    uri = f"{ws_base}/ws/tasks/{task_id}?token={listener_token}"
     try:
         async with websockets.connect(uri, open_timeout=5) as ws:
             # Даём серверу зарегистрировать соединение в manager.

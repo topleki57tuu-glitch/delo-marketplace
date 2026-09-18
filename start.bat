@@ -40,6 +40,10 @@ if not exist "frontend" (
 
 echo [2/5] Starting Backend (FastAPI)...
 cd backend
+REM Явно включаем режим разработки. Без этой строки приложение считает
+REM окружение боевым (fail-closed в app/core/config.py) и отказывается
+REM стартовать без SECRET_KEY — это защита от запуска прода без настройки.
+set ENV=development
 if not exist "delo.db" (
     echo Creating demo database...
     if "%DEMO_PASSWORD%"=="" (
@@ -52,7 +56,7 @@ if not exist "delo.db" (
     python seed_demo.py
 )
 
-start /B cmd /c "python -m uvicorn main:app --host 0.0.0.0 --port 8000 > backend.log 2>&1"
+start /B cmd /c "set ENV=development && python -m uvicorn main:app --host 0.0.0.0 --port 8000 > backend.log 2>&1"
 cd ..
 
 echo Waiting for backend...

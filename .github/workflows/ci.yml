@@ -1,0 +1,261 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# Отменяем предыдущий прогон, если в ту же ветку пришёл новый пуш:
+# незачем ждать устаревший результат.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Бэкенд: поднимаем Postgres и Redis (как в проде), прогоняем миграции,
+  # запускаем приложение и все e2e-наборы.
+  # ---------------------------------------------------------------------------
+  backend:
+    name: Backend tests
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: marketplace
+          POSTGRES_PASSWORD: ci_password
+          POSTGRES_DB: marketplace_test
+        ports:
+          - 5432:5432
+        # Без health-gate шаги начнут выполняться до готовности БД
+        options: >-
+          --health-cmd "pg_isready -U marketplace -d marketplace_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      # development включаем ЯВНО: начиная с fail-closed-логики config.py
+      # отсутствие ENV означает production, и тесты, проверяющие dev-контракт
+      # (/auth/forgot-password → dev_reset_link, демо-пополнение кошелька),
+      # без этой строки упадут.
+      ENV: development
+      # Тестируем на PostgreSQL, а не на SQLite: именно эта СУБД в проде,
+      # и часть поведения (уровни изоляции, SERIALIZABLE-конфликты) отличается.
+      DATABASE_URL: postgresql+psycopg2://marketplace:ci_password@localhost:5432/marketplace_test
+      REDIS_URL: redis://localhost:6379/0
+      SECRET_KEY: ci-secret-key-not-used-in-production-0123456789
+      FRONTEND_URL: http://localhost:5173
+      CORS_ORIGINS: http://localhost:5173
+      ADMIN_EMAILS: admin@delo.ru
+      # Пароль демо-аккаунтов фиксируем, чтобы тесты знали, чем логиниться
+      DEMO_PASSWORD: ci-demo-password
+      # CSRF включаем принудительно — тесты должны доказывать защиту,
+      # а не проходить из-за выключенной проверки.
+      CSRF_ENABLED: "1"
+      # Лимиты здесь выключены намеренно. e2e-наборы создают десятки аккаунтов
+      # подряд с одного IP и упираются в лимит register (5 в час), из-за чего
+      # падают не из-за дефекта, а из-за собственного объёма. Сами лимиты
+      # проверяются в job production-profile, где включены автоматически.
+      RATE_LIMIT_ENABLED: "0"
+      # CI слушает plain HTTP, поэтому флаг Secure у cookie нужно снять:
+      # с ним клиент не отправит csrf_token обратно и все записи упадут 403.
+      COOKIE_SECURE: "0"
+      DELO_BASE: http://127.0.0.1:8000
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r backend/requirements.txt
+
+      - name: Apply migrations to a clean database
+        working-directory: backend
+        run: alembic upgrade head
+
+      # ENV=development задан выше, в блоке env. Часть тестов проверяет
+      # именно dev-контракт: /auth/forgot-password отдаёт dev_reset_link без
+      # SMTP, а демо-пополнение кошелька позволяет довести сделку до эскроу
+      # без реального платёжного провайдера. В production обе возможности
+      # выключены — боевой профиль проверяется отдельной job-ой ниже.
+      - name: Seed demo data
+        working-directory: backend
+        run: python seed_demo.py
+
+      - name: Start backend
+        working-directory: backend
+        run: |
+          python -m uvicorn main:app --host 127.0.0.1 --port 8000 > /tmp/uvicorn.log 2>&1 &
+          echo "Waiting for the app to accept requests..."
+          for i in $(seq 1 40); do
+            if curl -sf http://127.0.0.1:8000/csrf-token > /dev/null; then
+              echo "Backend is up after ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Backend did not start, dumping log:"
+          cat /tmp/uvicorn.log
+          exit 1
+
+      - name: Run test suites
+        run: |
+          set -e
+          for suite in \
+            test_auth_flow \
+            test_csrf_coverage \
+            test_chat_reviews_notifications \
+            e2e_api_test \
+            e2e_new_features_test
+          do
+            echo "::group::$suite"
+            python "tests/${suite}.py"
+            echo "::endgroup::"
+          done
+
+      - name: Show backend log on failure
+        if: failure()
+        run: tail -n 200 /tmp/uvicorn.log
+
+  # ---------------------------------------------------------------------------
+  # Боевой профиль: проверяем, что приложение вообще стартует с ENV=production
+  # и что защитные механизмы включаются сами, без явных флагов. Это ловит
+  # класс ошибок «локально всё работало, на сервере не поднялось»: например,
+  # отсутствие SECRET_KEY/CORS_ORIGINS или падение на импорте.
+  # ---------------------------------------------------------------------------
+  production-profile:
+    name: Production config smoke test
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: marketplace
+          POSTGRES_PASSWORD: ci_password
+          POSTGRES_DB: marketplace_prod_smoke
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U marketplace -d marketplace_prod_smoke"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r backend/requirements.txt
+
+      - name: Apply migrations
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql+psycopg2://marketplace:ci_password@localhost:5432/marketplace_prod_smoke
+          ENV: production
+          SECRET_KEY: ci-secret-key-not-used-in-production-0123456789
+          CORS_ORIGINS: https://example.com
+        run: alembic upgrade head
+
+      - name: Assert production settings are locked down
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql+psycopg2://marketplace:ci_password@localhost:5432/marketplace_prod_smoke
+          SECRET_KEY: ci-secret-key-not-used-in-production-0123456789
+          CORS_ORIGINS: https://example.com
+        run: |
+          ENV=production python - <<'PY'
+          import sys
+          sys.path.insert(0, ".")
+          from app.core.config import settings
+
+          assert settings.IS_PRODUCTION, "ENV=production должен давать IS_PRODUCTION=True"
+          assert settings.CSRF_ENABLED, "В production CSRF обязан быть включён"
+          assert settings.RATE_LIMIT_ENABLED, "В production лимиты обязаны быть включены"
+          assert settings.COOKIE_SECURE, "В production cookie обязаны быть Secure (HTTPS)"
+          print("production-профиль: CSRF, rate-limit и Secure-cookie включены")
+          PY
+
+      - name: Assert production refuses to boot without SECRET_KEY
+        working-directory: backend
+        run: |
+          # Без SECRET_KEY приложение обязано упасть, а не стартовать
+          # со сгенерированным ключом: иначе токены становятся невалидными
+          # при каждом рестарте и подпись можно подделать.
+          if ENV=production CORS_ORIGINS=https://example.com python -c \
+             "import sys; sys.path.insert(0,'.'); from app.core.config import settings" 2>/dev/null; then
+            echo "ОШИБКА: приложение стартовало в production без SECRET_KEY"
+            exit 1
+          fi
+          echo "production без SECRET_KEY: старт заблокирован, как и ожидалось"
+
+      - name: Assert seed refuses to run in production
+        working-directory: backend
+        run: |
+          # Демо-данные создают аккаунт арбитра — на боевом контуре это дыра.
+          if ENV=production \
+             SECRET_KEY=ci-secret-key-not-used-in-production-0123456789 \
+             CORS_ORIGINS=https://example.com \
+             DATABASE_URL=postgresql+psycopg2://marketplace:ci_password@localhost:5432/marketplace_prod_smoke \
+             python seed_demo.py 2>/dev/null; then
+            echo "ОШИБКА: seed_demo.py отработал в production"
+            exit 1
+          fi
+          echo "production: seed заблокирован, как и ожидалось"
+
+  # ---------------------------------------------------------------------------
+  # Фронтенд: юнит-тесты и production-сборка.
+  # ---------------------------------------------------------------------------
+  frontend:
+    name: Frontend tests and build
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # npm ci, а не install: воспроизводимость и проверка, что lock-файл
+      # синхронизирован с package.json.
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run unit tests
+        run: npx vitest run
+
+      - name: Build production bundle
+        run: npx vite build
