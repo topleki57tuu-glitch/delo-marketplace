@@ -202,65 +202,26 @@ def vacuum_database():
 
 
 @celery_app.task(name='app.tasks.cleanup.cleanup_orphaned_files')
-def cleanup_orphaned_files():
-    """
-    Удаляет файлы из uploads/, которых нет в БД.
+def cleanup_orphaned_files(days_old: int = 7):
+    """Удаляет записи о файлах, на которые никто не ссылается.
 
-    ВАЖНО: Будьте осторожны с этой задачей - проверьте логику перед запуском.
-
-    Returns:
-        dict: {"deleted": count}
+    Сама логика — в `app/core/file_cleanup.py`: этот модуль на верхнем уровне
+    импортирует celery, которого нет в зависимостях, поэтому держать здесь
+    код, удаляющий данные, означало бы держать его непроверяемым.
     """
-    import os
-    from pathlib import Path
-    from app.models import StoredFile, Task
-    from file_utils import UPLOAD_DIR
+    from app.core.file_cleanup import sweep_orphaned_files
 
     db: Session = SessionLocal()
     try:
-        # Получаем все файлы из БД
-        db_files = set()
-
-        # Файлы из StoredFile
-        for file in db.query(StoredFile).all():
-            if file.path:
-                db_files.add(file.path)
-
-        # Изображения задач из Task.images
-        for task in db.query(Task).filter(Task.images.isnot(None)).all():
-            if task.images:
-                import json
-                try:
-                    images = json.loads(task.images)
-                    for img_url in images:
-                        # Извлекаем путь из URL
-                        if "/uploads/" in img_url:
-                            path = img_url.split("/uploads/")[1]
-                            db_files.add(path)
-                except:
-                    pass
-
-        # Сканируем файловую систему
-        deleted_count = 0
-        upload_path = Path(UPLOAD_DIR)
-
-        for file_path in upload_path.rglob("*"):
-            if file_path.is_file():
-                relative_path = str(file_path.relative_to(upload_path))
-
-                # Если файла нет в БД - удаляем
-                if relative_path not in db_files:
-                    try:
-                        file_path.unlink()
-                        deleted_count += 1
-                        logger.info(f"Deleted orphaned file: {relative_path}")
-                    except Exception as e:
-                        logger.error(f"Failed to delete {relative_path}: {e}")
-
-        logger.info(f"Cleaned up {deleted_count} orphaned files")
-        return {"deleted": deleted_count}
-
+        result = sweep_orphaned_files(db, days_old=days_old)
+        db.commit()
+        logger.info(
+            f"cleanup_orphaned_files: ссылок найдено {result['referenced']}, "
+            f"удалено записей {result['deleted']}"
+        )
+        return result
     except Exception as e:
+        db.rollback()
         logger.error(f"Failed to cleanup orphaned files: {e}")
         raise
     finally:
