@@ -31,11 +31,15 @@ BASE = "http://localhost:3000"
 OUT  = os.path.join(os.path.dirname(__file__), "docs", "manual_shots")
 os.makedirs(OUT, exist_ok=True)
 
-# Демо-аккаунты
+# Демо-аккаунты. Пароль резолвится из DEMO_PASSWORD или backend/demo_password.txt
+# (см. scripts/_demo_env.py) — хардкода в репозитории нет.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _demo_env import DEMO_PASSWORD  # noqa: E402
+
 CUST_EMAIL = "anna@delo.ru"
-CUST_PASS  = "demo123"
 SPEC_EMAIL = "igor@delo.ru"
-SPEC_PASS  = "demo123"
+CUST_PASS  = DEMO_PASSWORD
+SPEC_PASS  = DEMO_PASSWORD
 
 
 async def screenshot(page, filename, **kwargs):
@@ -214,9 +218,11 @@ async def main():
         print("10_chat.png …")
         await page.goto(BASE, wait_until="networkidle", timeout=15000)
         # task 12 (в работе) принадлежит Dmitry
-        import json, urllib.request as _ur
+        import json, urllib.request as _ur, urllib.parse
         req = _ur.Request("http://localhost:8000/login",
-                          data=b"username=dmitry@delo.ru&password=demo123")
+                          data=urllib.parse.urlencode(
+                              {"username": "dmitry@delo.ru", "password": CUST_PASS}
+                          ).encode())
         with _ur.urlopen(req, timeout=10) as r:
             dtok = json.loads(r.read())["access_token"]
         req2 = _ur.Request("http://localhost:8000/users/me",

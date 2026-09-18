@@ -5,6 +5,7 @@ from typing import Optional, List, Dict
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, status
 from sqlalchemy.orm import Session
 from app.core.database import get_db, SessionLocal
+from app.core.csrf import verify_csrf
 from app.core.security import oauth2_scheme, decode_token
 from app.core.logging import log_security_event
 from app.models import Message, Task, User, Notification, TaskStatus
@@ -131,7 +132,7 @@ def get_messages(task_id: int, token: str = Depends(oauth2_scheme), db: Session 
     return result
 
 @router.put("/tasks/{task_id}/messages/read")
-def mark_messages_read(task_id: int, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+def mark_messages_read(task_id: int, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db), _csrf: None = Depends(verify_csrf)):
     payload = decode_token_or_401(token)
     user_id = int(payload.get("sub"))
 
@@ -153,7 +154,7 @@ def mark_messages_read(task_id: int, token: str = Depends(oauth2_scheme), db: Se
     return {"message": "Сообщения прочитаны", "updated_count": updated}
 
 @router.post("/tasks/{task_id}/messages")
-async def post_message(task_id: int, message: MessageCreate, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+async def post_message(task_id: int, message: MessageCreate, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db), _csrf: None = Depends(verify_csrf)):
     payload = decode_token_or_401(token)
     user_id = int(payload.get("sub"))
 

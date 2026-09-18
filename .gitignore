@@ -20,6 +20,10 @@ node_modules/
 .env.production
 .dev.vars
 
+# dev-секрет: пароль демо-аккаунтов, пишется seed_demo.py
+demo_password.txt
+backend/demo_password.txt
+
 # logs
 logs/
 *.log
@@ -49,6 +53,9 @@ backend/uploads/
 uploads/
 bot/subscriptions.json*
 bot/subs.json*
+# PID-файлы пишут start/stop-скрипты при каждом запуске;
+# в репозитории им делать нечего — только конфликты при merge
+*.pid
 
 # ---- Временные файлы Vite/Vitest ----
 # Остаются после пересборки конфигов, в репозитории им делать нечего

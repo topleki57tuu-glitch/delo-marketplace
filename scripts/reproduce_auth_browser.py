@@ -1,5 +1,11 @@
 import asyncio
+import os
+import sys
+
 from playwright.async_api import async_playwright
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _demo_env import DEMO_PASSWORD, WEB_BASE as WEB  # noqa: E402
 
 async def main():
     async with async_playwright() as p:
@@ -11,8 +17,8 @@ async def main():
         page.on("console", lambda msg: console_logs.append(f"[{msg.type}] {msg.text}"))
         page.on("pageerror", lambda err: console_logs.append(f"[ERROR] {err}"))
 
-        print("Navigating to http://localhost:3000...")
-        await page.goto("http://localhost:3000", wait_until="networkidle")
+        print(f"Navigating to {WEB}...")
+        await page.goto(WEB, wait_until="networkidle")
 
         print("Clicking Login button in header...")
         # Find 'Вход' button
@@ -34,7 +40,7 @@ async def main():
         email_input = page.locator("input[type='email']")
         password_input = page.locator("input[type='password']")
         await email_input.fill("anna@delo.ru")
-        await password_input.fill("demo123")
+        await password_input.fill(DEMO_PASSWORD)
 
         # Submit form
         submit_btn = page.locator("button[type='submit']:has-text('Войти')")

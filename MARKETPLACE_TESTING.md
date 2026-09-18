@@ -30,7 +30,7 @@ curl http://localhost:8000/products/1
 ```bash
 curl -X POST http://localhost:8000/login \
   -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "username=anna@delo.ru&password=demo123"
+  -d "username=anna@delo.ru&password=$DEMO_PASSWORD"
 ```
 **Результат**: Токен получен
 
@@ -65,11 +65,11 @@ curl -X POST http://localhost:8000/products/orders \
 3. Проверить форму заказа
 
 ### C. Создание товара
-1. Войти как продавец (igor@delo.ru / demo123)
+1. Войти как продавец (igor@delo.ru)
 2. Открыть /create-product
 3. Создать новый товар с фото
 
-### D. Редактирование товара  
+### D. Редактирование товара
 1. Открыть /my-products
 2. Кликнуть "Редактировать"
 3. Изменить данные товара
@@ -164,7 +164,7 @@ curl -X POST http://localhost:8000/products/orders \
 
 ### Проверить баланс Anna:
 ```bash
-TOKEN=$(curl -s -X POST http://localhost:8000/login -H "Content-Type: application/x-www-form-urlencoded" -d "username=anna@delo.ru&password=demo123" | python -c "import sys, json; print(json.load(sys.stdin)['access_token'])")
+TOKEN=$(curl -s -X POST http://localhost:8000/login -H "Content-Type: application/x-www-form-urlencoded" -d "username=anna@delo.ru&password=$DEMO_PASSWORD" | python -c "import sys, json; print(json.load(sys.stdin)['access_token'])")
 
 curl -s http://localhost:8000/users/me -H "Authorization: Bearer $TOKEN" | python -c "import sys, json; u=json.load(sys.stdin); print(f\"Balance: {u['balance']/100} rubles\")"
 ```

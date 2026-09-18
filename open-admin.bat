@@ -34,8 +34,15 @@ echo   Login credentials:
 echo ================================================
 echo.
 echo   Email:    admin@delo.ru
-echo   Password: demo123
+echo   Password: see backend\demo_password.txt
+echo             (or the DEMO_PASSWORD env var)
 echo.
+if exist "backend\demo_password.txt" (
+    echo   --- backend\demo_password.txt ---
+    type "backend\demo_password.txt"
+    echo   ---------------------------------
+    echo.
+)
 echo ================================================
 echo.
 
@@ -52,7 +59,7 @@ echo    - Recent activity
 echo.
 echo If not logged in automatically:
 echo    1. Click "Login" in the top right corner
-echo    2. Enter admin@delo.ru / demo123
+echo    2. Enter admin@delo.ru + the password shown above
 echo    3. Click "Admin" button in navigation
 echo.
 pause

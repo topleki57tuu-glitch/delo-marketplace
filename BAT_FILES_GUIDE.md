@@ -89,7 +89,7 @@ open-admin.bat
 
 **Учетные данные:**
 - Email: `admin@delo.ru`
-- Пароль: `demo123`
+- Пароль: см. backend/demo_password.txt
 
 ---
 
@@ -156,7 +156,7 @@ status.bat
 ### Открыть админку
 ```cmd
 1. open-admin.bat
-2. Войдите как admin@delo.ru / demo123
+2. Войдите как admin@delo.ru
 ```
 
 ### При проблемах
@@ -311,6 +311,11 @@ netstat -ano | findstr ":3000"
 
 ---
 
-**Создано**: Claude Code  
-**Дата**: 2026-09-13  
+**Создано**: Claude Code
+**Дата**: 2026-09-13
 **Версия**: 1.0.0
+
+> Пароль демо-аккаунтов не захардкожен: `seed_demo.py` берёт его из
+> `DEMO_PASSWORD` либо генерирует случайный и пишет в
+> `backend/demo_password.txt` (в `.gitignore`). Посмотреть:
+> `cat backend/demo_password.txt`.

@@ -42,6 +42,13 @@ echo [2/5] Starting Backend (FastAPI)...
 cd backend
 if not exist "delo.db" (
     echo Creating demo database...
+    if "%DEMO_PASSWORD%"=="" (
+        echo.
+        echo   DEMO_PASSWORD not set - generating a random one.
+        echo   The generated password is printed below and stored in
+        echo   backend\demo_password.txt so you can log in.
+        echo.
+    )
     python seed_demo.py
 )
 
@@ -105,11 +112,20 @@ echo    Backend:   http://localhost:8000
 echo    API Docs:  http://localhost:8000/docs
 echo    Admin:     http://localhost:3000/admin/dashboard
 echo.
-echo Demo accounts (password: demo123):
+echo Demo accounts:
 echo    Admin:       admin@delo.ru
 echo    Customer:    anna@delo.ru
 echo    Specialist:  igor@delo.ru
 echo.
+echo Password: see backend\demo_password.txt
+echo    (set DEMO_PASSWORD before seeding to choose your own)
+echo.
+if exist "backend\demo_password.txt" (
+    echo    --- backend\demo_password.txt ---
+    type "backend\demo_password.txt"
+    echo    ---------------------------------
+    echo.
+)
 echo Logs:
 echo    Backend:  backend\backend.log
 echo    Frontend: frontend\frontend.log

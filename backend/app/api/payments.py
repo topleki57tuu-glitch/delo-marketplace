@@ -10,7 +10,10 @@ from app.core.money import credit_balance, debit_balance
 from app.core.csrf import verify_csrf
 from app.core.logging import logger, log_escrow_operation
 from app.core.cache import cache
-from app.models import User, Transaction, PaymentRecord, Task, Notification, UserRole, TaskStatus, TransactionType
+from app.models import (
+    User, Transaction, PaymentRecord, PaymentStatus, Task, Notification,
+    UserRole, TaskStatus, TransactionType,
+)
 from app.schemas import DepositRequest
 from pydantic import BaseModel
 import payments
@@ -154,11 +157,8 @@ def create_payment(
         if "error" in result:
             raise HTTPException(502, f"Ошибка создания платежа: {result['error']}")
 
-        return {
-            "provider": "yoomoney",
-            "payment_id": result["payment_id"],
-            "confirmation_url": result["confirmation_url"]
-        }
+        payment_id = result["payment_id"]
+        confirmation_url = result["confirmation_url"]
 
     elif provider == "yookassa":
         if not payments.is_configured():
@@ -173,14 +173,30 @@ def create_payment(
         if "error" in result:
             raise HTTPException(502, f"Ошибка создания платежа: {result['error']}")
 
-        return {
-            "provider": "yookassa",
-            "payment_id": result["payment_id"],
-            "confirmation_url": result["confirmation_url"]
-        }
+        payment_id = result["payment_id"]
+        confirmation_url = result["confirmation_url"]
 
     else:
         raise HTTPException(400, f"Неизвестный провайдер: {provider}")
+
+    # Фиксируем платёж ДО ухода пользователя на страницу оплаты: это
+    # единственный достоверный источник user_id и суммы для вебхука.
+    # Без этой записи вебхук вынужден доверять label из запроса, а его
+    # формирует плательщик (см. комментарий к PaymentRecord).
+    db.add(PaymentRecord(
+        payment_id=payment_id,
+        user_id=user_id,
+        amount=req.amount,
+        provider=provider,
+        status=PaymentStatus.created,
+    ))
+    db.commit()
+
+    return {
+        "provider": provider,
+        "payment_id": payment_id,
+        "confirmation_url": confirmation_url,
+    }
 
 @router.post("/payments/confirm")
 def confirm_payment(
@@ -193,8 +209,9 @@ def confirm_payment(
     """
     Подтвердить и зачислить платеж.
 
-    Args:
-        provider: "yoomoney" или "yookassa"
+    Сумма и получатель берутся из записи, созданной нами при оформлении
+    платежа, а не из ответа провайдера: метаданные платежа тоже уходят в
+    браузер и не годятся как источник доверия.
     """
     payload = decode_token_or_401(token)
     user_id = int(payload.get("sub"))
@@ -213,27 +230,36 @@ def confirm_payment(
     if not status_result.get("paid"):
         return {"status": status_result["status"], "credited": False}
 
-    meta_user_id = status_result.get("metadata", {}).get("user_id")
-    if meta_user_id != str(user_id):
+    record = db.query(PaymentRecord).filter(PaymentRecord.payment_id == payment_id).first()
+    if not record:
+        logger.warning(
+            f"Payment {payment_id} is paid but has no local record — crediting refused"
+        )
+        raise HTTPException(409, "Платёж не найден. Обратитесь в поддержку.")
+
+    if record.user_id != user_id:
         raise HTTPException(403, "Платёж не принадлежит этому пользователю")
 
-    already = db.query(PaymentRecord).filter(PaymentRecord.payment_id == payment_id).first()
-    if already:
+    # Идемпотентность: платёж мог уже быть зачислен вебхуком
+    if record.credited_at is not None:
         return {"status": "succeeded", "credited": False, "message": "Уже зачислено"}
 
-    amount = status_result["amount"]
+    amount = record.amount
     user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(404, "Пользователь не найден")
+
     credit_balance(db, user_id, amount)
-    tx = Transaction(user_id=user_id, amount=amount, type=TransactionType.deposit)
-    db.add(tx)
-    db.add(PaymentRecord(payment_id=payment_id, user_id=user_id, amount=amount))
+    db.add(Transaction(user_id=user_id, amount=amount, type=TransactionType.deposit))
+    record.status = PaymentStatus.paid
+    record.credited_at = datetime.utcnow()
     db.commit()
     db.refresh(user)
 
     return {"status": "succeeded", "credited": True, "new_balance": user.balance}
 
 @router.post("/payments/webhook/yoomoney")
-def yoomoney_webhook(request: Request, db: Session = Depends(get_db)):
+async def yoomoney_webhook(request: Request, db: Session = Depends(get_db)):
     """
     Вебхук для уведомлений от ЮMoney.
 
@@ -247,16 +273,20 @@ def yoomoney_webhook(request: Request, db: Session = Depends(get_db)):
     - codepro
     - label
     - sha1_hash
-    """
-    import asyncio
-    from fastapi import Form
 
+    Эндпоинт обязательно async: тело приходит как form-data, а `request.form()`
+    — корутина на event loop сервера. Раньше здесь стоял sync-`def` с
+    `asyncio.run(...)` внутри, что создавало второй event loop и роняло
+    обработку — платежи не зачислялись вовсе.
+    """
     # Получаем все параметры из формы
     try:
-        form_data = asyncio.run(request.form())
-        notification_data = dict(form_data)
-    except:
+        form_data = await request.form()
+    except Exception as exc:
+        logger.warning(f"ЮMoney webhook: cannot parse form data: {exc}")
         raise HTTPException(400, "Invalid form data")
+
+    notification_data = dict(form_data)
 
     # Проверяем подпись
     if not yoomoney.verify_webhook(notification_data):
@@ -265,39 +295,54 @@ def yoomoney_webhook(request: Request, db: Session = Depends(get_db)):
 
     # Извлекаем данные
     label = notification_data.get("label")
-    amount = float(notification_data.get("amount", 0))
+    amount_raw = notification_data.get("amount", 0)
     operation_id = notification_data.get("operation_id")
 
     if not label or not operation_id:
         raise HTTPException(400, "Missing label or operation_id")
 
-    # Проверяем что платеж еще не зачислен
-    already = db.query(PaymentRecord).filter(PaymentRecord.payment_id == label).first()
-    if already:
+    record = db.query(PaymentRecord).filter(PaymentRecord.payment_id == label).first()
+
+    # Платежа с таким label мы не создавали — значит, label подделал
+    # плательщик (он уходит через браузер и легко меняется в форме).
+    # Зачислять по нему нельзя никому.
+    if not record:
+        logger.warning(
+            f"ЮMoney webhook for unknown label={label!r} "
+            f"(amount={amount_raw}, operation_id={operation_id}) — rejected"
+        )
+        raise HTTPException(404, "Unknown payment label")
+
+    if record.credited_at is not None:
         logger.info(f"ЮMoney payment {label} already credited")
         return {"status": "ok"}
 
-    # Извлекаем user_id из label (delo_USER_ID_RANDOM)
-    if not label.startswith("delo_"):
-        logger.warning(f"Invalid label format: {label}")
-        raise HTTPException(400, "Invalid label format")
+    # Сверяем сумму с той, что мы зафиксировали при создании платежа:
+    # провайдер присылает её в уведомлении, и расхождение означает либо
+    # подмену, либо ошибку — зачисляем ровно запрошенное.
+    try:
+        notified_amount = int(float(amount_raw))
+    except (TypeError, ValueError):
+        raise HTTPException(400, "Invalid amount")
 
-    parts = label.split("_")
-    if len(parts) < 2:
-        raise HTTPException(400, "Invalid label format")
+    if notified_amount != record.amount:
+        logger.warning(
+            f"ЮMoney amount mismatch for {label}: notified={notified_amount}, "
+            f"expected={record.amount} — crediting expected amount"
+        )
 
-    user_id = int(parts[1])
+    user_id = record.user_id
+    amount = record.amount
 
-    # Зачисляем средства
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         logger.error(f"User {user_id} not found for payment {label}")
         raise HTTPException(404, "User not found")
 
     credit_balance(db, user_id, amount)
-    tx = Transaction(user_id=user_id, amount=amount, type=TransactionType.deposit)
-    db.add(tx)
-    db.add(PaymentRecord(payment_id=label, user_id=user_id, amount=amount))
+    db.add(Transaction(user_id=user_id, amount=amount, type=TransactionType.deposit))
+    record.status = PaymentStatus.paid
+    record.credited_at = datetime.utcnow()
 
     # Отправляем уведомление пользователю
     db.add(Notification(

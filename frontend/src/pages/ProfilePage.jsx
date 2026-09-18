@@ -62,8 +62,11 @@ export default function ProfilePage({ user, token, onUpdateUser, onLogout, onOpe
   const [verDocNumber, setVerDocNumber] = useState('');
   const [submittingVer, setSubmittingVer] = useState(false);
 
-  // Admin moderation tab/state (if admin)
-  const isAdmin = user?.email && (user.email.toLowerCase() === 'admin@delo.ru' || user.email.toLowerCase().includes('admin'));
+  // Admin moderation tab/state (if admin).
+  // Признак берём с бэкенда: раньше он вычислялся по email с подстрокой
+  // «admin», из-за чего панель с очередью выплат раскрывалась перед
+  // admin-vasya@x.com — а запросы к данным всё равно отклонялись сервером.
+  const isAdmin = !!user?.is_admin;
   const [adminVerifications, setAdminVerifications] = useState([]);
   const [showAdminVerifications, setShowAdminVerifications] = useState(false);
   const [processingAdminId, setProcessingAdminId] = useState(null);

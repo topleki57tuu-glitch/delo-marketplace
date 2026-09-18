@@ -92,8 +92,14 @@ echo "    backend отвечает"
 
 read -rp "Насыпать демо-данные (перезапишет базу!)? [y/N]: " SEED
 if [ "${SEED:-n}" = "y" ]; then
+    # Пароль демо-аккаунтов не хардкодится: seed_demo.py берёт DEMO_PASSWORD
+    # из окружения либо генерирует случайный. Не печатаем его в лог деплоя.
     docker compose -f docker-compose.prod.yml exec -T backend python seed_demo.py
-    echo "    Демо-аккаунты: igor@delo.ru / demo123 (полный список в README)"
+    echo "    Демо-данные созданы."
+    echo "    Пароль — значение DEMO_PASSWORD (задайте его в .env перед запуском),"
+    echo "    иначе он в backend/demo_password.txt внутри контейнера:"
+    echo "      docker compose -f docker-compose.prod.yml exec backend cat demo_password.txt"
+    echo "    ВНИМАНИЕ: демо-данные в проде создают админа — не оставляйте это без присмотра."
 fi
 
 echo ""

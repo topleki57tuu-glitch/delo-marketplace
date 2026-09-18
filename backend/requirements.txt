@@ -2,6 +2,10 @@ fastapi==0.129.0
 uvicorn==0.41.0
 sqlalchemy==2.0.46
 python-jose[cryptography]==3.5.0
+# Fernet для шифрования ПДн (номера документов, реквизиты выплат).
+# Раньше модуль приходил транзитивно как extra у python-jose: смена его
+# extras молча ломала шифрование в рантайме, а не на сборке.
+cryptography==46.0.7
 pydantic[email]==2.12.5
 python-dotenv==1.0.1
 python-multipart==0.0.22

@@ -73,17 +73,25 @@ else:
     logger.info("Production mode: ensure Alembic migrations are applied")
 
 # Для развёртывания «из коробки»: если выставлен SEED_DEMO=1 и база пустая,
-# засеиваем демо-данные. В обычной разработке выключено.
+# засеиваем демо-данные. В обычной разработке выключено, в production —
+# запрещено: среди демо-аккаунтов есть администратор, а пароль печатается
+# в лог при седировании и раньше был захардкожен в README.
 if os.environ.get("SEED_DEMO", "").lower() in ("1", "true", "yes"):
-    try:
-        from sqlalchemy import func as _func
-        with SessionLocal() as _db:
-            if (_db.query(_func.count(User.id)).scalar() or 0) == 0:
-                from seed_demo import main as _seed_main
-                _seed_main()
-                logger.info("Database seeded with demo data")
-    except Exception as _exc:
-        logger.error(f"Failed to seed demo data: {_exc}")
+    if settings.IS_PRODUCTION:
+        logger.error(
+            "SEED_DEMO=1 ignored in production: демо-данные содержат аккаунт "
+            "администратора с известным паролем. Создайте модератора вручную."
+        )
+    else:
+        try:
+            from sqlalchemy import func as _func
+            with SessionLocal() as _db:
+                if (_db.query(_func.count(User.id)).scalar() or 0) == 0:
+                    from seed_demo import main as _seed_main
+                    _seed_main()
+                    logger.info("Database seeded with demo data")
+        except Exception as _exc:
+            logger.error(f"Failed to seed demo data: {_exc}")
 
 app = FastAPI(
     title="Marketplace Platform API",

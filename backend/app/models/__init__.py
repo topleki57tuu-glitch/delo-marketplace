@@ -97,12 +97,29 @@ class VerificationRequest(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     resolved_at = Column(DateTime, nullable=True)
 
+class PaymentStatus(str, PyEnum):
+    created = "created"  # платёж создан у провайдера, ждём оплаты
+    paid = "paid"        # оплачен и зачислен на баланс
+
+
 class PaymentRecord(Base):
+    """Платёж на пополнение баланса: от создания до зачисления.
+
+    Запись создаётся в момент оформления платежа, а не после оплаты. Это
+    принципиально для вебхука: провайдер присылает `label`, который уходит
+    через браузер плательщика и потому подделывается. Доверять `label` как
+    источнику `user_id` нельзя — иначе переводом на 1 ₽ с чужим label можно
+    зачислить деньги произвольному пользователю. `user_id` берём из этой
+    строки (её создали мы), а `label` служит только ключом поиска.
+    """
     __tablename__ = "payment_records"
     id = Column(Integer, primary_key=True, index=True)
-    payment_id = Column(String, unique=True, index=True)
+    payment_id = Column(String, unique=True, index=True)  # label у ЮMoney, id у ЮKassa
     user_id = Column(Integer, index=True)
     amount = Column(Integer)
+    provider = Column(String, default="yoomoney")
+    status = Column(SqlaEnum(PaymentStatus), default=PaymentStatus.created)
+    credited_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 class Notification(Base):

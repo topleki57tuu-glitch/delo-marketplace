@@ -1,5 +1,11 @@
 import asyncio
+import os
+import sys
+
 from playwright.async_api import async_playwright
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _demo_env import DEMO_PASSWORD, WEB_BASE as WEB  # noqa: E402
 
 async def run_browser_test():
     async with async_playwright() as p:
@@ -7,7 +13,7 @@ async def run_browser_test():
         page = await browser.new_page()
 
         print("1. Opening app...")
-        await page.goto("http://localhost:3000", timeout=30000)
+        await page.goto(WEB, timeout=30000)
         await page.wait_for_load_state("networkidle")
 
         # Нажимаем кнопку Вход
@@ -21,7 +27,7 @@ async def run_browser_test():
         email_input = await page.wait_for_selector("form input[type='email']")
         pass_input = await page.wait_for_selector("form input[type='password']")
         await email_input.fill("anna@delo.ru")
-        await pass_input.fill("demo123")
+        await pass_input.fill(DEMO_PASSWORD)
 
         submit_btn = await page.wait_for_selector("form button[type='submit']")
         await submit_btn.click()
@@ -29,7 +35,7 @@ async def run_browser_test():
 
         # Переходим в профиль
         print("4. Opening profile...")
-        await page.goto("http://localhost:3000/profile", timeout=30000)
+        await page.goto(f"{WEB}/profile", timeout=30000)
         await page.wait_for_timeout(1500)
         content = await page.content()
 

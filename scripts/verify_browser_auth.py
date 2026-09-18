@@ -1,6 +1,12 @@
 import asyncio
-from playwright.async_api import async_playwright
+import os
+import sys
 import time
+
+from playwright.async_api import async_playwright
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _demo_env import DEMO_PASSWORD, WEB_BASE as WEB  # noqa: E402
 
 async def test_full_auth():
     ts = int(time.time())
@@ -10,7 +16,7 @@ async def test_full_auth():
         page = await context.new_page()
 
         print("1. Открытие главной страницы...")
-        await page.goto("http://localhost:3000", wait_until="networkidle")
+        await page.goto(WEB, wait_until="networkidle")
 
         # ---------------- ТЕСТ 1: РЕГИСТРАЦИЯ ----------------
         print("2. Проверка формы РЕГИСТРАЦИИ...")
@@ -45,12 +51,12 @@ async def test_full_auth():
         assert is_logged_out, "Не удалось выйти"
 
         # ---------------- ТЕСТ 3: ВХОД ПОД ДЕМО-АККАУНТОМ ----------------
-        print("4. Проверка ВХОДА (anna@delo.ru / demo123)...")
+        print("4. Проверка ВХОДА (anna@delo.ru / DEMO_PASSWORD)...")
         await page.locator("button:has-text('Вход')").first.click()
         await page.wait_for_timeout(400)
 
         await page.locator("input[type='email']").fill("anna@delo.ru")
-        await page.locator("input[type='password']").fill("demo123")
+        await page.locator("input[type='password']").fill(DEMO_PASSWORD)
         await page.locator("button[type='submit']:has-text('Войти')").click()
         await page.wait_for_timeout(2000)
 

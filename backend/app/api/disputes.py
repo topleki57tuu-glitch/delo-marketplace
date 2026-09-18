@@ -310,7 +310,9 @@ def resolve_dispute(dispute_id: int, req: DisputeResolve, token: str = Depends(o
         if budget > 0:
             customer = db.query(User).filter(User.id == task.customer_id).first()
             if customer:
-                customer.balance += budget
+                # Начисление атомарным UPDATE (см. app/core/money.py): при
+                # конкурентной записи баланса инкремент в Python теряется.
+                credit_balance(db, customer.id, budget)
                 db.add(Transaction(user_id=customer.id, amount=budget,
                                    type=TransactionType.escrow_refund, task_id=task.id))
 
@@ -335,7 +337,8 @@ def resolve_dispute(dispute_id: int, req: DisputeResolve, token: str = Depends(o
                 fee_percent = 0 if executor.is_pro else 5
                 fee = round(budget * fee_percent / 100)
                 payout = budget - fee
-                executor.balance += payout
+                # Начисление атомарным UPDATE — как в остальных денежных путях
+                credit_balance(db, executor.id, payout)
                 db.add(Transaction(user_id=executor.id, amount=payout,
                                    type=TransactionType.escrow_release, task_id=task.id,
                                    fee=fee))

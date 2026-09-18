@@ -11,7 +11,7 @@ from app.core.security import (
     verify_refresh_token, rate_limit, oauth2_scheme
 )
 from app.core.csrf import verify_csrf
-from app.models import User, PasswordResetToken, RefreshToken
+from app.models import User, PasswordResetToken, RefreshToken, UserRole
 from app.schemas import (
     UserCreate, ForgotPasswordRequest, ResetPasswordRequest
 )
@@ -41,10 +41,12 @@ def register(user: UserCreate, request: Request, db: Session = Depends(get_db), 
     rate_limit(request, "register", limit=5, window_sec=3600)
     if db.query(User).filter(User.email == user.email).first():
         raise HTTPException(400, "Email уже зарегистрирован в системе")
+    # Роль задаём сами: в схеме её больше нет, иначе клиент мог бы сразу
+    # зарегистрироваться специалистом в обход обычного переключения роли.
     new_user = User(
         email=user.email,
         hashed_password=hash_password(user.password),
-        role=user.role,
+        role=UserRole.customer,
         name=user.name
     )
     db.add(new_user)

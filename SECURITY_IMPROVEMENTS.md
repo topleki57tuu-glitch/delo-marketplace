@@ -278,7 +278,7 @@ Content-Security-Policy: <директивы>
 ```bash
 # Логин (получаем access и refresh)
 curl -X POST http://localhost:8000/login \
-  -d "username=anna@delo.ru&password=demo123"
+  -d "username=anna@delo.ru&password=$DEMO_PASSWORD"
 
 # Обновление access токена
 curl -X POST http://localhost:8000/refresh \
@@ -348,6 +348,6 @@ curl -I http://localhost:8000 | grep -i "content-security-policy"
 
 ---
 
-**Дата**: 2026-09-12  
-**Версия**: 2.1.0  
+**Дата**: 2026-09-12
+**Версия**: 2.1.0
 **Статус**: ✅ Production Ready

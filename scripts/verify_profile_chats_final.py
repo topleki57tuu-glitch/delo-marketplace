@@ -1,5 +1,11 @@
 import asyncio
+import os
+import sys
+
 from playwright.async_api import async_playwright
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _demo_env import DEMO_PASSWORD, WEB_BASE as WEB  # noqa: E402
 
 async def verify_everything():
     async with async_playwright() as p:
@@ -8,19 +14,19 @@ async def verify_everything():
         page = await context.new_page()
 
         print("1. Загрузка страницы и авторизация...")
-        await page.goto("http://localhost:3000", wait_until="networkidle")
+        await page.goto(WEB, wait_until="networkidle")
 
         # Вход под anna@delo.ru
         await page.locator("button:has-text('Вход')").first.click()
         await page.wait_for_timeout(300)
         await page.locator("input[type='email']").fill("anna@delo.ru")
-        await page.locator("input[type='password']").fill("demo123")
+        await page.locator("input[type='password']").fill(DEMO_PASSWORD)
         await page.locator("button[type='submit']:has-text('Войти')").click()
         await page.wait_for_timeout(1500)
 
         # 2. Проверка раздела Профиль и выбора любого города
         print("2. Переход в Профиль и проверка выбора города...")
-        await page.goto("http://localhost:3000/profile", wait_until="networkidle")
+        await page.goto(f"{WEB}/profile", wait_until="networkidle")
         await page.wait_for_timeout(800)
 
         # Открываем редактор профиля
@@ -47,7 +53,7 @@ async def verify_everything():
 
         # 3. Проверка раздела Сообщения и быстрых шаблонов
         print("3. Переход в Сообщения (Чат) и проверка шаблонов...")
-        await page.goto("http://localhost:3000/chats", wait_until="networkidle")
+        await page.goto(f"{WEB}/chats", wait_until="networkidle")
         await page.wait_for_timeout(1000)
 
         # Проверяем наличие чипов быстрых ответов

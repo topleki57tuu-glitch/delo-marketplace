@@ -1,6 +1,6 @@
 # 🛡️ ДЕЛО Marketplace - Admin Dashboard создан!
 
-**Дата**: 2026-09-13  
+**Дата**: 2026-09-13
 **Статус**: ✅ **ГОТОВ К ИСПОЛЬЗОВАНИЮ**
 
 ---
@@ -64,7 +64,7 @@
 
 **Учетные данные**:
 - Email: `admin@delo.ru`
-- Пароль: `demo123`
+- Пароль: см. backend/demo_password.txt
 
 ### 3. Навигация
 
@@ -239,7 +239,7 @@ ADMIN_EMAILS=admin@delo.ru,new_admin@delo.ru
 ### Что дальше?
 
 1. **Откройте дашборд**: http://localhost:3000/admin/dashboard
-2. **Войдите как админ**: admin@delo.ru / demo123
+2. **Войдите как админ**: admin@delo.ru
 3. **Изучите функционал**: статистика, графики, управление
 4. **Прочитайте документацию**: [ADMIN_DASHBOARD.md](ADMIN_DASHBOARD.md)
 
@@ -259,9 +259,14 @@ ADMIN_EMAILS=admin@delo.ru,new_admin@delo.ru
 
 ---
 
-**Создано**: Claude Code  
-**Дата**: 2026-09-13  
-**Время**: ~2 часа  
+**Создано**: Claude Code
+**Дата**: 2026-09-13
+**Время**: ~2 часа
 **Статус**: ✅ Production Ready
 
 🚀 **Приложение готово к использованию с полноценным админ дашбордом!**
+
+> Пароль демо-аккаунтов не захардкожен: `seed_demo.py` берёт его из
+> `DEMO_PASSWORD` либо генерирует случайный и пишет в
+> `backend/demo_password.txt` (в `.gitignore`). Посмотреть:
+> `cat backend/demo_password.txt`.

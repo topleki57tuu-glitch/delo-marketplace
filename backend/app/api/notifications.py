@@ -2,6 +2,7 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.core.database import get_db
+from app.core.csrf import verify_csrf
 from app.core.security import oauth2_scheme, decode_token
 from app.models import Notification
 
@@ -33,7 +34,7 @@ def get_notifications(token: str = Depends(oauth2_scheme), db: Session = Depends
     }
 
 @router.post("/read-all")
-def mark_all_notifications_read(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+def mark_all_notifications_read(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db), _csrf: None = Depends(verify_csrf)):
     payload = decode_token_or_401(token)
     user_id = int(payload.get("sub"))
     db.query(Notification).filter(Notification.user_id == user_id, Notification.is_read == False).update({"is_read": True})
@@ -41,7 +42,7 @@ def mark_all_notifications_read(token: str = Depends(oauth2_scheme), db: Session
     return {"message": "Все уведомления прочитаны"}
 
 @router.put("/{notif_id}/read")
-def mark_notification_read(notif_id: int, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+def mark_notification_read(notif_id: int, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db), _csrf: None = Depends(verify_csrf)):
     payload = decode_token_or_401(token)
     user_id = int(payload.get("sub"))
     notif = db.query(Notification).filter(Notification.id == notif_id, Notification.user_id == user_id).first()

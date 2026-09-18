@@ -3,6 +3,7 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from app.core.database import get_db
+from app.core.csrf import verify_csrf
 from app.core.security import (
     oauth2_scheme, decode_token, is_admin,
     encrypt_sensitive, decrypt_sensitive, mask_document_number,
@@ -48,7 +49,8 @@ def _request_out(r: VerificationRequest, *, reveal_number: bool) -> dict:
 def submit_verification(
     req: VerificationSubmitRequest,
     token: str = Depends(oauth2_scheme),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _csrf: None = Depends(verify_csrf)
 ):
     payload = decode_token_or_401(token)
     user_id = int(payload.get("sub"))
@@ -137,7 +139,8 @@ def review_verification_admin(
     request_id: int,
     req: VerificationReviewRequest,
     token: str = Depends(oauth2_scheme),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _csrf: None = Depends(verify_csrf)
 ):
     payload = decode_token_or_401(token)
     admin_user = db.query(User).filter(User.id == int(payload.get("sub"))).first()

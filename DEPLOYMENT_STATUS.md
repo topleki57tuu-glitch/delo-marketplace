@@ -34,7 +34,7 @@ docker compose -f docker-compose.infra.yml up -d
 ---
 
 ### ✅ 3. Интегрирован Sentry для мониторинга ошибок
-**Файлы**: 
+**Файлы**:
 - `backend/requirements.txt` (добавлен sentry-sdk[fastapi])
 - `backend/app/core/config.py` (настройки Sentry)
 - `backend/main.py` (инициализация)
@@ -131,7 +131,7 @@ start.bat
 
 ### Шаг 4: Вход в систему
 
-Используйте демо-аккаунты (пароль: `demo123`):
+Используйте демо-аккаунты (пароль: `см. backend/demo_password.txt`):
 - Заказчик: `anna@delo.ru`
 - Специалист: `igor@delo.ru`
 - Администратор: `admin@delo.ru`
@@ -219,5 +219,10 @@ docker logs marketplace_backend -f
 
 ---
 
-**Дата**: 2026-09-12  
+**Дата**: 2026-09-12
 **Автор**: Claude Opus 4.8
+
+> Пароль демо-аккаунтов не захардкожен: `seed_demo.py` берёт его из
+> `DEMO_PASSWORD` либо генерирует случайный и пишет в
+> `backend/demo_password.txt` (в `.gitignore`). Посмотреть:
+> `cat backend/demo_password.txt`.

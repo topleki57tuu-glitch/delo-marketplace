@@ -1,6 +1,6 @@
 # 🛡️ Admin Dashboard - Документация
 
-**Дата создания**: 2026-09-13  
+**Дата создания**: 2026-09-13
 **Статус**: ✅ Готов к использованию
 
 ---
@@ -25,13 +25,13 @@
 
 **Учетные данные**:
 - Email: `admin@delo.ru`
-- Пароль: `demo123`
+- Пароль: см. backend/demo_password.txt
 
 ### 2. Вход в систему
 
 1. Откройте главную страницу http://localhost:3000
 2. Нажмите "Вход"
-3. Введите `admin@delo.ru` / `demo123`
+3. Введите `admin@delo.ru`
 4. После входа в навигации появится кнопка **🛡️ Admin**
 5. Нажмите на неё для перехода к дашборду
 
@@ -284,39 +284,39 @@ GET /admin/users?role=specialist&verified=true&page=1&per_page=20
 
 **StatCard** - карточка метрики:
 ```jsx
-<StatCard 
-  title="Пользователи" 
-  value={1234} 
-  icon="👥" 
-  change={+15} 
-  color="blue" 
+<StatCard
+  title="Пользователи"
+  value={1234}
+  icon="👥"
+  change={+15}
+  color="blue"
 />
 ```
 
 **SimpleLineChart** - SVG линейный график:
 ```jsx
-<SimpleLineChart 
-  data={[{date: "2026-09-01", count: 10}, ...]} 
-  title="Рост пользователей" 
+<SimpleLineChart
+  data={[{date: "2026-09-01", count: 10}, ...]}
+  title="Рост пользователей"
 />
 ```
 
 **SimpleBarChart** - SVG столбчатая диаграмма:
 ```jsx
-<SimpleBarChart 
-  data={{design: 5, development: 10, ...}} 
-  title="Задачи по категориям" 
+<SimpleBarChart
+  data={{design: 5, development: 10, ...}}
+  title="Задачи по категориям"
 />
 ```
 
 **QueueCard** - карточка очереди:
 ```jsx
-<QueueCard 
-  title="Споры" 
-  count={5} 
-  link="/disputes" 
-  icon="⚖️" 
-  color="red" 
+<QueueCard
+  title="Споры"
+  count={5}
+  link="/disputes"
+  icon="⚖️"
+  color="red"
 />
 ```
 
@@ -340,7 +340,11 @@ def is_admin(user: User) -> bool:
 
 **Навигация**:
 ```jsx
-{user && user.email && ['admin@delo.ru'].includes(user.email) && (
+// is_admin приходит с бэкенда в GET /users/me.
+// Раньше здесь был хардкод ['admin@delo.ru'].includes(user.email) — он
+// расходился со списком ADMIN_EMAILS на сервере и давал ложные срабатывания
+// на email, содержащих «admin».
+{user?.is_admin && (
   <Link to="/admin/dashboard">🛡️ Admin</Link>
 )}
 ```
@@ -587,11 +591,16 @@ return {
 
 Админ дашборд полностью готов и протестирован.
 
-**Откройте**: http://localhost:3000/admin/dashboard  
-**Войдите как**: admin@delo.ru / demo123
+**Откройте**: http://localhost:3000/admin/dashboard
+**Войдите как**: admin@delo.ru
 
 ---
 
-**Создано**: Claude Code  
-**Дата**: 2026-09-13  
+**Создано**: Claude Code
+**Дата**: 2026-09-13
 **Версия**: 1.0.0
+
+> Пароль демо-аккаунтов не захардкожен: `seed_demo.py` берёт его из
+> `DEMO_PASSWORD` либо генерирует случайный и пишет в
+> `backend/demo_password.txt` (в `.gitignore`). Посмотреть:
+> `cat backend/demo_password.txt`.

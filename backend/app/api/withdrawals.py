@@ -16,6 +16,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.csrf import verify_csrf
 from app.core.money import claim, credit_balance, debit_balance
 from app.core.security import (
     oauth2_scheme, decode_token, is_admin,
@@ -96,6 +97,7 @@ def create_withdrawal(
     req: WithdrawalCreateRequest,
     token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db),
+    _csrf: None = Depends(verify_csrf),
 ):
     payload = decode_token_or_401(token)
     user = db.query(User).filter(User.id == int(payload.get("sub"))).first()
@@ -160,6 +162,7 @@ def cancel_withdrawal(
     withdrawal_id: int,
     token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db),
+    _csrf: None = Depends(verify_csrf),
 ):
     payload = decode_token_or_401(token)
     user_id = int(payload.get("sub"))
@@ -227,6 +230,7 @@ def review_withdrawal_admin(
     req: WithdrawalReviewRequest,
     token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db),
+    _csrf: None = Depends(verify_csrf),
 ):
     payload = decode_token_or_401(token)
     admin = db.query(User).filter(User.id == int(payload.get("sub"))).first()

@@ -5,15 +5,18 @@
   07_task_page.png   — карточка задания (вид заказчика)
   09_responses.png   — список откликов на том же задании (скролл вниз)
 """
-import asyncio, json, urllib.request, os
+import asyncio, json, os, sys, urllib.request
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _demo_env import DEMO_PASSWORD  # noqa: E402
 
 BASE = "http://localhost:3000"
 OUT  = os.path.join(os.path.dirname(__file__), "docs", "manual_shots")
 
 CUST_EMAIL = "anna@delo.ru"
-CUST_PASS  = "demo123"
+CUST_PASS  = DEMO_PASSWORD
 SPEC_EMAIL = "igor@delo.ru"
-SPEC_PASS  = "demo123"
+SPEC_PASS  = DEMO_PASSWORD
 
 
 def get_token_and_user(email, password):

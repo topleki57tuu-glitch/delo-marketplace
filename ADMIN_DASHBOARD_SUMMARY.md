@@ -26,7 +26,7 @@
 ## 🚀 Быстрый старт
 
 1. Откройте: http://localhost:3000/admin/dashboard
-2. Войдите: admin@delo.ru / demo123
+2. Войдите: admin@delo.ru
 3. Нажмите кнопку "🛡️ Admin" в навигации
 
 ## 📚 Документация

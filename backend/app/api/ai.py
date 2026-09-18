@@ -1,6 +1,7 @@
 import re
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
+from app.core.csrf import verify_csrf
 from app.core.security import oauth2_scheme, decode_token
 from app.schemas import AIChatRequest
 
@@ -113,7 +114,7 @@ def _detect_category(lower: str) -> str:
 
 
 @router.post("/task-helper")
-def assist_task_creation(req: AIChatRequest, token: str = Depends(oauth2_scheme)):
+def assist_task_creation(req: AIChatRequest, token: str = Depends(oauth2_scheme), _csrf: None = Depends(verify_csrf)):
     decode_token_or_401(token)
 
     prompt = (req.prompt or "").strip()

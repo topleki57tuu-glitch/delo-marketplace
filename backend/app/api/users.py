@@ -7,7 +7,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from app.core.database import get_db
-from app.core.security import oauth2_scheme, decode_token
+from app.core.csrf import verify_csrf
+from app.core.security import oauth2_scheme, decode_token, is_admin
 from app.models import User, Review, Task, Transaction, UserRole, TaskStatus
 from app.schemas import ProfileUpdate
 
@@ -15,6 +16,66 @@ router = APIRouter(tags=["Users"])
 
 def decode_token_or_401(token: str) -> dict:
     return decode_token(token)
+
+# Пути, по которым фронтенд реально отдаёт медиа: загруженные файлы
+# (/files/<id>) и статика из uploads. Всё остальное должно быть http(s).
+_SAFE_MEDIA_PREFIXES = ("/files/", "/uploads/", "/assets/")
+
+_MAX_PORTFOLIO_ITEMS = 30
+_MAX_MEDIA_URL_LEN = 500
+
+
+def _safe_media_url(value: str) -> str:
+    """Пропускает только http(s)-ссылку или внутренний путь к медиа.
+
+    Иначе в `avatar` мог попасть `javascript:` или `data:text/html` — и
+    превратиться в XSS, как только ссылку отрисуют без экранирования.
+    """
+    url = (value or "").strip()
+    if not url:
+        return ""
+    if len(url) > _MAX_MEDIA_URL_LEN:
+        raise HTTPException(400, "Ссылка на изображение слишком длинная")
+    if url.startswith(_SAFE_MEDIA_PREFIXES):
+        return url
+    if url.startswith(("http://", "https://")):
+        return url
+    raise HTTPException(
+        400, "Ссылка должна начинаться с http://, https:// или быть загруженным файлом"
+    )
+
+
+def _sanitize_portfolio(raw: str) -> str:
+    """Проверяет портфолио как JSON-массив и чистит ссылки внутри.
+
+    Поле хранится строкой с JSON, поэтому кривое значение ломало бы
+    страницу профиля при разборе. Заодно прогоняем каждую ссылку через ту
+    же проверку схемы, что и аватар.
+    """
+    try:
+        parsed = json.loads(raw)
+    except (TypeError, ValueError):
+        raise HTTPException(400, "Портфолио должно быть JSON-массивом")
+
+    if not isinstance(parsed, list):
+        raise HTTPException(400, "Портфолио должно быть JSON-массивом")
+    if len(parsed) > _MAX_PORTFOLIO_ITEMS:
+        raise HTTPException(400, f"Не больше {_MAX_PORTFOLIO_ITEMS} работ в портфолио")
+
+    cleaned = []
+    for item in parsed:
+        if isinstance(item, str):
+            cleaned.append(_safe_media_url(item))
+        elif isinstance(item, dict):
+            entry = dict(item)
+            for key in ("url", "image", "link"):
+                if isinstance(entry.get(key), str) and entry[key]:
+                    entry[key] = _safe_media_url(entry[key])
+            cleaned.append(entry)
+        else:
+            raise HTTPException(400, "Элементы портфолио должны быть ссылками или объектами")
+
+    return json.dumps(cleaned, ensure_ascii=False)
 
 def user_online(user: User) -> bool:
     if not user.last_seen:
@@ -70,6 +131,11 @@ def get_profile(token: str = Depends(oauth2_scheme), db: Session = Depends(get_d
         "portfolio": user.portfolio,
         "rating": rating,
         "verified": user.verified,
+        # Права модератора считает бэкенд по ADMIN_EMAILS. Фронтенд раньше
+        # угадывал их сам по хардкоду admin@delo.ru и подстроке "admin" —
+        # это расходилось со списком на сервере и раскрывало админские
+        # экраны тому, кто не имеет доступа к данным.
+        "is_admin": is_admin(user),
         "is_pro": user.is_pro,
         "pro_until": user.pro_until,
         "response_credits": user.response_credits,
@@ -79,7 +145,7 @@ def get_profile(token: str = Depends(oauth2_scheme), db: Session = Depends(get_d
     }
 
 @router.put("/users/me")
-def update_profile(profile: ProfileUpdate, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+def update_profile(profile: ProfileUpdate, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db), _csrf: None = Depends(verify_csrf)):
     payload = decode_token_or_401(token)
     user = db.query(User).filter(User.id == int(payload.get("sub"))).first()
     if not user:
@@ -94,24 +160,22 @@ def update_profile(profile: ProfileUpdate, token: str = Depends(oauth2_scheme), 
     if profile.phone is not None:
         user.phone = profile.phone
 
-    # Упрощённая проверка для avatar
+    # Аватар принимаем только как http(s)-ссылку или внутренний путь /files/...
+    # Раньше значение писалось как есть, и в поле мог оказаться javascript:
+    # или data:text/html — заготовка под stored XSS, срабатывающая в тот
+    # момент, когда фронтенд отрисует ссылку без санитайза.
     if profile.avatar is not None:
         if profile.avatar == "":
-            # Пустая строка - удаляем аватар
-            user.avatar = None
+            user.avatar = None  # пустая строка — удаляем аватар
         else:
-            # Сохраняем аватар
-            user.avatar = profile.avatar
+            user.avatar = _safe_media_url(profile.avatar)
 
     if profile.skills is not None:
         user.skills = profile.skills
 
-    # Упрощённая проверка для portfolio
     if profile.portfolio is not None:
-        if profile.portfolio == "":
-            pass
-        else:
-            user.portfolio = profile.portfolio
+        if profile.portfolio != "":
+            user.portfolio = _sanitize_portfolio(profile.portfolio)
 
     db.commit()
     db.refresh(user)
@@ -119,7 +183,7 @@ def update_profile(profile: ProfileUpdate, token: str = Depends(oauth2_scheme), 
     return {"message": "Профиль успешно обновлён"}
 
 @router.post("/users/me/switch-role")
-def switch_role(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+def switch_role(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db), _csrf: None = Depends(verify_csrf)):
     from app.core.security import create_access_token
 
     payload = decode_token_or_401(token)
@@ -241,11 +305,26 @@ def export_my_transactions_csv(token: str = Depends(oauth2_scheme), db: Session 
     buf.write("\ufeff")  # BOM для корректной кириллицы в Excel
     writer = csv.writer(buf, delimiter=";")
     writer.writerow(["ID", "Дата", "Тип", "Сумма (₽)", "Комиссия (₽)", "ID заказа"])
+    def _fmt_dt(value):
+        """created_at — объект datetime, а не строка.
+
+        Раньше здесь было `(t.created_at or "")[:19]`, что падало с
+        TypeError: 'datetime.datetime' object is not subscriptable —
+        экспорт CSV отдавал 500 на любой непустой истории.
+        """
+        if not value:
+            return ""
+        try:
+            return value.strftime("%Y-%m-%d %H:%M:%S")
+        except AttributeError:
+            # На случай, если в БД лежит строка (наследственные записи).
+            return str(value)[:19].replace("T", " ")
+
     for t in txs:
         ttype = t.type.value if hasattr(t.type, "value") else str(t.type)
         writer.writerow([
             t.id,
-            (t.created_at or "")[:19].replace("T", " "),
+            _fmt_dt(t.created_at),
             type_names.get(ttype, ttype),
             t.amount,
             t.fee or 0,

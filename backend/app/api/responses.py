@@ -2,6 +2,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from app.core.database import get_db
+from app.core.csrf import verify_csrf
 from app.core.security import oauth2_scheme, decode_token
 from app.models import Response, Task, User, Review, TaskStatus, UserRole, Notification
 from app.schemas import ResponseCreate
@@ -21,7 +22,7 @@ def user_online(user: User) -> bool:
         return False
 
 @router.post("/tasks/{task_id}/responses")
-def create_response(task_id: int, response: ResponseCreate, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+def create_response(task_id: int, response: ResponseCreate, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db), _csrf: None = Depends(verify_csrf)):
     payload = decode_token_or_401(token)
     specialist_id = int(payload.get("sub"))
     specialist = db.query(User).filter(User.id == specialist_id).first()

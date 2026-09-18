@@ -105,12 +105,19 @@ npm run dev
 
 ### Тестовые аккаунты:
 
+Пароль у всех демо-аккаунтов общий. Он **не захардкожен**: `seed_demo.py`
+берёт `DEMO_PASSWORD` из окружения, а если переменная не задана — генерирует
+случайный и сохраняет в `backend/demo_password.txt` (файл в `.gitignore`).
+
+**Админ:**
+- admin@delo.ru (см. `ADMIN_EMAILS`)
+
 **Покупатели:**
-- anna@delo.ru / demo123 (баланс: 2970₽)
+- anna@delo.ru (баланс: 2970₽)
 
 **Продавцы:**
-- igor@delo.ru / demo123 (PRO)
-- alexey@delo.ru / demo123
+- igor@delo.ru (PRO)
+- alexey@delo.ru
 
 📖 **Подробнее**: [QUICK_START.md](QUICK_START.md)
 
@@ -290,10 +297,10 @@ pytest
 # Получить список товаров
 curl http://localhost:8000/products/
 
-# Войти
+# Войти (пароль — из backend/demo_password.txt или $DEMO_PASSWORD)
 curl -X POST http://localhost:8000/login \
   -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "username=anna@delo.ru&password=demo123"
+  -d "username=anna@delo.ru&password=$DEMO_PASSWORD"
 
 # Создать заказ
 curl -X POST http://localhost:8000/products/orders \

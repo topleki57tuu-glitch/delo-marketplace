@@ -162,7 +162,7 @@
 - **alexey@delo.ru** (specialist) - продавец
 - **maria@delo.ru** (specialist) - продавец
 - **elena@delo.ru** (specialist) - продавец
-- Пароль для всех: `demo123`
+- Пароль для всех: `см. backend/demo_password.txt`
 
 ### Товары (12 шт)
 1. iPhone 14 Pro 256GB - 85000₽ (igor)
@@ -289,3 +289,8 @@ npm run dev
 4. Настройки реальной доставки (опционально)
 
 **MVP выполнен за 5-7 дней** (как и планировалось) ✅
+
+> Пароль демо-аккаунтов не захардкожен: `seed_demo.py` берёт его из
+> `DEMO_PASSWORD` либо генерирует случайный и пишет в
+> `backend/demo_password.txt` (в `.gitignore`). Посмотреть:
+> `cat backend/demo_password.txt`.

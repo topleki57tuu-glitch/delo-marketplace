@@ -32,7 +32,10 @@ def _check_password(v: str) -> str:
 class UserCreate(BaseModel):
     email: EmailStr
     password: str
-    role: UserRole = UserRole.customer
+    # Роль намеренно НЕ принимается от клиента: раньше поле приходило в теле
+    # запроса, и зарегистрироваться сразу специалистом мог любой. Роль
+    # выдаётся сервером (customer по умолчанию) и меняется через
+    # POST /users/me/switch-role — там же, где остальные проверки.
     name: Optional[str] = None
 
     @field_validator("password")

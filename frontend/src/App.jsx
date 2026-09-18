@@ -74,7 +74,11 @@ function NavigationBar({ user, token, onOpenAuth, onOpenChatsDrawer, onLogout })
   const menuItemClass =
     'flex items-center gap-2.5 w-full px-3 py-2 rounded-lg text-sm font-semibold text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-700 transition-colors text-left';
 
-  const isAdmin = !!user?.email && ['admin@delo.ru'].includes(user.email);
+  // Права модератора приходят с бэкенда полем is_admin (его считает
+  // app/core/security.py по ADMIN_EMAILS). Раньше здесь был хардкод
+  // admin@delo.ru: он расходился со списком на сервере, и админ с другим
+  // адресом не видел панель, хотя API ему доступ даёт.
+  const isAdmin = !!user?.is_admin;
 
   return (
     <header className="sticky top-0 z-40 bg-white/85 dark:bg-slate-900/85 backdrop-blur-xl border-b border-slate-200/80 dark:border-slate-800">

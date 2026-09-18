@@ -32,7 +32,13 @@ start-dev.bat
 - **Приложение**: http://localhost:8000
 - **API Docs**: http://localhost:8000/docs
 
-**Демо-аккаунты** (пароль: `demo123`):
+**Демо-аккаунты** — пароль общий, не захардкожен. `seed_demo.py` берёт его из
+`DEMO_PASSWORD` или генерирует случайный и пишет в `backend\demo_password.txt`:
+
+```cmd
+type backend\demo_password.txt
+```
+
 - `anna@delo.ru` - заказчик
 - `igor@delo.ru` - специалист
 - `admin@delo.ru` - арбитр
@@ -140,7 +146,7 @@ xcopy /E /I dist ..\backend\dist
 ## ✅ Что дальше после запуска?
 
 1. **Откройте**: http://localhost:8000
-2. **Войдите**: `anna@delo.ru` / `demo123`
+2. **Войдите**: `anna@delo.ru` + пароль из `backend\demo_password.txt`
 3. **Протестируйте**:
    - Создание заказа
    - Отклики специалистов

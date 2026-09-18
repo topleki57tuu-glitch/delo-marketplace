@@ -7,10 +7,17 @@
     python3 seed_demo.py
 
 Полностью очищает dev-базу и создаёт:
-  * 3 заказчиков + 5 специалистов (у всех пароль: demo123)
+  * 3 заказчиков + 5 специалистов (пароль общий — см. DEMO_PASSWORD)
   * 13 заданий по всем категориям (открытые / в работе / завершённые)
   * отклики, переписки, отзывы, уведомления, транзакции (эскроу, PRO)
+
+ВНИМАНИЕ: скрипт не работает в production. Раньше пароль всех демо-аккаунтов
+был захардкожен («demo123») и опубликован в README, а среди аккаунтов есть
+админ — включение SEED_DEMO на боевом контуре открывало бы вход в очередь
+выплат по общеизвестному паролю.
 """
+import os
+import secrets
 import sys
 from datetime import datetime, timedelta
 
@@ -28,7 +35,24 @@ from app.models import (
 )
 
 NOW = datetime.utcnow()
-PASSWORD = "demo123"
+
+# Пароль демо-аккаунтов: берём из окружения, иначе генерируем случайный и
+# печатаем при седировании. Хардкод «demo123» убран намеренно — он попадал
+# в README и в документацию, то есть был известен всем.
+DEMO_PASSWORD = os.environ.get("DEMO_PASSWORD") or secrets.token_urlsafe(9)
+
+# Защита от запуска на боевом контуре: seed создаёт аккаунт с правами арбитра
+# и заведомо известный (или напечатанный в лог) пароль. В проде это дыра,
+# поэтому такой запуск блокируем — обойти можно только явным SEED_DEMO_FORCE=1.
+_ENV = os.environ.get("ENV", os.environ.get("APP_ENV", "development")).lower()
+if _ENV == "production" and os.environ.get("SEED_DEMO_FORCE") != "1":
+    sys.exit(
+        "Отказ: ENV=production. seed_demo.py создаёт демо-аккаунты, включая\n"
+        "арбитра платформы, и не должен запускаться на боевом контуре.\n"
+        "Если это осознанное решение (например, разовый стенд), запусти с\n"
+        "SEED_DEMO_FORCE=1."
+    )
+
 CITY = {
     "Москва": (55.751574, 37.573856),
     "Санкт-Петербург": (59.9343, 30.3351),
@@ -71,7 +95,7 @@ def main():
                  credits=5, last_seen_min=None):
         u = User(
             email=email,
-            hashed_password=hash_password(PASSWORD),
+            hashed_password=hash_password(DEMO_PASSWORD),
             role=UserRole[role],
             name=name,
             bio=bio,
@@ -569,7 +593,27 @@ def main():
 
     # ---------- Итоги ----------
     print("\n=== Демо-данные созданы ===")
-    print(f"Пользователи: {db.query(User).count()} (пароль у всех: {PASSWORD})")
+
+    # Пароль сохраняем в файл, чтобы его можно было найти после запуска
+    # (start.bat создаёт базу в фоне, и вывод скрипта теряется).
+    # Файл в .gitignore — это dev-секрет, не коммитить.
+    pwd_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "demo_password.txt")
+    try:
+        with open(pwd_file, "w", encoding="utf-8") as fh:
+            fh.write(
+                f"# Демо-аккаунты «ДЕЛО» (создано seed_demo.py)\n"
+                f"# Этот файл в .gitignore. Удали после первого входа.\n"
+                f"# Скрипты читают пароль машиночитаемо из строки ниже.\n"
+                f"password = {DEMO_PASSWORD}\n\n"
+                f"Админ:      admin@delo.ru\n"
+                f"Заказчик:   anna@delo.ru\n"
+                f"Специалист: igor@delo.ru\n"
+            )
+        print(f"Пароль сохранён в: {pwd_file}")
+    except OSError as exc:
+        print(f"Не удалось записать {pwd_file}: {exc}")
+
+    print(f"Пользователи: {db.query(User).count()} (пароль у всех: {DEMO_PASSWORD})")
     print(f"Задания: {db.query(Task).count()} "
           f"(open={db.query(Task).filter(Task.status == TaskStatus.open).count()}, "
           f"in_progress={db.query(Task).filter(Task.status == TaskStatus.in_progress).count()}, "

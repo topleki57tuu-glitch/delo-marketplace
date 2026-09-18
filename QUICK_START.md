@@ -24,22 +24,35 @@ npm run dev
 
 ## 👥 Тестовые аккаунты
 
+Пароль у всех демо-аккаунтов общий. Он **не захардкожен**: `seed_demo.py`
+берёт `DEMO_PASSWORD` из окружения, а если переменной нет — генерирует
+случайный и сохраняет в `backend/demo_password.txt` (в `.gitignore`).
+
+Посмотреть пароль:
+
+```bash
+cat backend/demo_password.txt
+```
+
+### Админ:
+- **admin@delo.ru** — email из `ADMIN_EMAILS`
+
 ### Покупатели:
-- **anna@delo.ru** / demo123 (баланс: 2970₽)
-- **dmitry@delo.ru** / demo123
-- **olga@delo.ru** / demo123
+- **anna@delo.ru** (баланс: 2970₽)
+- **dmitry@delo.ru**
+- **olga@delo.ru**
 
 ### Продавцы:
-- **igor@delo.ru** / demo123 (PRO, продавец)
-- **alexey@delo.ru** / demo123 (продавец)
-- **maria@delo.ru** / demo123 (продавец)
+- **igor@delo.ru** (PRO, продавец)
+- **alexey@delo.ru** (продавец)
+- **maria@delo.ru** (продавец)
 
 ---
 
 ## 🛍️ Как купить товар (за 2 минуты)
 
 1. Откройте http://localhost:3000
-2. Войдите как **anna@delo.ru** / demo123
+2. Войдите как **anna@delo.ru** (пароль из `backend/demo_password.txt`)
 3. Нажмите **"🛍️ Товары"**
 4. Выберите любой товар (например, LEGO за 7500₽)
 5. Нажмите **"Купить"**
@@ -54,7 +67,7 @@ npm run dev
 ## 📦 Как продать товар (за 3 минуты)
 
 1. Откройте http://localhost:3000
-2. Войдите как **igor@delo.ru** / demo123
+2. Войдите как **igor@delo.ru** (пароль из `backend/demo_password.txt`)
 3. Нажмите **"Создать задание"** или откройте `/create-product`
 4. Заполните форму:
    ```
@@ -111,7 +124,7 @@ curl http://localhost:8000/products/
 ```bash
 curl -X POST http://localhost:8000/login \
   -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "username=anna@delo.ru&password=demo123"
+  -d "username=anna@delo.ru&password=$DEMO_PASSWORD"
 ```
 
 ### Создать заказ:

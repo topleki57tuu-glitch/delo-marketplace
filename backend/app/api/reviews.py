@@ -2,6 +2,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from app.core.database import get_db
+from app.core.csrf import verify_csrf
 from app.core.security import oauth2_scheme, decode_token
 from app.models import Review, Task, User, TaskStatus, UserRole, Notification
 from app.schemas import ReviewCreate
@@ -89,7 +90,7 @@ def get_task_reviews(task_id: int, token: Optional[str] = Depends(oauth2_scheme)
     }
 
 @router.post("/tasks/{task_id}/review")
-def create_review(task_id: int, review: ReviewCreate, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+def create_review(task_id: int, review: ReviewCreate, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db), _csrf: None = Depends(verify_csrf)):
     payload = decode_token_or_401(token)
     user_id = int(payload.get("sub"))
 

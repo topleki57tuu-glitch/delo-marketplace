@@ -14,7 +14,7 @@ curl http://localhost:8000/health
 ```bash
 curl -X POST http://localhost:8000/login \
   -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "username=admin@delo.ru&password=demo123"
+  -d "username=admin@delo.ru&password=$DEMO_PASSWORD"
 ```
 **Результат**: ✅ Токен получен
 

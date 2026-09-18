@@ -63,7 +63,7 @@ URL: http://localhost:3000/admin/dashboard
 ### 2. Войдите как админ
 ```
 Email: admin@delo.ru
-Пароль: demo123
+Пароль: см. backend/demo_password.txt
 ```
 
 ### 3. Навигация
@@ -87,7 +87,7 @@ Email: admin@delo.ru
 
 ### Backend API
 - ✅ `/admin/stats` - 200 OK
-- ✅ `/admin/recent-activity` - 200 OK  
+- ✅ `/admin/recent-activity` - 200 OK
 - ✅ `/admin/users` - 200 OK
 
 ### Frontend
@@ -128,6 +128,11 @@ Email: admin@delo.ru
 
 ---
 
-**Создано**: Claude Code  
-**Дата**: 2026-09-13  
+**Создано**: Claude Code
+**Дата**: 2026-09-13
 **Статус**: ✅ Production Ready
+
+> Пароль демо-аккаунтов не захардкожен: `seed_demo.py` берёт его из
+> `DEMO_PASSWORD` либо генерирует случайный и пишет в
+> `backend/demo_password.txt` (в `.gitignore`). Посмотреть:
+> `cat backend/demo_password.txt`.

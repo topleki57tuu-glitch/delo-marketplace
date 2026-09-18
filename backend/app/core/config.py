@@ -5,6 +5,24 @@ from dotenv import load_dotenv
 # Загрузка переменных из .env файла
 load_dotenv()
 
+# Каталог backend/ — якорь для относительных путей к файлам (SQLite и пр.).
+# Без этого "sqlite:///./marketplace_v3.db" резолвится относительно текущей
+# рабочей директории процесса: запуск `python backend/seed_demo.py` из корня
+# создавал БД в корне, а uvicorn из backend/ читал другую базу — сервер и
+# seed молча работали с разными данными.
+BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+
+def _absolutize_sqlite(url: str) -> str:
+    """Прибивает относительный sqlite-путь к каталогу backend/."""
+    prefix = "sqlite:///"
+    if not url.startswith(prefix):
+        return url
+    path = url[len(prefix):]
+    if not path or path == ":memory:" or os.path.isabs(path):
+        return url
+    return prefix + os.path.normpath(os.path.join(BACKEND_DIR, path))
+
 
 def _parse_origins(raw: str) -> List[str]:
     return [o.strip().rstrip("/") for o in raw.split(",") if o.strip()]
@@ -24,6 +42,9 @@ class Settings:
         DB_URL = DB_URL.replace("postgres://", "postgresql+psycopg2://", 1)
     elif DB_URL.startswith("postgresql://"):
         DB_URL = DB_URL.replace("postgresql://", "postgresql+psycopg2://", 1)
+
+    # Относительный sqlite-путь всегда считаем от backend/, а не от CWD.
+    DB_URL = _absolutize_sqlite(DB_URL)
 
     if not SECRET_KEY:
         if IS_PRODUCTION:

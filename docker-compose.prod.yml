@@ -75,6 +75,13 @@ services:
       SMTP_FROM: ${SMTP_FROM:-}
       YOOKASSA_SHOP_ID: ${YOOKASSA_SHOP_ID:-}
       YOOKASSA_SECRET_KEY: ${YOOKASSA_SECRET_KEY:-}
+      # ЮMoney — провайдер по умолчанию в POST /payments/create. Без этих
+      # переменных он отвечал «не настроен», и на своём VPS работала только
+      # ЮKassa. NOTIFICATION_SECRET обязателен для проверки подписи вебхука.
+      YOOMONEY_ACCESS_TOKEN: ${YOOMONEY_ACCESS_TOKEN:-}
+      YOOMONEY_CLIENT_ID: ${YOOMONEY_CLIENT_ID:-}
+      YOOMONEY_REDIRECT_URI: ${YOOMONEY_REDIRECT_URI:-}
+      YOOMONEY_NOTIFICATION_SECRET: ${YOOMONEY_NOTIFICATION_SECRET:-}
     volumes:
       - backend_uploads:/app/uploads
 
