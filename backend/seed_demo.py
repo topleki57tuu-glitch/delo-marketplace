@@ -435,7 +435,7 @@ def main():
     products = {}
 
     def add_product(key, seller, title, description, category, condition, price, stock=1, city=None, delivery="both", images=None):
-        """Создаёт товар. Цена в рублях, конвертируется в копейки."""
+        """Создаёт товар. Цена в рублях — как и весь денежный слой."""
         import json
         p = Product(
             seller_id=users[seller].id,
@@ -443,7 +443,7 @@ def main():
             description=description,
             category=ProductCategory[category],
             condition=ProductCondition[condition],
-            price=price * 100,  # в копейках
+            price=price,
             stock=stock,
             city=city,
             delivery_options=delivery,
@@ -518,20 +518,20 @@ def main():
         buyer_id=users["anna"].id,
         seller_id=users["alexey"].id,
         quantity=1,
-        total_price=2100000,  # в копейках
+        total_price=21000,  # в рублях (AirPods Pro, 21 000 ₽)
         delivery_method="delivery",
         delivery_address="Москва, ул. Тверская, 10, кв. 5",
         tracking_number="SDEK123456789",
         status=OrderStatus.completed,
-        platform_fee=105000,  # 5%
+        platform_fee=1050,  # 5%
         created_at=NOW - timedelta(days=8)
     )
     db.add(order1)
     db.flush()
 
     # Транзакции для завершённого заказа
-    add_tx("anna", -2100000, "escrow_hold", days_ago=8)  # покупатель заплатил
-    add_tx("alexey", 1995000, "escrow_release", days_ago=1, fee=105000)  # продавцу 95%, платформе 5%
+    add_tx("anna", -21000, "escrow_hold", days_ago=8)  # покупатель заплатил
+    add_tx("alexey", 19950, "escrow_release", days_ago=1, fee=1050)  # продавцу 95%, платформе 5%
 
     # Заказ в процессе (отправлен)
     order2 = Order(
@@ -539,19 +539,19 @@ def main():
         buyer_id=users["dmitry"].id,
         seller_id=users["olga"].id,
         quantity=1,
-        total_price=4500000,
+        total_price=45000,  # в рублях (Dyson V11, 45 000 ₽)
         delivery_method="delivery",
         delivery_address="Санкт-Петербург, Невский проспект, 100, кв. 25",
         tracking_number="SDEK987654321",
         status=OrderStatus.shipped,
-        platform_fee=225000,
+        platform_fee=2250,
         created_at=NOW - timedelta(days=3)
     )
     db.add(order2)
     db.flush()
 
     # Эскроу для заказа в процессе
-    add_tx("dmitry", -4500000, "escrow_hold", days_ago=3)
+    add_tx("dmitry", -45000, "escrow_hold", days_ago=3)
 
     # Уведомления для товаров
     add_notif("alexey", "new_order", "Новый заказ!",
