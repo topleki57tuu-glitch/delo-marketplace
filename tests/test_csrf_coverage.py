@@ -103,7 +103,23 @@ def main():
 
     # --- Кейсы: каждый эндпоинт БЕЗ CSRF-заголовка -------------------------
     # (метод, путь, тело, токен, человекочитаемое имя)
+    #
+    # Отдельно и в первую очередь — всё, что двигает деньги. Здесь дыра в
+    # CSRF означает не «кто-то поменял чужое имя», а реальный ущерб:
+    # создание платежа, зачисление, покупка пакета, заморозка эскроу при
+    # назначении исполнителя, спор по задаче. Раньше в списке был только
+    # `/wallet/withdraw`, поэтому новый денежный эндпоинт можно было
+    # добавить без `Depends(verify_csrf)`, и ни один набор бы не упал.
+    #
+    # Все запросы ниже отклоняются ДО обработчика, поэтому побочных
+    # эффектов у них нет — состояние стенда они не портят.
     cases = [
+        ("POST", "/payments/create", {"amount": 100}, c_tok, "POST /payments/create (создание платежа)"),
+        ("POST", "/payments/confirm?payment_id=x&provider=yoomoney", None, c_tok, "POST /payments/confirm (зачисление)"),
+        ("POST", "/payments/confirm-pending", None, c_tok, "POST /payments/confirm-pending (дозачисление)"),
+        ("POST", "/monetization/buy", {"package_id": "resp_10"}, s_tok, "POST /monetization/buy (покупка пакета)"),
+        ("PUT", f"/tasks/{task_id}/assign?specialist_id={spec_id}", None, c_tok, "PUT /tasks/{id}/assign (заморозка эскроу)"),
+        ("POST", f"/tasks/{task_id}/dispute", {"reason": "Проверка CSRF-покрытия спора"}, c_tok, "POST /tasks/{id}/dispute (спор)"),
         ("PUT", "/users/me", {"name": "Взломанное имя"}, c_tok, "PUT /users/me (профиль)"),
         ("POST", "/users/me/switch-role", None, c_tok, "POST /users/me/switch-role"),
         ("POST", "/wallet/withdraw", {"amount": 100, "requisites": "test"}, c_tok, "POST /wallet/withdraw"),
