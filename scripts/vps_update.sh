@@ -35,10 +35,15 @@ fi
 echo "==> Проверка .env"
 # Переменные, которые нужны в production, но могли не попасть в .env при
 # первой установке (добавлены позже). Дописываем только недостающие.
+#
+# Домен читаем из .env: при вызове `bash scripts/vps_update.sh` окружение
+# не экспортировано, и ${DOMAIN:-} подставил бы пустую строку — в .env уехал
+# бы YOOMONEY_REDIRECT_URI=https:///payments/oauth/yoomoney.
+ENV_DOMAIN="$(grep -m1 '^DOMAIN=' .env 2>/dev/null | cut -d= -f2- || true)"
 changed_env=0
 for kv in \
     "YOOMONEY_RETURN_PATH=/profile" \
-    "YOOMONEY_REDIRECT_URI=https://${DOMAIN:-}/payments/oauth/yoomoney"
+    "YOOMONEY_REDIRECT_URI=https://${ENV_DOMAIN}/payments/oauth/yoomoney"
 do
     k="${kv%%=*}"
     if ! grep -q "^${k}=" .env; then
@@ -85,9 +90,16 @@ echo "    backend отвечает"
 echo "==> Очистка старых образов"
 docker image prune -f >/dev/null 2>&1 || true
 
+# Домен берём из .env, а не из окружения: при запуске через `bash script.sh`
+# ничего не экспортировано, и любая непроверенная переменная под `set -u`
+# роняет скрипт на последней строке (уже случалось).
+SITE_URL="$(grep -m1 '^FRONTEND_URL=' .env 2>/dev/null | cut -d= -f2- || true)"
+[ -n "$SITE_URL" ] || SITE_URL="$(grep -m1 '^DOMAIN=' .env 2>/dev/null | cut -d= -f2- || true)"
+[ -n "$SITE_URL" ] || SITE_URL="(домен не задан)"
+
 echo ""
 echo "=========================================="
-echo " Готово: ${FRONTEND_URL:-https://$_domain}"
+echo " Готово: $SITE_URL"
 echo " Версия: $AFTER"
 echo " Логи:   $COMPOSE logs -f backend"
 echo "=========================================="
