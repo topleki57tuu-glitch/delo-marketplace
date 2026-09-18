@@ -165,7 +165,8 @@ jobs:
             security/check_pro_expiry \
             security/repro_yookassa_unpaid_credit \
             security/check_file_cleanup \
-            security/repro_verification_document_access
+            security/repro_verification_document_access \
+            security/check_pending_payment_recovery
           do
             echo "::group::$suite"
             python "tests/${suite}.py"
