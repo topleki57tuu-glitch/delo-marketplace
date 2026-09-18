@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { useToast } from '../components/Toast';
 import CityInput from '../components/CityInput';
@@ -49,6 +49,7 @@ export default function ProfilePage({ user, token, onUpdateUser, onLogout, onOpe
   // Wallet top up modal
   const [showDepositModal, setShowDepositModal] = useState(false);
   const [depositing, setDepositing] = useState(false);
+  const [checkingPayments, setCheckingPayments] = useState(false);
 
   // Monetization buy
   const [buyingPackage, setBuyingPackage] = useState(null);
@@ -154,19 +155,67 @@ export default function ProfilePage({ user, token, onUpdateUser, onLogout, onOpe
     }
   }, [user, token]);
 
+  // Дозачисление «зависших» платежей. Зачисление держится на вебхуке —
+  // он настраивается в кабинете провайдера отдельно от кода, и пока там
+  // указан старый домен, уведомления не приходят вообще, — и на возврате
+  // плательщика в браузере. Оба пути могут отказать молча, поэтому есть
+  // отдельный вызов: он спрашивает провайдера про НАШИ незачисленные
+  // платежи и зачисляет те, что оплачены. Сервер ничего не берёт из
+  // запроса, так что перебрать чужие платежи этим вызовом нельзя.
+  const checkPendingPayments = useCallback(async ({ quiet = false } = {}) => {
+    if (!token) return;
+    setCheckingPayments(true);
+    try {
+      const res = await fetch('/payments/confirm-pending', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        if (!quiet) addToast(data.detail || 'Не удалось проверить платежи', 'error');
+        return;
+      }
+
+      if (data.credited?.length) {
+        addToast(`Баланс пополнен на ${data.total.toLocaleString('ru-RU')} ₽!`, 'success');
+        if (onUpdateUser) onUpdateUser();
+      } else if (!quiet) {
+        // «Проверено, но не оплачено» и «нечего проверять» — разные ответы:
+        // в первом случае стоит подождать, во втором ждать нечего.
+        addToast(
+          data.checked
+            ? 'Оплата пока не подтверждена провайдером. Попробуйте через минуту.'
+            : 'Незавершённых платежей нет.',
+          'info'
+        );
+      }
+    } catch {
+      if (!quiet) addToast('Не удалось проверить платежи', 'error');
+    } finally {
+      setCheckingPayments(false);
+    }
+  }, [token, addToast, onUpdateUser]);
+
   // Возврат из ЮMoney после оплаты (successURL в платёжной форме ведёт сюда
   // с параметром `payment=return`). Само по себе возвращение денег не
   // зачисляет: вебхук может ещё не прийти, а зачисление — отдельный шаг.
-  // Раньше пользователь оставался на сайте ЮMoney и должен был сам нажать
-  // «Проверить оплату» — если закрывал вкладку, деньги уходили в никуда.
-  // Теперь подтверждение запускается автоматически по факту возврата.
+  //
+  // Раньше здесь читался `delo_pending_payment` из `sessionStorage`, и без
+  // него подтверждение молча пропускалось. На iOS форма оплаты открывается
+  // отдельной вкладкой, и хранилище сеанса туда не доезжает — платёж
+  // оставался неоплаченным с точки зрения приложения навсегда, потому что
+  // восстановить его из интерфейса было нечем.
   useEffect(() => {
     if (!token) return;
     const params = new URLSearchParams(window.location.search);
     if (params.get('payment') !== 'return') return;
 
-    // Параметр из адреса убираем сразу: подтверждение должно сработать
-    // один раз, а не при каждом обновлении страницы или возврате по «назад».
+    // Параметр из адреса убираем сразу: проверка должна сработать один раз,
+    // а не при каждом обновлении страницы или возврате по «назад».
     params.delete('payment');
     const query = params.toString();
     window.history.replaceState(
@@ -175,49 +224,8 @@ export default function ProfilePage({ user, token, onUpdateUser, onLogout, onOpe
       `${window.location.pathname}${query ? `?${query}` : ''}`
     );
 
-    // Платёж, оформленный перед уходом на оплату. Без него подтверждать
-    // нечего — пользователь мог просто вернуться на страницу профиля.
-    let pending = null;
-    try {
-      pending = JSON.parse(sessionStorage.getItem('delo_pending_payment') || 'null');
-    } catch {
-      pending = null;
-    }
-    if (!pending?.payment_id || !pending?.confirmation_url) return;
-
-    (async () => {
-      try {
-        const confirmParams = new URLSearchParams({
-          payment_id: pending.payment_id,
-          provider: pending.provider || 'yoomoney',
-          confirmation_url: pending.confirmation_url,
-        });
-        const res = await fetch(`/payments/confirm?${confirmParams}`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
-        });
-        const data = await res.json().catch(() => ({}));
-
-        if (res.ok && data.credited) {
-          addToast(`Баланс пополнен на ${pending.amount} ₽!`, 'success');
-          sessionStorage.removeItem('delo_pending_payment');
-          onUpdateUser();
-        } else if (res.ok) {
-          // Платёж ещё не подтверждён провайдером: ЮMoney может присылать
-          // данные с задержкой. Запись оставляем — пользователь нажмёт
-          // «Проверить оплату» или вернётся позже.
-          addToast('Оплата ещё обрабатывается. Нажмите «Проверить оплату» через несколько секунд.', 'info');
-        } else {
-          addToast(data.detail || 'Не удалось подтвердить платёж', 'error');
-        }
-      } catch {
-        addToast('Не удалось подтвердить платёж. Нажмите «Проверить оплату».', 'error');
-      }
-    })();
-  }, [token, addToast, onUpdateUser]);
+    checkPendingPayments();
+  }, [token, checkPendingPayments]);
 
   const loadVerificationStatus = () => {
     if (!token) return;
@@ -859,6 +867,16 @@ export default function ProfilePage({ user, token, onUpdateUser, onLogout, onOpe
                 <IconBank /> Вывести
               </button>
             </div>
+            {/* Оплата, которую провайдер провёл, а вебхук до нас не донёс,
+                иначе оставалась невидимой: кнопка подтверждения жила только
+                внутри модального окна и пропадала вместе с ним. */}
+            <button
+              onClick={() => checkPendingPayments()}
+              disabled={checkingPayments}
+              className="w-full text-center text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:underline pt-1 disabled:opacity-50"
+            >
+              {checkingPayments ? 'Проверяем оплату…' : 'Оплатил, но баланс не изменился — проверить'}
+            </button>
             <Link
               to="/my-tasks"
               className="block text-center text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline pt-1"

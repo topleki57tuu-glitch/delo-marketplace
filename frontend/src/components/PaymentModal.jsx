@@ -26,6 +26,21 @@ export function PaymentModal({ onClose, onSuccess, token }) {
     }
 
     setLoading(true);
+
+    // Окно оплаты открываем СИНХРОННО, до первого `await`.
+    //
+    // iOS Safari разрешает `window.open` только внутри обработчика жеста.
+    // После `await fetch(...)` жест уже «израсходован», вызов молча
+    // блокируется, и на айфоне пользователь вместо формы оплаты видел
+    // инструкцию «нажмите кнопку ещё раз». Пустая вкладка, открытая здесь,
+    // затем уходит на адрес провайдера — это по-прежнему один жест.
+    let paymentWindow = null;
+    try {
+      paymentWindow = window.open('', '_blank');
+    } catch {
+      paymentWindow = null;
+    }
+
     try {
       const res = await fetch('/payments/create?provider=yoomoney', {
         method: 'POST',
@@ -49,29 +64,29 @@ export function PaymentModal({ onClose, onSuccess, token }) {
         amount: amt
       });
 
-      // Дублируем в sessionStorage: пользователь уходит на сайт ЮMoney, а
-      // `successURL` возвращает его на страницу профиля — и та должна знать,
-      // какой именно платёж подтверждать. Состояние модального окна к тому
-      // моменту уже потеряно (страница перезагружается). Именно sessionStorage,
-      // а не localStorage: платёж относится к текущему сеансу и не должен
-      // всплыть через неделю в другом окне.
-      try {
-        sessionStorage.setItem('delo_pending_payment', JSON.stringify({
-          payment_id: data.payment_id,
-          confirmation_url: data.confirmation_url,
-          amount: amt,
-          provider: 'yoomoney',
-        }));
-      } catch {
-        // Приватный режим браузера может запретить запись — тогда останется
-        // только ручная кнопка «Проверить оплату», что не хуже прежнего.
+      // Платёж подтверждается на сервере по нашим же записям
+      // (`POST /payments/confirm-pending`), поэтому дублировать его в
+      // `sessionStorage` больше не нужно: это хранилище не переживает
+      // переход между вкладками, а на iOS форма оплаты открывается именно
+      // отдельной вкладкой.
+      if (paymentWindow) {
+        paymentWindow.location.href = data.confirmation_url;
+        addToast('Перейдите в открывшееся окно для оплаты', 'success');
+      } else {
+        // Всплывающие окна запрещены настройками браузера. Форму всё равно
+        // можно открыть — кнопкой ниже, это тоже жест пользователя.
+        addToast('Откройте форму оплаты кнопкой ниже', 'info');
       }
-
-      // Открываем форму оплаты ЮMoney в новом окне
-      window.open(data.confirmation_url, '_blank');
-
-      addToast('Перейдите в открывшееся окно для оплаты', 'success');
     } catch (err) {
+      // Пустую вкладку закрываем, чтобы при ошибке не оставалось «окно ни о
+      // чём» — иначе пользователь ищет в ней форму оплаты, которой нет.
+      if (paymentWindow) {
+        try {
+          paymentWindow.close();
+        } catch {
+          // закрыть чужое окно браузер может не дать — не критично
+        }
+      }
       addToast(err.message, 'error');
     } finally {
       setLoading(false);
@@ -107,13 +122,6 @@ export function PaymentModal({ onClose, onSuccess, token }) {
 
       if (data.credited) {
         addToast(`Баланс пополнен на ${paymentData.amount} ₽!`, 'success');
-        // Подтверждено — запись для автоподтверждения при возврате больше
-        // не нужна, иначе она всплывёт при следующем заходе на профиль.
-        try {
-          sessionStorage.removeItem('delo_pending_payment');
-        } catch {
-          // см. комментарий при setItem — отказ хранилища не критичен
-        }
         onSuccess();
         onClose();
       } else {
