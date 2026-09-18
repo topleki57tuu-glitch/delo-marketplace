@@ -302,49 +302,72 @@ export default function ChatsPage({ user, token, onOpenAuth }) {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Валидация размера (макс 10MB)
-    const maxSize = 10 * 1024 * 1024;
+    // Лимит сервера на одно изображение — 5 МБ (backend/file_utils.py).
+    // Раньше здесь стояло 10 МБ, то есть клиент пропускал файл, который
+    // сервер всё равно отклонял.
+    const maxSize = 5 * 1024 * 1024;
     if (file.size > maxSize) {
-      addToast('Файл слишком большой. Максимум 10 МБ', 'error');
+      addToast('Файл слишком большой. Максимум 5 МБ', 'error');
+      if (fileInputRef.current) fileInputRef.current.value = '';
       return;
     }
 
     setUploadingFile(true);
 
     try {
-      // Читаем файл как base64
-      const reader = new FileReader();
-      reader.onload = async (event) => {
-        const base64 = event.target.result;
+      // Файл грузим на сервер и отправляем в сообщении короткую ссылку.
+      //
+      // Раньше сюда клался data-URL целиком (FileReader.readAsDataURL): файл
+      // на 1.5 МБ превращался в 1.5 МБ base64 внутри строки БД, и столько же
+      // приезжало на каждое чтение чата — ответ рос линейно от числа картинок
+      // в переписке. Замер: одно вложение → 1.5 МБ, два → 3.0 МБ.
+      //
+      // scope=private — вложение личной переписки: сервер отдаёт его только
+      // по ссылке с подписью, которую выдаёт участникам сделки вместе
+      // с сообщением. Публичный /files/<id> для такого файла вернёт 403.
+      //
+      // Картинки и документы идут на разные эндпоинты: у них разная проверка
+      // содержимого (изображение определяется по magic bytes и отдаётся
+      // инлайном, документ — только на скачивание).
+      const isImage = file.type.startsWith('image/');
+      const endpoint = isImage ? '/upload/image?scope=private' : '/upload/file?scope=private';
 
-        // Отправляем сообщение с файлом
-        const res = await fetch(`/tasks/${activeTaskId}/messages`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            text: messageText.trim() || `📎 ${file.name}`,
-            file_url: base64,
-            file_name: file.name,
-            file_type: file.type
-          }),
-        });
+      const formData = new FormData();
+      formData.append('file', file);
 
-        if (!res.ok) throw new Error('Не удалось отправить файл');
+      const uploadRes = await fetch(endpoint, {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: formData,
+      });
+      const uploaded = await uploadRes.json().catch(() => ({}));
+      if (!uploadRes.ok) {
+        throw new Error(uploaded.detail || 'Не удалось загрузить файл');
+      }
 
-        setMessageText('');
-        addToast('Файл отправлен!', 'success');
-      };
+      const res = await fetch(`/tasks/${activeTaskId}/messages`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          text: messageText.trim() || `📎 ${file.name}`,
+          file_url: uploaded.url,
+          file_name: file.name,
+          file_type: file.type,
+        }),
+      });
 
-      reader.onerror = () => {
-        throw new Error('Не удалось прочитать файл');
-      };
+      if (!res.ok) {
+        const detail = await res.json().catch(() => ({}));
+        throw new Error(detail.detail || 'Не удалось отправить файл');
+      }
 
-      reader.readAsDataURL(file);
+      setMessageText('');
+      addToast('Файл отправлен!', 'success');
     } catch (err) {
-      addToast(err.message, 'error');
+      addToast(err.message || 'Не удалось отправить файл', 'error');
     } finally {
       setUploadingFile(false);
       if (fileInputRef.current) {

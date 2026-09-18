@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisco
 from sqlalchemy.orm import Session
 from app.core.database import get_db, SessionLocal
 from app.core.csrf import verify_csrf
-from app.core.security import oauth2_scheme, decode_token
+from app.core.security import oauth2_scheme, decode_token, file_url_with_token
 from app.core.logging import log_security_event
 from app.models import Message, Task, User, Notification, TaskStatus
 from app.schemas import MessageCreate
@@ -84,7 +84,12 @@ def get_user_chats(token: str = Depends(oauth2_scheme), db: Session = Depends(ge
             "other_user_avatar": other_user.avatar if other_user else None,
             "other_user_role": "Исполнитель" if other_user and other_user.id == t.executor_id else "Заказчик",
             "last_message": last_msg.text if last_msg else None,
-            "last_message_time": last_msg.created_at if last_msg else None,
+            # Строка, а не datetime. Схема `ChatDialogOut` объявляет это поле
+            # как `str`, и в списке ниже значения сравниваются между собой:
+            # `datetime` рядом с `""` от пустого диалога давали TypeError и
+            # роняли весь список чатов. ISO-строки сравниваются лексикографически
+            # и в UTC совпадают с хронологическим порядком.
+            "last_message_time": last_msg.created_at.isoformat() if last_msg and last_msg.created_at else None,
             "unread_count": unread_count
         })
 
@@ -122,11 +127,17 @@ def get_messages(task_id: int, token: str = Depends(oauth2_scheme), db: Session 
             "task_id": m.task_id,
             "sender_id": m.sender_id,
             "text": m.text,
-            "file_url": m.file_url,
+            # Вложения приватные: подпись выдаётся здесь, а не запрашивается
+            # клиентом, — значит, получить её может только участник сделки,
+            # до которого этот ответ вообще дошёл (проверка выше, строка ~105).
+            "file_url": file_url_with_token(m.file_url),
             "file_name": m.file_name,
             "file_type": m.file_type,
             "is_read": bool(m.is_read),
-            "created_at": m.created_at,
+            # `MessageOut.created_at` — тоже `str`: приводим здесь, чтобы
+            # объявленный контракт совпадал с фактом и эндпоинт не начал
+            # падать 500, как только кто-нибудь добавит ему `response_model`.
+            "created_at": m.created_at.isoformat() if m.created_at else None,
             "sender_name": sender.name or sender.email if sender else "Unknown"
         })
     return result
@@ -215,11 +226,13 @@ async def post_message(task_id: int, message: MessageCreate, token: str = Depend
         "task_id": task_id,
         "sender_id": user_id,
         "text": message.text,
-        "file_url": message.file_url,
+        # Та же подпись, что и в GET /messages: рассылка уходит только
+        # участникам сделки, значит подписанная ссылка не утечёт наружу.
+        "file_url": file_url_with_token(message.file_url),
         "file_name": message.file_name,
         "file_type": message.file_type,
         "is_read": False,
-        "created_at": new_message.created_at,
+        "created_at": new_message.created_at.isoformat() if new_message.created_at else None,
         "sender_name": sender.name or sender.email if sender else "Unknown"
     }
 
