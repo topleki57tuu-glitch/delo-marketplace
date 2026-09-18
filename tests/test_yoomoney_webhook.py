@@ -126,6 +126,29 @@ def cleanup_record(label):
         db.close()
 
 
+def sees_user(email: str) -> bool:
+    """Видит ли локальная сессия пользователя, созданного через API.
+
+    Тест создаёт `PaymentRecord` напрямую в БД (`make_record`), а вебхук ищет
+    её уже в базе сервера. Если `DATABASE_URL` задан только процессу сервера,
+    а оболочке тестов — нет, `SessionLocal()` откроет базу по умолчанию из
+    `config.py` (SQLite-файл), сервер же будет читать свою. Запись уйдёт
+    «в другую базу», и вебхук ответит 404 «Unknown payment label».
+
+    Симптом при этом выглядит как дыра в деньгах, а не как ошибка запуска:
+    четыре проверки падают с сообщением, будто вебхук не зачисляет. Чтобы
+    это не стоило часа отладки, проверяем совпадение баз заранее — по
+    пользователю, которого только что создали через API.
+    """
+    from app.models import User
+
+    db = db_session()
+    try:
+        return db.query(User).filter(User.email == email).first() is not None
+    finally:
+        db.close()
+
+
 def post_webhook(s, fields):
     """POST формы на вебхук. Без CSRF: это внешний вызов провайдера."""
     return s._s.post(  # noqa: SLF001 — намеренно в обход CSRF-обёртки
@@ -164,6 +187,21 @@ def main():
     token = s.login(email, password)
     start_balance = get_balance(s, token, user_id)
     print(f"  Пользователь id={user_id}, стартовый баланс={start_balance}\n")
+
+    # База теста должна совпадать с базой сервера — иначе запись платежа,
+    # созданная ниже, для вебхука просто не существует. Подробнее — sees_user().
+    if not sees_user(email):
+        print("SKIP: тест и сервер работают с РАЗНЫМИ базами.")
+        print(f"      Пользователь {email} создан через API, но не виден")
+        print("      локальной сессии SessionLocal().")
+        print("      Причина: DATABASE_URL задан процессу сервера, но не оболочке")
+        print("      тестов — тогда SessionLocal() берёт базу по умолчанию из")
+        print("      config.py, а сервер читает свою.")
+        print("      Решение: запускать оба процесса с одним DATABASE_URL, например")
+        print("        export DATABASE_URL=postgresql+psycopg2://user:pass@host:5432/db")
+        print("        cd backend && python -m uvicorn main:app --port 8000")
+        print("        cd .. && python tests/test_yoomoney_webhook.py")
+        return 0
 
     # --- 1. Корректная подпись → зачисление --------------------------------
     label = f"wh-test-ok-{ts}"

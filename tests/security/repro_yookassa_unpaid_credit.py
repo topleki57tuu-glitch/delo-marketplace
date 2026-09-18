@@ -38,15 +38,13 @@ import sys
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
 sys.path.insert(0, os.path.join(REPO_ROOT, "backend"))
+sys.path.insert(0, os.path.join(REPO_ROOT, "tests"))
 
-os.environ.setdefault("ENV", "development")
-os.environ.setdefault("SECRET_KEY", "repro-secret-not-for-production")
-os.environ.setdefault("CORS_ORIGINS", "http://localhost:5173")
-DB = r"C:/tmp/repro_yookassa.db"
-os.environ.setdefault("DATABASE_URL", f"sqlite:///{DB}")
+from _helpers import isolate_env  # noqa: E402
 
-if os.path.exists(DB):
-    os.remove(DB)
+# Окружение задаём сами: в CI джоба выставляет CSRF_ENABLED=1 и боевой
+# DATABASE_URL, через setdefault их не перекрыть (см. isolate_env).
+isolate_env("repro_yookassa")
 
 from fastapi.testclient import TestClient  # noqa: E402
 

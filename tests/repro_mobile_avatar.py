@@ -7,11 +7,12 @@
 import os
 import sys
 
-os.environ.setdefault("ENV", "development")
-os.environ.setdefault("SECRET_KEY", "test-secret-key-for-repro")
-os.environ.setdefault("DATABASE_URL", "sqlite:///C:/tmp/repro_mobile_avatar.db")
-os.environ.setdefault("CORS_ORIGINS", "http://localhost:5173")
-os.environ.setdefault("CSRF_ENABLED", "0")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _helpers import isolate_env  # noqa: E402
+
+# Окружение задаём сами: в CI джоба выставляет CSRF_ENABLED=1 и боевой
+# DATABASE_URL, через setdefault их не перекрыть (см. isolate_env).
+isolate_env("repro_mobile_avatar")
 
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(_ROOT, "backend"))

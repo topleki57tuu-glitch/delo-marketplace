@@ -27,15 +27,19 @@ import os
 import sys
 import time
 
-os.environ.setdefault("ENV", "development")
-os.environ.setdefault("SECRET_KEY", "test-secret-key-for-repro")
-os.environ.setdefault("DATABASE_URL", "sqlite:///C:/tmp/repro_payment_cycle.db")
-os.environ.setdefault("CORS_ORIGINS", "http://localhost:5173")
-os.environ.setdefault("CSRF_ENABLED", "0")
-os.environ.setdefault("YOOMONEY_ACCESS_TOKEN", "test-token-for-repro")
-os.environ.setdefault("YOOMONEY_NOTIFICATION_SECRET", "test-notification-secret")
-os.environ.setdefault("YOOMONEY_RETURN_PATH", "/profile")
-os.environ.setdefault("FRONTEND_URL", "https://delo.example.ru")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _helpers import isolate_env  # noqa: E402
+
+# Окружение задаём сами: в CI джоба выставляет свои DATABASE_URL, CSRF_ENABLED
+# и YOOMONEY_*, и через setdefault их не перекрыть (см. isolate_env).
+isolate_env(
+    "repro_payment_cycle",
+    YOOMONEY_ACCESS_TOKEN="test-token-for-repro",
+    YOOMONEY_NOTIFICATION_SECRET="test-notification-secret",
+    YOOMONEY_RETURN_PATH="/profile",
+    # Набор проверяет адрес возврата, поэтому фронтенд-URL ему нужен свой.
+    FRONTEND_URL="https://delo.example.ru",
+)
 
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(_ROOT, "backend"))
