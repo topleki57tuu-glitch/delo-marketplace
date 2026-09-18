@@ -283,23 +283,61 @@ docker compose -f docker-compose.prod.yml exec backend env | grep НОВАЯ
 ## Текущее состояние (18.09.2026)
 
 **Работает:** домен, HTTPS (Let's Encrypt), SPA, backend, postgres, Redis,
-Caddy, бот (контейнер поднят).
+Caddy, бот (контейнер поднят). ЮMoney подключён: `/payments/status` отдаёт
+`"yoomoney":{"configured":true}`.
 
-**Не настроено, требуется вручную:**
+### Сначала это: вебхук ЮMoney
 
-- **ЮMoney** — токены не вписаны, `/payments/status` отдаёт
-  `"yoomoney":{"configured":false}`. Нужны `YOOMONEY_ACCESS_TOKEN`,
-  `YOOMONEY_CLIENT_ID`, `YOOMONEY_NOTIFICATION_SECRET`. Коду `client_secret`
-  **не нужен** — он нигде не читается.
-- **Вебхук ЮMoney** в кабинете — перевести на
-  `https://xn--d1acsm.online/payments/webhook/yoomoney`. Там до сих пор
-  старый домен.
+**Проверь адрес уведомлений в кабинете ЮMoney.** Он настраивается отдельно
+от кода, и пока там указан старый домен, уведомления об оплате не приходят
+вообще: приложение не получает ни ошибки, ни записи в логе — только
+пользователь с деньгами, ушедшими со счёта, и непополненным балансом.
+Именно так и потерялось первое пополнение на 100 ₽.
+
+Адрес должен быть ровно такой:
+
+```
+https://xn--d1acsm.online/payments/webhook/yoomoney
+```
+
+`YOOMONEY_NOTIFICATION_SECRET` в `.env` на сервере и секрет в кабинете
+ЮMoney должны совпадать — иначе вебхук отвечает `403 Invalid signature`,
+и это **видно в логах**, в отличие от неверного адреса.
+
+Проверить, что доходит:
+
+```bash
+cd /opt/delo-marketplace
+docker compose -f docker-compose.prod.yml logs --tail 100 backend | grep -i yoomoney
+```
+
+Пусто — значит уведомления не приходят. Строка `Invalid ЮMoney webhook
+signature` — адрес верный, а секрет не совпадает.
+
+Если платёж всё-таки потерялся: у пользователя в профиле есть кнопка
+«Оплатил, но баланс не изменился» — она дозачисляет платежи, которые
+провайдер провёл, а мы не увидели. Ручной путь, если понадобится:
+
+```bash
+docker compose -f docker-compose.prod.yml exec postgres \
+  psql -U marketplace -d marketplace_db -c \
+  "SELECT id, payment_id, user_id, amount, status, credited_at, created_at
+   FROM payment_records ORDER BY id DESC LIMIT 10;"
+```
+
+Строка с `credited_at = NULL` и оплаченная у провайдера — это и есть
+потерянное пополнение.
+
+### Остальное, требуется вручную
+
 - **`TELEGRAM_BOT_TOKEN`** — пустой, бот не функционирует.
 - **`ADMIN_EMAILS=admin@delo.ru`** — почта при регистрации не подтверждается,
   поэтому первый, кто займёт этот адрес, станет модератором. Либо займи
   адрес сам, либо смени на свой.
 - **`www.`** — не обслуживается. Нужен:
   `sed -i 's/^{\$DOMAIN}/{$DOMAIN}, www.{$DOMAIN}/' deploy/Caddyfile && docker compose -f docker-compose.prod.yml restart caddy`
+- **`YOOMONEY_CLIENT_ID`** — нужен только для OAuth-сценария. Коду
+  `client_secret` **не нужен** — он нигде не читается.
 
 **Про обновления:** автодеплоя нет. CI/CD, webhook, watchtower не настроены.
 Каждое обновление — руками по этому документу.
