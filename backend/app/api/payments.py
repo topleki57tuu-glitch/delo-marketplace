@@ -183,7 +183,9 @@ def buy_package(req: BuyPackageRequest, token: str = Depends(oauth2_scheme), db:
         "message": msg,
         "balance": user.balance,
         "response_credits": user.response_credits,
-        "is_pro": user.is_pro,
+        # is_pro_active, а не колонка: клиенту нужен признак действующей
+        # подписки, чтобы рисовать метку PRO.
+        "is_pro": user.is_pro_active,
         "pro_until": user.pro_until
     }
 

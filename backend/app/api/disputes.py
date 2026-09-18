@@ -333,8 +333,9 @@ def resolve_dispute(dispute_id: int, req: DisputeResolve, token: str = Depends(o
             executor = db.query(User).filter(User.id == task.executor_id).first()
             if executor:
                 # Та же комиссия, что и при обычном завершении сделки:
-                # 5% сервиса, для PRO-специалистов — 0%
-                fee_percent = 0 if executor.is_pro else 5
+                # 5% сервиса, для действующего PRO — 0%.
+                # is_pro_active, а не is_pro: истёкшая подписка прав не даёт.
+                fee_percent = 0 if executor.is_pro_active else 5
                 fee = round(budget * fee_percent / 100)
                 payout = budget - fee
                 # Начисление атомарным UPDATE — как в остальных денежных путях

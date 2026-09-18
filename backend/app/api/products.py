@@ -230,10 +230,11 @@ def create_order(
             raise HTTPException(400, "Для этого товара доступна только доставка")
 
     # Расчёт стоимости. Комиссия та же, что и в сделках по задачам: 0% для
-    # продавца с подпиской PRO, иначе 5%.
+    # продавца с действующей подпиской PRO (is_pro_active — флаг и срок),
+    # иначе 5%.
     total_price = product.price * order.quantity
     seller = db.query(User).filter(User.id == product.seller_id).first()
-    fee_percent = 0 if (seller and seller.is_pro) else 5
+    fee_percent = 0 if (seller and seller.is_pro_active) else 5
     platform_fee = round(total_price * fee_percent / 100)
 
     # Проверка баланса покупателя

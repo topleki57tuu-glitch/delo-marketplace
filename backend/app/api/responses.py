@@ -38,8 +38,12 @@ def create_response(task_id: int, response: ResponseCreate, token: str = Depends
     if not task:
         raise HTTPException(404, "Заказ не найден")
 
-    # Монетизация: PRO — безлимит, иначе списываем 1 отклик
-    if not specialist.is_pro:
+    # Монетизация: PRO — безлимит, иначе списываем 1 отклик.
+    # Права считаем по is_pro_active, а не по колонке is_pro: флаг снимает
+    # celery-задача, которой в этом проекте никто не запускает, поэтому
+    # истёкшая подписка иначе оставалась бы действующей навсегда.
+    is_pro = specialist.is_pro_active
+    if not is_pro:
         if (specialist.response_credits or 0) <= 0:
             raise HTTPException(402, "Отклики закончились. Пополните баланс или оформите PRO в профиле")
         specialist.response_credits -= 1
@@ -57,11 +61,11 @@ def create_response(task_id: int, response: ResponseCreate, token: str = Depends
         user_id=task.customer_id,
         type="new_response",
         title="Новый отклик на заказ!",
-        text=f"{'PRO ★ ' if specialist.is_pro else ''}{specialist.name or specialist.email} откликнулся на задачу \"{task.title}\"" + (f" — {response.proposed_price} ₽" if response.proposed_price else ""),
+        text=f"{'PRO ★ ' if is_pro else ''}{specialist.name or specialist.email} откликнулся на задачу \"{task.title}\"" + (f" — {response.proposed_price} ₽" if response.proposed_price else ""),
         task_id=task_id
     ))
     db.commit()
-    return {"message": "Отклик отправлен", "credits_left": None if specialist.is_pro else specialist.response_credits}
+    return {"message": "Отклик отправлен", "credits_left": None if is_pro else specialist.response_credits}
 
 @router.get("/tasks/{task_id}/responses")
 def get_task_responses(task_id: int, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
@@ -97,7 +101,7 @@ def get_task_responses(task_id: int, token: str = Depends(oauth2_scheme), db: Se
             "specialist_verified": spec.verified if spec else False,
             "specialist_city": spec.city if spec else None,
             "specialist_online": user_online(spec) if spec else False,
-            "specialist_pro": spec.is_pro if spec else False,
+            "specialist_pro": spec.is_pro_active if spec else False,
             "proposed_price": r.proposed_price,
             "estimated_days": r.estimated_days
         })

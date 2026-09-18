@@ -17,6 +17,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func
+import sqlalchemy as sa
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -51,7 +52,14 @@ def platform_stats(token: str = Depends(oauth2_scheme), db: Session = Depends(ge
         "total": db.query(User).count(),
         "customers": db.query(User).filter(User.role == UserRole.customer).count(),
         "specialists": db.query(User).filter(User.role == UserRole.specialist).count(),
-        "pro": db.query(User).filter(User.is_pro == True).count(),  # noqa: E712
+        # Действующие подписки (флаг И неистёкший срок), а не число когда-либо
+        # оформленных: celery-задача, которая снимала бы флаг, не запускается
+        # нигде, поэтому по колонке счётчик только рос бы и никогда не падал.
+        "pro": db.query(User).filter(
+            User.is_pro == True,  # noqa: E712
+            User.pro_until != None,  # noqa: E711
+            User.pro_until > datetime.utcnow(),
+        ).count(),
         "verified": db.query(User).filter(User.verified == True).count(),  # noqa: E712
         "online": db.query(User).filter(User.last_seen >= online_since).count(),
         "new_7d": db.query(User).filter(User.created_at >= week_ago).count(),
@@ -131,7 +139,12 @@ def platform_stats(token: str = Depends(oauth2_scheme), db: Session = Depends(ge
     # --------------------------------------------------------------- монетизация
     monetization = {
         "responses_total": db.query(Response).count(),
-        "pro_subscriptions": db.query(User).filter(User.is_pro == True).count(),  # noqa: E712
+        # Действующие подписки — та же логика, что в сводке по пользователям
+        "pro_subscriptions": db.query(User).filter(
+            User.is_pro == True,  # noqa: E712
+            User.pro_until != None,  # noqa: E711
+            User.pro_until > datetime.utcnow(),
+        ).count(),
         "credits_in_circulation": int(
             db.query(func.coalesce(func.sum(User.response_credits), 0)).scalar() or 0
         ),
@@ -252,7 +265,7 @@ def list_users(
     Параметры:
     - role: customer | specialist
     - verified: true | false
-    - is_pro: true | false
+    - is_pro: true | false — ДЕЙСТВУЮЩАЯ подписка (флаг и неистёкший срок)
     - search: поиск по email и имени
     - page: номер страницы (default 1)
     - per_page: записей на страницу (default 20, max 100)
@@ -279,7 +292,14 @@ def list_users(
         query = query.filter(User.verified == verified)
 
     if is_pro is not None:
-        query = query.filter(User.is_pro == is_pro)
+        # По сроку, а не по колонке: иначе фильтр «PRO» показывал бы в том
+        # числе тех, у кого подписка давно истекла (флаг никто не снимает).
+        active = [
+            User.is_pro == True,  # noqa: E712
+            User.pro_until != None,  # noqa: E711
+            User.pro_until > datetime.utcnow(),
+        ]
+        query = query.filter(*active) if is_pro else query.filter(~sa.and_(*active))
 
     if search:
         search_pattern = f"%{search}%"
@@ -299,7 +319,9 @@ def list_users(
             "role": u.role.value,
             "balance": u.balance or 0,
             "verified": u.verified,
-            "is_pro": u.is_pro,
+            # Действующая подписка — чтобы админ не принял истёкшую за живую
+            "is_pro": u.is_pro_active,
+            "pro_until": u.pro_until.isoformat() if u.pro_until else None,
             "city": u.city,
             "created_at": u.created_at.isoformat() if u.created_at else None,
             "last_seen": u.last_seen.isoformat() if u.last_seen else None

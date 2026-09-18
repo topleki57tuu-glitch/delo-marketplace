@@ -136,7 +136,10 @@ def get_profile(token: str = Depends(oauth2_scheme), db: Session = Depends(get_d
         # это расходилось со списком на сервере и раскрывало админские
         # экраны тому, кто не имеет доступа к данным.
         "is_admin": is_admin(user),
-        "is_pro": user.is_pro,
+        # Отдаём признак ДЕЙСТВУЮЩЕЙ подписки, а не факт её оформления:
+        # фронтенд рисует по нему метку PRO, и истёкшая подписка не должна
+        # выглядеть активной. pro_until отдаём отдельно — это дата окончания.
+        "is_pro": user.is_pro_active,
         "pro_until": user.pro_until,
         "response_credits": user.response_credits,
         "completed_tasks": completed_tasks,
@@ -239,7 +242,7 @@ def list_specialists(
             "avatar": u.avatar,
             "skills": u.skills,
             "verified": bool(u.verified),
-            "is_pro": bool(u.is_pro),
+            "is_pro": bool(u.is_pro_active),
             "rating": rating,
             "reviews_count": len(reviews),
             "completed_tasks": completed,
@@ -372,7 +375,8 @@ def get_public_profile(user_id: int, db: Session = Depends(get_db)):
         "portfolio": user.portfolio,
         "skills": user.skills,
         "verified": user.verified,
-        "is_pro": user.is_pro,
+        # Действующая подписка, а не факт оформления — см. комментарий в /users/me
+        "is_pro": user.is_pro_active,
         "completed_tasks": completed_tasks,
         "online": user_online(user),
         "last_seen": user.last_seen
