@@ -2,7 +2,7 @@ import json
 from datetime import datetime
 from enum import Enum as PyEnum
 from sqlalchemy import (
-    Column, Integer, String, Float, Boolean, Text,
+    Column, Integer, String, Float, Boolean, Text, Index,
     Enum as SqlaEnum, LargeBinary as SqlaLargeBinary, DateTime
 )
 from app.core.database import Base
@@ -43,6 +43,12 @@ class TransactionType(str, PyEnum):
 
 class User(Base):
     __tablename__ = "users"
+    # Индексы объявлены здесь, а не только в миграции af27b7191ef4: иначе
+    # alembic check считает их лишними и предлагает удалить при следующей
+    # автогенерации — производительность тихо откатывается.
+    __table_args__ = (
+        Index("idx_users_last_seen", "last_seen"),
+    )
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String, unique=True, index=True)
     hashed_password = Column(String)
@@ -121,6 +127,14 @@ class Response(Base):
 
 class Task(Base):
     __tablename__ = "tasks"
+    # Составные индексы под выборки лент заказов — объявлены и в модели,
+    # и в миграции af27b7191ef4 (см. комментарий у User).
+    __table_args__ = (
+        Index("idx_tasks_status", "status"),
+        Index("idx_tasks_category", "category"),
+        Index("idx_tasks_customer_status", "customer_id", "status"),
+        Index("idx_tasks_executor_status", "executor_id", "status"),
+    )
     id = Column(Integer, primary_key=True, index=True)
     title = Column(String)
     description = Column(String)
@@ -178,9 +192,15 @@ class DisputeStatus(str, PyEnum):
     closed = "closed"  # спор отозван инициатором
 
 class Dispute(Base):
+    """Спор по сделке: по заданию (task_id) или по заказу товара (order_id).
+
+    Одна таблица на оба вида сделок — чтобы у арбитра была одна очередь и
+    один экран, а не два параллельных. Ровно одно из полей заполнено.
+    """
     __tablename__ = "disputes"
     id = Column(Integer, primary_key=True, index=True)
-    task_id = Column(Integer, index=True)
+    task_id = Column(Integer, index=True, nullable=True)
+    order_id = Column(Integer, index=True, nullable=True)  # спор по заказу товара
     opened_by = Column(Integer)  # user_id инициатора
     reason = Column(String)
     status = Column(SqlaEnum(DisputeStatus), default=DisputeStatus.open)

@@ -28,8 +28,9 @@ export default function ProductDetailPage() {
   const isOwner = user && user.id === product.seller_id;
   const canOrder = user && !isOwner && product.stock > 0;
 
-  const formatPrice = (priceInKopecks) => {
-    return (priceInKopecks / 100).toLocaleString('ru-RU') + ' ₽';
+  // Цена приходит с бэкенда в рублях (см. комментарий в ProductsPage).
+  const formatPrice = (priceInRubles) => {
+    return (priceInRubles ?? 0).toLocaleString('ru-RU') + ' ₽';
   };
 
   const handleOrder = async () => {

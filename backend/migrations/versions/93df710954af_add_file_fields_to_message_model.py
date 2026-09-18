@@ -68,15 +68,20 @@ def upgrade() -> None:
                type_=sa.DateTime(),
                existing_nullable=True)
 
+    # Индексы из списка были в старой схеме, созданной create_all, и в цепочке
+    # миграций их нет. Безусловный drop_index ронял `alembic upgrade head`
+    # на чистой базе («No such index: ix_tasks_customer_id»), поэтому роняем
+    # только то, что реально существует.
+    existing_task_indexes = {i["name"] for i in sa.inspect(op.get_bind()).get_indexes('tasks')}
     with op.batch_alter_table('tasks', schema=None) as batch_op:
         batch_op.alter_column('created_at',
                existing_type=sa.VARCHAR(),
                type_=sa.DateTime(),
                existing_nullable=True)
-        batch_op.drop_index(batch_op.f('ix_tasks_customer_id'))
-        batch_op.drop_index(batch_op.f('ix_tasks_executor_id'))
-        batch_op.drop_index(batch_op.f('ix_tasks_status'))
-        batch_op.drop_index(batch_op.f('ix_tasks_status_category'))
+        for legacy_index in ('ix_tasks_customer_id', 'ix_tasks_executor_id',
+                             'ix_tasks_status', 'ix_tasks_status_category'):
+            if legacy_index in existing_task_indexes:
+                batch_op.drop_index(legacy_index)
 
     with op.batch_alter_table('transactions', schema=None) as batch_op:
         batch_op.alter_column('created_at',

@@ -6,15 +6,16 @@ import './MyProductsPage.css';
 
 export default function MyProductsPage() {
   const navigate = useNavigate();
-  const { products, loading, fetchProducts, deleteProduct } = useProductsStore();
+  const { myProducts, loading, fetchMyProducts, deleteProduct } = useProductsStore();
   const { user, token } = useAuthStore();
 
   const [deleting, setDeleting] = useState({});
 
   useEffect(() => {
     if (token && user) {
-      // Загрузить все товары и отфильтровать свои на клиенте
-      fetchProducts();
+      // Отдельный эндпоинт: отдаёт все товары продавца, включая распроданные
+      // и снятые с продажи. Общий список содержит только активные позиции.
+      fetchMyProducts(token);
     }
   }, [token, user]);
 
@@ -31,11 +32,9 @@ export default function MyProductsPage() {
     );
   }
 
-  // Фильтруем только свои товары
-  const myProducts = products.filter(p => p.seller_id === user.id);
-
-  const formatPrice = (priceInKopecks) => {
-    return (priceInKopecks / 100).toLocaleString('ru-RU') + ' ₽';
+  // Цена приходит с бэкенда в рублях (см. комментарий в ProductsPage).
+  const formatPrice = (priceInRubles) => {
+    return (priceInRubles ?? 0).toLocaleString('ru-RU') + ' ₽';
   };
 
   const handleDelete = async (productId, productTitle) => {

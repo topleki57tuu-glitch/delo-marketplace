@@ -171,8 +171,14 @@ def is_admin(user) -> bool:
     Только строгое совпадение email из ADMIN_EMAILS: подстрочная проверка
     («admin» in email) выдала бы права модератора любому admin-vasya@x.com.
     Раньше эта функция была скопирована в трёх роутерах — теперь одна.
+
+    Дефолта нет намеренно. Раньше при незаданной переменной админом
+    становился владелец admin@delo.ru — а почта при регистрации не
+    подтверждается, поэтому права модератора получал любой, кто первым
+    занял этот адрес (и вместе с ними — очередь выплат с реквизитами).
+    Нет переменной — нет модераторов.
     """
-    raw = os.environ.get("ADMIN_EMAILS", "admin@delo.ru")
+    raw = os.environ.get("ADMIN_EMAILS", "")
     admins = [e.strip().lower() for e in raw.split(",") if e.strip()]
     email = getattr(user, "email", None)
     return bool(email and email.lower() in admins)

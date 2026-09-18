@@ -1,10 +1,11 @@
 import json
 from typing import Optional, List
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func
 from app.core.database import get_db
 from app.core.security import oauth2_scheme, decode_token
+from app.core.money import credit_balance
 from app.core.csrf import verify_csrf
 from app.core.logging import logger, log_escrow_operation
 from app.core.cache import cache
@@ -305,8 +306,7 @@ def complete_task(task_id: int, token: str = Depends(oauth2_scheme), db: Session
     payout = 0
     fee = 0
     if budget > 0:
-        # Блокируем запись исполнителя для защиты от конкурентного изменения баланса
-        executor = db.query(User).filter(User.id == task.executor_id).with_for_update().first()
+        executor = db.query(User).filter(User.id == task.executor_id).first()
         if executor:
             # Монетизация: 0% комиссия для пользователей со статусом PRO, иначе стандартные 5%
             is_pro = bool(executor.is_pro)
@@ -314,7 +314,9 @@ def complete_task(task_id: int, token: str = Depends(oauth2_scheme), db: Session
             fee = round(budget * fee_percent / 100)
             payout = budget - fee
 
-            executor.balance += payout
+            # Начисление атомарное: инкремент в Python потерялся бы при
+            # конкурентной записи баланса (см. app/core/money.py).
+            credit_balance(db, executor.id, payout)
             db.add(Transaction(
                 user_id=executor.id,
                 amount=payout,

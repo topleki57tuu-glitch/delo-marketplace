@@ -14,6 +14,11 @@ Create Date: 2026-09-12 21:52:23.569226
 
 ВАЖНО: Миграция конвертирует существующие данные.
 Для production с большими таблицами рекомендуется maintenance окно.
+
+ВАЖНО: список таблиц ниже включает и те, которых нет в начальной схеме
+(refresh_tokens, products, orders) — они появились в моделях позже. Без
+проверки существования `alembic upgrade head` на чистой базе падал с
+«no such table». Проверка добавлена, миграция идемпотентна.
 """
 from typing import Sequence, Union
 
@@ -29,10 +34,47 @@ branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
+def _table_columns(table: str) -> set:
+    """Колонки таблицы или пустое множество, если таблицы ещё нет."""
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    if table not in inspector.get_table_names():
+        return set()
+    return {c["name"] for c in inspector.get_columns(table)}
+
+
+def _convert(table: str, field: str, to_datetime: bool) -> None:
+    """Перелить одну колонку: VARCHAR(ISO) <-> DateTime, через временную колонку."""
+    if field not in _table_columns(table):
+        return
+
+    conn = op.get_bind()
+    new_type = sa.DateTime() if to_datetime else sa.String()
+
+    with op.batch_alter_table(table, schema=None) as batch_op:
+        batch_op.add_column(sa.Column(f'{field}_temp', new_type, nullable=True))
+
+    if to_datetime:
+        conn.execute(text(f"""
+            UPDATE {table}
+            SET {field}_temp = datetime({field})
+            WHERE {field} IS NOT NULL AND {field} != ''
+        """))
+    else:
+        conn.execute(text(f"""
+            UPDATE {table}
+            SET {field}_temp = strftime('%Y-%m-%dT%H:%M:%S', {field})
+            WHERE {field} IS NOT NULL
+        """))
+
+    with op.batch_alter_table(table, schema=None) as batch_op:
+        batch_op.drop_column(field)
+        batch_op.alter_column(f'{field}_temp', new_column_name=field)
+
+
 def upgrade() -> None:
     """Upgrade schema: VARCHAR ISO strings → DateTime."""
 
-    # Определяем таблицы и их datetime поля (только те, что реально существуют в БД)
     tables_fields = [
         ('users', ['created_at', 'last_seen', 'pro_until']),
         ('tasks', ['created_at']),
@@ -49,30 +91,9 @@ def upgrade() -> None:
         # responses и reviews не имеют datetime полей в текущей схеме
     ]
 
-    conn = op.get_bind()
-
     for table, fields in tables_fields:
         for field in fields:
-            # Используем batch_alter_table для поддержки SQLite
-            with op.batch_alter_table(table, schema=None) as batch_op:
-                # 1. Создаём временную колонку DateTime
-                batch_op.add_column(sa.Column(f'{field}_temp', sa.DateTime(), nullable=True))
-
-            # 2. Конвертируем ISO строки в DateTime
-            # SQLite: datetime(field) конвертирует ISO строку
-            # PostgreSQL: TO_TIMESTAMP работает аналогично
-            conn.execute(text(f"""
-                UPDATE {table}
-                SET {field}_temp = datetime({field})
-                WHERE {field} IS NOT NULL AND {field} != ''
-            """))
-
-            with op.batch_alter_table(table, schema=None) as batch_op:
-                # 3. Удаляем старую колонку VARCHAR
-                batch_op.drop_column(field)
-
-                # 4. Переименовываем временную колонку
-                batch_op.alter_column(f'{field}_temp', new_column_name=field)
+            _convert(table, field, to_datetime=True)
 
 
 def downgrade() -> None:
@@ -94,26 +115,6 @@ def downgrade() -> None:
         # responses и reviews не имеют datetime полей в текущей схеме
     ]
 
-    conn = op.get_bind()
-
     for table, fields in tables_fields:
         for field in fields:
-            with op.batch_alter_table(table, schema=None) as batch_op:
-                # 1. Создаём временную колонку VARCHAR
-                batch_op.add_column(sa.Column(f'{field}_temp', sa.String(), nullable=True))
-
-            # 2. Конвертируем DateTime обратно в ISO строку
-            # SQLite: strftime возвращает ISO формат
-            conn.execute(text(f"""
-                UPDATE {table}
-                SET {field}_temp = strftime('%Y-%m-%dT%H:%M:%S', {field})
-                WHERE {field} IS NOT NULL
-            """))
-
-            with op.batch_alter_table(table, schema=None) as batch_op:
-                # 3. Удаляем DateTime колонку
-                batch_op.drop_column(field)
-
-                # 4. Переименовываем временную колонку
-                batch_op.alter_column(f'{field}_temp', new_column_name=field)
-
+            _convert(table, field, to_datetime=False)

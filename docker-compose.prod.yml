@@ -61,7 +61,10 @@ services:
       ENV: production
       FRONTEND_URL: ${FRONTEND_URL}
       CORS_ORIGINS: ${CORS_ORIGINS}
-      ADMIN_EMAILS: ${ADMIN_EMAILS:-admin@delo.ru}
+      # Без явного списка модераторов их нет вовсе: раньше дефолтом был
+      # admin@delo.ru, а почта при регистрации не подтверждается — права
+      # модератора получал любой, кто первым занял этот адрес.
+      ADMIN_EMAILS: ${ADMIN_EMAILS:?Set ADMIN_EMAILS in .env (comma-separated)}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       # Счётчики лимитов в общем Redis, иначе они живут в памяти каждого воркера
       REDIS_URL: redis://redis:6379/0

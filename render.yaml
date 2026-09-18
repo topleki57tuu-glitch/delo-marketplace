@@ -12,6 +12,16 @@ services:
         value: production
       - key: SECRET_KEY
         generateValue: true
+      # Без этих двух переменных backend в production не стартует:
+      # config.py бросает RuntimeError (см. app/core/config.py).
+      # sync: false — значения задаются в панели Render.
+      - key: CORS_ORIGINS
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
+      # Список модераторов. Пусто = модераторов нет (дефолта намеренно нет).
+      - key: ADMIN_EMAILS
+        sync: false
       - key: DATABASE_URL
         fromDatabase:
           name: marketplace-postgres

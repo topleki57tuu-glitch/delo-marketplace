@@ -303,7 +303,7 @@ class ProductCreate(BaseModel):
     description: str = Field(min_length=10, max_length=5000)
     category: ProductCategory = ProductCategory.other
     condition: ProductCondition = ProductCondition.new
-    price: int = Field(gt=0, description="Цена в копейках")
+    price: int = Field(gt=0, description="Цена в рублях")
     stock: int = Field(ge=1, default=1, description="Количество на складе")
     images: Optional[str] = None  # JSON array URLs
     city: Optional[str] = None

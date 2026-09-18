@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useProductsStore } from '../store/productsStore';
 import { useAuthStore } from '../store/authStore';
-import ImageUploader from '../components/ImageUploader';
+import { ImageUploader } from '../components/ImageUploader';
 import './CreateProductPage.css';
 
 const PRODUCT_CATEGORIES = [
@@ -90,7 +90,7 @@ export default function CreateProductPage() {
         description: formData.description.trim(),
         category: formData.category,
         condition: formData.condition,
-        price: parseInt(formData.price) * 100, // в копейки
+        price: parseInt(formData.price), // в рублях
         stock: parseInt(formData.stock),
         city: formData.city.trim() || null,
         delivery_options: formData.delivery_options,

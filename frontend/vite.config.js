@@ -87,6 +87,18 @@ export default defineConfig({
       // index.html со статусом 200, r.json() падал, и профиль показывал
       // «заявок нет», хотя заявки были. В nginx-конфиге /verification есть.
       '/verification': 'http://localhost:8000',
+      // Токен для CSRF-защиты: без него все изменяющие запросы получают 403.
+      '/csrf-token': 'http://localhost:8000',
+      // Модуль маркетплейса товаров. Пути /products и /products/:id совпадают
+      // с маршрутами SPA, поэтому навигацию браузера уводим в index.html
+      // (иначе переход по ссылке отдаст JSON вместо страницы).
+      '/products': {
+        target: 'http://localhost:8000',
+        bypass(req) {
+          if (req.headers.accept && req.headers.accept.includes('text/html')) return '/index.html';
+        },
+      },
+      '/orders': 'http://localhost:8000',
       '/ws': {
         target: 'ws://localhost:8000',
         ws: true,

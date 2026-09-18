@@ -16,6 +16,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.money import claim, credit_balance, debit_balance
 from app.core.security import (
     oauth2_scheme, decode_token, is_admin,
     encrypt_sensitive, decrypt_sensitive, mask_requisites,
@@ -60,6 +61,34 @@ def _notify(db: Session, user_id: int, title: str, text: str) -> None:
     db.add(Notification(user_id=user_id, type="withdrawal", title=title, text=text))
 
 
+def _credit(db: Session, user_id: int, amount: int) -> None:
+    """Атомарно начислить сумму на баланс (см. app/core/money.py)."""
+    credit_balance(db, user_id, amount)
+
+
+def _claim_status(db: Session, withdrawal_id: int, new_status, comment: str) -> bool:
+    """Атомарно перевести заявку из pending в новый статус.
+
+    Читать статус, проверять его в Python и потом писать — нельзя: два
+    одновременных запроса (отмена отмены, повторное решение модератора)
+    прошли бы проверку оба и вернули деньги дважды. Здесь переход делает
+    сам UPDATE с условием, и признак успеха — rowcount.
+    """
+    return claim(
+        db,
+        WithdrawalRequest,
+        [
+            WithdrawalRequest.id == withdrawal_id,
+            WithdrawalRequest.status == WithdrawalStatus.pending,
+        ],
+        {
+            "status": new_status,
+            "resolved_at": datetime.utcnow(),
+            "comment": comment,
+        },
+    )
+
+
 # ---------------------------------------------------------------- пользователь
 
 @router.post("/wallet/withdraw")
@@ -76,12 +105,13 @@ def create_withdrawal(
     if req.amount < MIN_WITHDRAWAL:
         raise HTTPException(400, f"Минимальная сумма вывода — {MIN_WITHDRAWAL} ₽")
 
-    balance = user.balance or 0
-    if req.amount > balance:
-        raise HTTPException(400, f"Недостаточно средств: доступно {balance} ₽")
+    # Замораживаем сумму сразу, чтобы её нельзя было потратить до решения модератора.
+    # Списание атомарное: проверка «хватит ли денег» входит в сам UPDATE
+    # (см. app/core/money.py — почему не FOR UPDATE).
+    if not debit_balance(db, user.id, req.amount):
+        db.rollback()
+        raise HTTPException(400, f"Недостаточно средств: доступно {user.balance or 0} ₽")
 
-    # Замораживаем сумму сразу, чтобы её нельзя было потратить до решения модератора
-    user.balance = balance - req.amount
     db.add(Transaction(
         user_id=user.id,
         amount=-req.amount,
@@ -139,24 +169,24 @@ def cancel_withdrawal(
         raise HTTPException(404, "Заявка не найдена")
     if request.user_id != user_id:
         raise HTTPException(403, "Это не ваша заявка")
-    if request.status != WithdrawalStatus.pending:
+
+    amount = request.amount
+
+    # Сначала атомарно забираем переход статуса, и только потом возвращаем деньги.
+    # Иначе два одновременных отмены одной заявки вернули бы сумму дважды.
+    if not _claim_status(db, withdrawal_id, WithdrawalStatus.cancelled, "Отменено пользователем"):
+        db.rollback()
         raise HTTPException(400, "Отменить можно только заявку, ожидающую обработки")
 
-    # Возвращаем зарезервированную сумму на баланс
-    user = db.query(User).filter(User.id == user_id).first()
-    user.balance = (user.balance or 0) + request.amount
+    _credit(db, user_id, amount)
     db.add(Transaction(
         user_id=user_id,
-        amount=request.amount,
+        amount=amount,
         type=TransactionType.withdraw_refund,
     ))
-
-    request.status = WithdrawalStatus.cancelled
-    request.resolved_at = datetime.utcnow()
-    request.comment = "Отменено пользователем"
     db.commit()
 
-    return {"message": "Заявка отменена, средства возвращены на баланс", "refunded": request.amount}
+    return {"message": "Заявка отменена, средства возвращены на баланс", "refunded": amount}
 
 
 # -------------------------------------------------------------------- модератор
@@ -206,44 +236,53 @@ def review_withdrawal_admin(
     request = db.query(WithdrawalRequest).filter(WithdrawalRequest.id == withdrawal_id).first()
     if not request:
         raise HTTPException(404, "Заявка не найдена")
-    if request.status != WithdrawalStatus.pending:
-        raise HTTPException(400, "Заявка уже обработана")
 
     owner = db.query(User).filter(User.id == request.user_id).first()
     if not owner:
         raise HTTPException(404, "Пользователь заявки не найден")
 
-    request.resolved_at = datetime.utcnow()
+    amount = request.amount
+    comment = req.comment or ""
 
     if req.action == "approve":
         # Деньги уже списаны при подаче заявки — здесь только фиксируем факт выплаты
-        request.status = WithdrawalStatus.paid
-        request.comment = req.comment or "Выплачено"
+        if not _claim_status(db, withdrawal_id, WithdrawalStatus.paid, comment or "Выплачено"):
+            db.rollback()
+            raise HTTPException(400, "Заявка уже обработана")
         _notify(
             db, owner.id, "Выплата отправлена",
-            f"Заявка на вывод {request.amount} ₽ одобрена. Средства отправлены по указанным реквизитам.",
+            f"Заявка на вывод {amount} ₽ одобрена. Средства отправлены по указанным реквизитам.",
         )
+        new_status = WithdrawalStatus.paid
+        refunded = 0
     elif req.action == "reject":
-        # Возвращаем зарезервированную сумму на баланс
-        owner.balance = (owner.balance or 0) + request.amount
+        # Статус забираем атомарно ДО возврата: два одновременных отклонения
+        # одной заявки иначе начислили бы сумму дважды.
+        if not _claim_status(
+            db, withdrawal_id, WithdrawalStatus.rejected,
+            comment or "Заявка отклонена модератором",
+        ):
+            db.rollback()
+            raise HTTPException(400, "Заявка уже обработана")
+        _credit(db, owner.id, amount)
         db.add(Transaction(
             user_id=owner.id,
-            amount=request.amount,
+            amount=amount,
             type=TransactionType.withdraw_refund,
         ))
-        request.status = WithdrawalStatus.rejected
-        request.comment = req.comment or "Заявка отклонена модератором"
         _notify(
             db, owner.id, "Заявка на вывод отклонена",
-            f"Заявка на вывод {request.amount} ₽ отклонена: {request.comment}. "
+            f"Заявка на вывод {amount} ₽ отклонена: {comment or 'Заявка отклонена модератором'}. "
             f"Средства возвращены на баланс.",
         )
+        new_status = WithdrawalStatus.rejected
+        refunded = amount
     else:
         raise HTTPException(400, "Неверное действие: approve или reject")
 
     db.commit()
     return {
         "message": "Заявка обработана",
-        "status": request.status.value,
-        "refunded": request.amount if request.status == WithdrawalStatus.rejected else 0,
+        "status": new_status.value,
+        "refunded": refunded,
     }

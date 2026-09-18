@@ -3,11 +3,13 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.security import oauth2_scheme, decode_token, is_admin
+from app.core.money import credit_balance
 from app.core.csrf import verify_csrf
 from app.core.logging import logger, log_escrow_operation
 from app.models import (
     Dispute, DisputeStatus, Task, TaskStatus, User,
-    Transaction, TransactionType, Notification
+    Transaction, TransactionType, Notification,
+    Order, OrderStatus, Product,
 )
 from app.schemas import DisputeCreate, DisputeResolve
 
@@ -94,10 +96,10 @@ def cancel_task(task_id: int, token: str = Depends(oauth2_scheme), db: Session =
     budget = task.budget or 0
     refunded = 0
     if budget > 0 and task.executor_id is not None:
-        # Блокируем заказчика для защиты от конкурентных изменений баланса
-        customer = db.query(User).filter(User.id == task.customer_id).with_for_update().first()
+        # Начисление атомарным UPDATE (см. app/core/money.py)
+        customer = db.query(User).filter(User.id == task.customer_id).first()
         if customer:
-            customer.balance += budget
+            credit_balance(db, customer.id, budget)
             refunded = budget
             db.add(Transaction(
                 user_id=customer.id, amount=budget,
@@ -162,22 +164,123 @@ def list_disputes(token: str = Depends(oauth2_scheme), db: Session = Depends(get
     disputes = db.query(Dispute).filter(Dispute.status == DisputeStatus.open).order_by(Dispute.id.desc()).all()
     result = []
     for d in disputes:
-        task = db.query(Task).filter(Task.id == d.task_id).first()
         opener = db.query(User).filter(User.id == d.opened_by).first()
+        opened_by_name = (opener.name or opener.email) if opener else None
+
+        if d.order_id:
+            # Спор по заказу товара: покупатель ↔ продавец
+            order = db.query(Order).filter(Order.id == d.order_id).first()
+            product = db.query(Product).filter(Product.id == order.product_id).first() if order else None
+            buyer = db.query(User).filter(User.id == order.buyer_id).first() if order else None
+            seller = db.query(User).filter(User.id == order.seller_id).first() if order else None
+            result.append({
+                "id": d.id,
+                "kind": "order",
+                "order_id": d.order_id,
+                "task_id": None,
+                # title/amount — общие имена для обоих видов спора, чтобы
+                # интерфейс арбитра не различал их при отрисовке
+                "title": product.title if product else None,
+                "amount": order.total_price if order else None,
+                "opened_by_name": opened_by_name,
+                "customer_name": (buyer.name or buyer.email) if buyer else None,
+                "executor_name": (seller.name or seller.email) if seller else None,
+                "reason": d.reason,
+                "created_at": d.created_at,
+            })
+            continue
+
+        task = db.query(Task).filter(Task.id == d.task_id).first()
         customer = db.query(User).filter(User.id == task.customer_id).first() if task else None
         executor = db.query(User).filter(User.id == task.executor_id).first() if task and task.executor_id else None
         result.append({
             "id": d.id,
+            "kind": "task",
             "task_id": d.task_id,
-            "task_title": task.title if task else None,
-            "budget": task.budget if task else None,
-            "opened_by_name": (opener.name or opener.email) if opener else None,
+            "order_id": None,
+            "title": task.title if task else None,
+            "amount": task.budget if task else None,
+            "opened_by_name": opened_by_name,
             "customer_name": (customer.name or customer.email) if customer else None,
             "executor_name": (executor.name or executor.email) if executor else None,
             "reason": d.reason,
             "created_at": d.created_at,
         })
     return {"disputes": result, "count": len(result)}
+
+def _resolve_order_dispute(db: Session, dispute: Dispute, req, admin) -> dict:
+    """Решение арбитра по спору о заказе товара.
+
+    Деньги те же, что и в обычном исходе заказа: возврат покупателю либо
+    выплата продавцу за вычетом комиссии, которая уже посчитана при создании
+    заказа (`order.platform_fee` — 0% для PRO).
+    """
+    from datetime import datetime
+
+    order = db.query(Order).filter(Order.id == dispute.order_id).first()
+    if not order:
+        raise HTTPException(404, "Заказ не найден")
+    if order.status != OrderStatus.disputed:
+        raise HTTPException(400, "Заказ не находится в статусе спора")
+
+    amount = order.total_price or 0
+
+    if req.decision == "refund_customer":
+        dispute.status = DisputeStatus.resolved_customer
+        order.status = OrderStatus.cancelled
+        if amount > 0:
+            credit_balance(db, order.buyer_id, amount)
+            db.add(Transaction(user_id=order.buyer_id, amount=amount,
+                               type=TransactionType.escrow_refund, task_id=None, fee=0))
+            log_escrow_operation(
+                operation="order_escrow_refund_arbitration",
+                task_id=order.id,
+                user_id=order.buyer_id,
+                amount=amount,
+                dispute_id=dispute.id,
+                arbiter_id=admin.id,
+            )
+        # Товар возвращается в продажу — как при обычной отмене
+        db.query(Product).filter(Product.id == order.product_id).update(
+            {"stock": Product.stock + order.quantity}, synchronize_session=False
+        )
+        db.query(Product).filter(
+            Product.id == order.product_id, Product.status == "sold_out"
+        ).update({"status": "active"}, synchronize_session=False)
+        verdict = "Средства возвращены покупателю"
+    elif req.decision == "pay_specialist":
+        dispute.status = DisputeStatus.resolved_specialist
+        order.status = OrderStatus.completed
+        fee = order.platform_fee or 0
+        payout = amount - fee
+        if payout > 0:
+            credit_balance(db, order.seller_id, payout)
+            db.add(Transaction(user_id=order.seller_id, amount=payout,
+                               type=TransactionType.escrow_release, task_id=None, fee=fee))
+            log_escrow_operation(
+                operation="order_escrow_release_arbitration",
+                task_id=order.id,
+                user_id=order.seller_id,
+                amount=payout,
+                fee=fee,
+                dispute_id=dispute.id,
+                arbiter_id=admin.id,
+            )
+        verdict = "Средства выплачены продавцу"
+    else:
+        raise HTTPException(400, "decision должен быть refund_customer или pay_specialist")
+
+    dispute.resolution_comment = req.comment
+    dispute.resolved_at = datetime.utcnow()
+
+    for uid in {order.buyer_id, order.seller_id} - {None}:
+        _notify(db, uid, "dispute_resolved", "Спор решён арбитражем",
+                f"По заказу #{order.id} вынесено решение: {verdict}." +
+                (f" Комментарий арбитра: {req.comment}" if req.comment else ""),
+                None)
+    db.commit()
+    return {"message": f"Спор закрыт: {verdict}", "decision": req.decision}
+
 
 # ---------- Арбитраж: решение по спору ----------
 @router.post("/admin/disputes/{dispute_id}/resolve")
@@ -192,6 +295,10 @@ def resolve_dispute(dispute_id: int, req: DisputeResolve, token: str = Depends(o
         raise HTTPException(404, "Спор не найден")
     if dispute.status != DisputeStatus.open:
         raise HTTPException(400, "Спор уже закрыт")
+
+    # Одна очередь арбитра на два вида сделок: задание или заказ товара
+    if dispute.order_id:
+        return _resolve_order_dispute(db, dispute, req, admin)
 
     task = _get_task_or_404(db, dispute.task_id)
     budget = task.budget or 0

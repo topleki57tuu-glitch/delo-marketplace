@@ -1,10 +1,12 @@
 from datetime import datetime
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.config import settings
 from app.core.security import oauth2_scheme, decode_token
+from app.core.money import credit_balance, debit_balance
 from app.core.csrf import verify_csrf
 from app.core.logging import logger, log_escrow_operation
 from app.core.cache import cache
@@ -48,10 +50,11 @@ def deposit_funds(req: DepositRequest, token: str = Depends(oauth2_scheme), db: 
     if req.amount > DEMO_DEPOSIT_MAX:
         raise HTTPException(400, f"Слишком большая сумма (максимум {DEMO_DEPOSIT_MAX} ₽)")
 
-    user.balance += req.amount
+    credit_balance(db, user.id, req.amount)
     tx = Transaction(user_id=user.id, amount=req.amount, type=TransactionType.deposit)
     db.add(tx)
     db.commit()
+    db.refresh(user)
     return {"message": "Баланс пополнен", "new_balance": user.balance}
 
 @router.get("/monetization/packages")
@@ -70,15 +73,24 @@ def buy_package(req: BuyPackageRequest, token: str = Depends(oauth2_scheme), db:
     user = db.query(User).filter(User.id == int(payload.get("sub"))).first()
     if user.role != UserRole.specialist:
         raise HTTPException(403, "Пакеты доступны только специалистам")
-    if (user.balance or 0) < pkg["price"]:
-        raise HTTPException(400, f"Недостаточно средств: нужно {pkg['price']} ₽. Пополните баланс.")
 
-    user.balance -= pkg["price"]
+    # Списание атомарное: две одновременные покупки иначе обе прошли бы
+    # проверку баланса и увели его в минус.
+    if not debit_balance(db, user.id, pkg["price"]):
+        db.rollback()
+        raise HTTPException(400, f"Недостаточно средств: нужно {pkg['price']} ₽. Пополните баланс.")
     tx = Transaction(user_id=user.id, amount=-pkg["price"], type=TransactionType.purchase)
     db.add(tx)
 
     if pkg["type"] == "responses":
-        user.response_credits = (user.response_credits or 0) + pkg["credits"]
+        # Начисление кредитов тоже атомарным UPDATE, чтобы не потерять
+        # их при параллельной покупке.
+        db.query(User).filter(User.id == user.id).update(
+            {"response_credits": func.coalesce(User.response_credits, 0) + pkg["credits"]},
+            synchronize_session=False,
+        )
+        db.commit()
+        db.refresh(user)
         msg = f"Пакет «{pkg['title']}» куплен! Откликов: {user.response_credits}"
     else:
         from datetime import timedelta
@@ -87,9 +99,10 @@ def buy_package(req: BuyPackageRequest, token: str = Depends(oauth2_scheme), db:
             base = user.pro_until
         user.pro_until = base + timedelta(days=pkg["days"])
         user.is_pro = True
+        db.commit()
+        db.refresh(user)
         msg = f"PRO активирован до {user.pro_until.strftime('%Y-%m-%d')}"
 
-    db.commit()
     return {
         "message": msg,
         "balance": user.balance,
@@ -210,11 +223,12 @@ def confirm_payment(
 
     amount = status_result["amount"]
     user = db.query(User).filter(User.id == user_id).first()
-    user.balance += amount
+    credit_balance(db, user_id, amount)
     tx = Transaction(user_id=user_id, amount=amount, type=TransactionType.deposit)
     db.add(tx)
     db.add(PaymentRecord(payment_id=payment_id, user_id=user_id, amount=amount))
     db.commit()
+    db.refresh(user)
 
     return {"status": "succeeded", "credited": True, "new_balance": user.balance}
 
@@ -280,7 +294,7 @@ def yoomoney_webhook(request: Request, db: Session = Depends(get_db)):
         logger.error(f"User {user_id} not found for payment {label}")
         raise HTTPException(404, "User not found")
 
-    user.balance += amount
+    credit_balance(db, user_id, amount)
     tx = Transaction(user_id=user_id, amount=amount, type=TransactionType.deposit)
     db.add(tx)
     db.add(PaymentRecord(payment_id=label, user_id=user_id, amount=amount))
@@ -318,11 +332,12 @@ def assign_task(task_id: int, specialist_id: int, token: str = Depends(oauth2_sc
         raise HTTPException(400, "Специалист не найден")
 
     budget = task.budget or 0
-    if customer.balance < budget:
-        raise HTTPException(400, "Недостаточно средств для безопасной сделки")
-
-    customer.balance -= budget
     if budget > 0:
+        # Заморозка эскроу атомарная: проверка баланса входит в сам UPDATE
+        # (см. app/core/money.py).
+        if not debit_balance(db, customer_id, budget):
+            db.rollback()
+            raise HTTPException(400, "Недостаточно средств для безопасной сделки")
         tx = Transaction(user_id=customer.id, amount=-budget, type=TransactionType.escrow_hold, task_id=task.id)
         db.add(tx)
 

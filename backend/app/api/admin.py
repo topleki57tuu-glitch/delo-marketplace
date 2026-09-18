@@ -25,6 +25,7 @@ from app.models import (
     User, UserRole, Task, TaskStatus, Transaction, TransactionType,
     Dispute, DisputeStatus, VerificationRequest, VerificationStatus,
     WithdrawalRequest, WithdrawalStatus, Response,
+    Order, OrderStatus, Product,
 )
 
 router = APIRouter(tags=["Admin"])
@@ -76,9 +77,22 @@ def platform_stats(token: str = Depends(oauth2_scheme), db: Session = Depends(ge
     ).scalar() or 0
 
     # Заморожено в эскроу — деньги, которые платформа держит по активным сделкам
-    escrow_held = db.query(func.coalesce(func.sum(Task.budget), 0)).filter(
+    escrow_tasks = db.query(func.coalesce(func.sum(Task.budget), 0)).filter(
         Task.status.in_((TaskStatus.in_progress, TaskStatus.disputed))
     ).scalar() or 0
+
+    # Товарные заказы держат деньги покупателя с момента оформления до
+    # подтверждения получения. Раньше они в обязательства не попадали вовсе —
+    # платформа недооценивала сумму, которую должна людям, а деньги при этом
+    # уже были списаны с балансов.
+    escrow_orders = db.query(func.coalesce(func.sum(Order.total_price), 0)).filter(
+        Order.status.in_(
+            (OrderStatus.pending, OrderStatus.confirmed, OrderStatus.shipped,
+             OrderStatus.delivered, OrderStatus.disputed)
+        )
+    ).scalar() or 0
+
+    escrow_held = int(escrow_tasks) + int(escrow_orders)
 
     # Обязательства перед пользователями: суммы на балансах
     balances = db.query(func.coalesce(func.sum(User.balance), 0)).scalar() or 0
@@ -92,6 +106,8 @@ def platform_stats(token: str = Depends(oauth2_scheme), db: Session = Depends(ge
         "gmv": int(gmv),
         "commission_earned": int(commission),
         "escrow_held": int(escrow_held),
+        "escrow_held_tasks": int(escrow_tasks),
+        "escrow_held_orders": int(escrow_orders),
         "user_balances": int(balances),
         # Сколько денег платформа обязана людям прямо сейчас
         "total_liabilities": int(escrow_held) + int(balances) + int(withdrawals_pending_amount),

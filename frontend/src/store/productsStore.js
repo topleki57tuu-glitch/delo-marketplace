@@ -1,6 +1,10 @@
 import { create } from 'zustand';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+// Относительные пути, как в остальном приложении: запросы идут через прокси
+// (vite в разработке, nginx в проде). Раньше здесь был абсолютный адрес с
+// портом 8000, из-за которого в прод-сборке браузер стучался в localhost
+// самого пользователя.
+const API_URL = import.meta.env.VITE_API_URL || '';
 
 export const useProductsStore = create((set, get) => ({
   products: [],
@@ -52,6 +56,29 @@ export const useProductsStore = create((set, get) => ({
 
       const data = await response.json();
       set({ currentProduct: data, loading: false });
+      return data;
+    } catch (error) {
+      set({ error: error.message, loading: false });
+      throw error;
+    }
+  },
+
+  // Товары продавца целиком: включая распроданные и снятые с продажи.
+  // Общий список отдаёт только активные позиции, поэтому страница
+  // «Мои товары» раньше теряла половину ассортимента.
+  fetchMyProducts: async (token) => {
+    set({ loading: true, error: null });
+    try {
+      const response = await fetch(`${API_URL}/products/my`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) throw new Error('Failed to fetch my products');
+
+      const data = await response.json();
+      set({ myProducts: data, loading: false });
       return data;
     } catch (error) {
       set({ error: error.message, loading: false });
@@ -270,6 +297,36 @@ export const useProductsStore = create((set, get) => ({
 
       set({ loading: false });
       get().fetchOrders(token);
+    } catch (error) {
+      set({ error: error.message, loading: false });
+      throw error;
+    }
+  },
+
+  // Спор по заказу товара: деньги заморожены до решения арбитра.
+  // Без этого пути покупатель, получивший брак, не мог ничего сделать
+  // после отправки товара — ни завершить, ни отменить, ни оспорить.
+  openOrderDispute: async (orderId, reason, token) => {
+    set({ loading: true, error: null });
+    try {
+      const response = await fetch(`${API_URL}/products/orders/${orderId}/dispute`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({ reason }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Failed to open dispute');
+      }
+
+      const data = await response.json();
+      set({ loading: false });
+      get().fetchOrders(token);
+      return data;
     } catch (error) {
       set({ error: error.message, loading: false });
       throw error;

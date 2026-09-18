@@ -131,12 +131,20 @@ export default function DisputesPage({ user, token, onOpenAuth }) {
             >
               <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
                 <div>
-                  <Link
-                    to={`/tasks/${d.task_id}`}
-                    className="text-lg font-bold text-slate-900 dark:text-white hover:text-indigo-600 dark:hover:text-indigo-400 hover:underline"
-                  >
-                    {d.task_title}
-                  </Link>
+                  {/* Спор может быть по заданию (task_id) или по заказу товара
+                      (order_id) — арбитру нужна одна очередь на оба вида. */}
+                  {d.kind === 'order' ? (
+                    <span className="text-lg font-bold text-slate-900 dark:text-white">
+                      📦 {d.title || `Заказ #${d.order_id}`}
+                    </span>
+                  ) : (
+                    <Link
+                      to={`/tasks/${d.task_id}`}
+                      className="text-lg font-bold text-slate-900 dark:text-white hover:text-indigo-600 dark:hover:text-indigo-400 hover:underline"
+                    >
+                      {d.title}
+                    </Link>
+                  )}
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 dark:text-slate-400 mt-1">
                     <span>💼 {d.customer_name}</span>
                     <span>→</span>
@@ -148,7 +156,7 @@ export default function DisputesPage({ user, token, onOpenAuth }) {
                 <div className="text-left sm:text-right shrink-0">
                   <span className="text-xs text-slate-400 block">Сумма эскроу</span>
                   <span className="text-xl font-extrabold text-amber-600 dark:text-amber-400">
-                    {d.budget ? `${d.budget.toLocaleString('ru-RU')} ₽` : '—'}
+                    {d.amount ? `${d.amount.toLocaleString('ru-RU')} ₽` : '—'}
                   </span>
                 </div>
               </div>

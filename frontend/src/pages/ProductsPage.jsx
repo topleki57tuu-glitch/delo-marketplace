@@ -50,8 +50,11 @@ export default function ProductsPage() {
     fetchProducts();
   };
 
-  const formatPrice = (priceInKopecks) => {
-    return (priceInKopecks / 100).toLocaleString('ru-RU') + ' ₽';
+  // Цена приходит с бэкенда в рублях — в тех же единицах, что баланс,
+  // эскроу и комиссия. Раньше здесь делили на 100, считая её копейками,
+  // из-за чего витрина показывала сумму в 100 раз меньше списываемой.
+  const formatPrice = (priceInRubles) => {
+    return (priceInRubles ?? 0).toLocaleString('ru-RU') + ' ₽';
   };
 
   return (
@@ -116,15 +119,15 @@ export default function ProductsPage() {
             <input
               type="number"
               placeholder="От (₽)"
-              value={filters.price_min ? filters.price_min / 100 : ''}
-              onChange={(e) => setFilters({ price_min: e.target.value ? parseInt(e.target.value) * 100 : null })}
+              value={filters.price_min ?? ''}
+              onChange={(e) => setFilters({ price_min: e.target.value ? parseInt(e.target.value) : null })}
             />
             <span>—</span>
             <input
               type="number"
               placeholder="До (₽)"
-              value={filters.price_max ? filters.price_max / 100 : ''}
-              onChange={(e) => setFilters({ price_max: e.target.value ? parseInt(e.target.value) * 100 : null })}
+              value={filters.price_max ?? ''}
+              onChange={(e) => setFilters({ price_max: e.target.value ? parseInt(e.target.value) : null })}
             />
             <button onClick={handlePriceFilter}>
               Применить

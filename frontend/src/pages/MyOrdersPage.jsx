@@ -16,7 +16,7 @@ const ORDER_STATUS_LABELS = {
 
 export default function MyOrdersPage() {
   const navigate = useNavigate();
-  const { orders, loading, fetchOrders, confirmOrder, shipOrder, completeOrder, cancelOrder } = useProductsStore();
+  const { orders, loading, fetchOrders, confirmOrder, shipOrder, completeOrder, cancelOrder, openOrderDispute } = useProductsStore();
   const { token, user } = useAuthStore();
 
   const [activeTab, setActiveTab] = useState('purchases');
@@ -42,8 +42,9 @@ export default function MyOrdersPage() {
     );
   }
 
-  const formatPrice = (priceInKopecks) => {
-    return (priceInKopecks / 100).toLocaleString('ru-RU') + ' ₽';
+  // Цена приходит с бэкенда в рублях (см. комментарий в ProductsPage).
+  const formatPrice = (priceInRubles) => {
+    return (priceInRubles ?? 0).toLocaleString('ru-RU') + ' ₽';
   };
 
   const handleConfirm = async (orderId) => {
@@ -107,8 +108,30 @@ export default function MyOrdersPage() {
     }
   };
 
-  const renderOrder = (order, isSale = false) => {
-    const status = ORDER_STATUS_LABELS[order.status] || ORDER_STATUS_LABELS.pending;
+  // Спор открывает арбитраж: деньги остаются в эскроу до его решения.
+  // Доступен обеим сторонам и только после того, как продавец принял заказ.
+  const handleDispute = async (orderId) => {
+    const reason = window.prompt(
+      'Опишите проблему (минимум 5 символов).\nСредства будут заморожены до решения арбитра.'
+    );
+    if (reason === null) return;
+    if (!reason || reason.trim().length < 5) {
+      alert('Опишите причину подробнее — минимум 5 символов');
+      return;
+    }
+
+    setActionLoading({ ...actionLoading, [orderId]: true });
+    try {
+      await openOrderDispute(orderId, reason.trim(), token);
+      alert('Спор открыт. Средства заморожены до решения арбитра.');
+    } catch (error) {
+      alert(error.message);
+    } finally {
+      setActionLoading({ ...actionLoading, [orderId]: false });
+    }
+  };
+
+  const renderOrder = (order, isSale = false) => {    const status = ORDER_STATUS_LABELS[order.status] || ORDER_STATUS_LABELS.pending;
     const isLoading = actionLoading[order.id];
 
     return (
@@ -162,7 +185,7 @@ export default function MyOrdersPage() {
           )}
           <div className="detail-row">
             <span>{isSale ? 'Покупатель' : 'Продавец'}:</span>
-            <span>{isSale ? order.buyer_name : order.seller_name}</span>
+            <span>{order.counterparty_name || '—'}</span>
           </div>
           <div className="detail-row total">
             <span>Сумма:</span>
@@ -218,13 +241,23 @@ export default function MyOrdersPage() {
                 </button>
               </div>
             )}
+
+            {(order.status === 'confirmed' || order.status === 'shipped') && (
+              <button
+                className="btn btn-secondary"
+                onClick={() => handleDispute(order.id)}
+                disabled={isLoading}
+              >
+                ⚠️ Открыть спор
+              </button>
+            )}
           </div>
         )}
 
         {/* Действия для покупателя */}
         {!isSale && (
           <div className="order-actions">
-            {order.status === 'pending' && (
+            {(order.status === 'pending' || order.status === 'confirmed') && (
               <button
                 className="btn btn-secondary"
                 onClick={() => handleCancel(order.id)}
@@ -241,6 +274,16 @@ export default function MyOrdersPage() {
                 disabled={isLoading}
               >
                 ✓ Подтвердить получение
+              </button>
+            )}
+
+            {['confirmed', 'shipped', 'delivered'].includes(order.status) && (
+              <button
+                className="btn btn-secondary"
+                onClick={() => handleDispute(order.id)}
+                disabled={isLoading}
+              >
+                ⚠️ Открыть спор
               </button>
             )}
           </div>

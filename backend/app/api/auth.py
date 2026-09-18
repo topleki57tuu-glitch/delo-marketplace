@@ -183,7 +183,14 @@ def reset_password(req: ResetPasswordRequest, db: Session = Depends(get_db), _cs
     reset = db.query(PasswordResetToken).filter(PasswordResetToken.token == req.token).first()
     if not reset or reset.used:
         raise HTTPException(400, "Ссылка недействительна или уже использована")
-    if reset.expires_at < datetime.now(timezone.utc):
+    # Колонка DateTime без timezone=True отдаёт naive datetime, а сравнивать
+    # его с aware нельзя — было TypeError и 500 на каждом сбросе пароля.
+    # Приводим прочитанное значение к UTC, а не полагаемся на то, как СУБД
+    # вернула тип.
+    expires_at = reset.expires_at
+    if expires_at is not None and expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if expires_at is not None and expires_at < datetime.now(timezone.utc):
         raise HTTPException(400, "Ссылка истекла, запросите сброс заново")
     user = db.query(User).filter(User.id == reset.user_id).first()
     if not user:

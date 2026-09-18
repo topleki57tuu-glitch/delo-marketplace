@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useProductsStore } from '../store/productsStore';
 import { useAuthStore } from '../store/authStore';
-import ImageUploader from '../components/ImageUploader';
+import { ImageUploader } from '../components/ImageUploader';
 import './CreateProductPage.css';
 
 const PRODUCT_CATEGORIES = [
@@ -58,7 +58,7 @@ export default function EditProductPage() {
           description: product.description,
           category: product.category,
           condition: product.condition,
-          price: String(product.price / 100), // из копеек в рубли
+          price: String(product.price), // цена в рублях, как её хранит бэкенд
           stock: String(product.stock),
           city: product.city || '',
           delivery_options: product.delivery_options,
@@ -138,7 +138,7 @@ export default function EditProductPage() {
         description: formData.description.trim(),
         category: formData.category,
         condition: formData.condition,
-        price: parseInt(formData.price) * 100, // в копейки
+        price: parseInt(formData.price), // в рублях
         stock: parseInt(formData.stock),
         city: formData.city.trim() || null,
         delivery_options: formData.delivery_options,
