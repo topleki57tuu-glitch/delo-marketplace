@@ -13,6 +13,67 @@ import { useToast } from './Toast';
  * это ~136 000 символов. Поэтому любое фото, кроме крошечного, отклонялось
  * с «Ссылка на изображение слишком длинная», и аватар не сохранялся.
  */
+/**
+ * Приводит любое выбранное изображение к JPEG через canvas.
+ *
+ * Зачем: iPhone по умолчанию снимает в HEIC, а этот формат бэкенд не принимает
+ * (он допускает только то, что опознал по magic bytes: JPEG/PNG/GIF/WEBP).
+ * Такие фото отклонялись, и на телефоне аватар не сохранялся.
+ *
+ * Safari умеет декодировать HEIC сам, поэтому drawImage + toBlob('image/jpeg')
+ * даёт корректный JPEG без единой серверной зависимости и без библиотек.
+ * Заодно это приводит к JPEG всё остальное: PNG с прозрачностью, WEBP,
+ * фото с нестандартных камер.
+ *
+ * Ограничение Safari: слишком большой canvas становится «немым» — drawImage и
+ * toBlob молча перестают работать. Поэтому вписываем в MAX_SIDE (с запасом:
+ * у Safari JPG-лимит порядка 16 Мпикс, 1600 по длинной стороне даёт 2.5 Мпикс
+ * даже на квадратном снимке). Для аватара 1600 px более чем достаточно.
+ */
+const JPEG_QUALITY = 0.9;
+const MAX_SIDE = 1600;
+
+async function toJpeg(file) {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((resolve, reject) => {
+      const el = new Image();
+      el.onload = () => resolve(el);
+      el.onerror = () => reject(new Error('Не удалось прочитать изображение'));
+      el.src = url;
+    });
+
+    // Уже JPEG и в пределах лимита — отдаём как есть, не пережимая зря
+    if (file.type === 'image/jpeg' && Math.max(img.width, img.height) <= MAX_SIDE) {
+      return file;
+    }
+
+    const scale = Math.min(1, MAX_SIDE / Math.max(img.width, img.height));
+    const w = Math.max(1, Math.round(img.width * scale));
+    const h = Math.max(1, Math.round(img.height * scale));
+
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+
+    const ctx = canvas.getContext('2d');
+    // Белый фон: JPEG не умеет прозрачность, без заливки PNG с альфой
+    // превратился бы в чёрный квадрат.
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, w, h);
+    ctx.drawImage(img, 0, 0, w, h);
+
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', JPEG_QUALITY));
+    if (!blob) {
+      // Canvas молча не сработал — например, картинка слишком большая для Safari.
+      throw new Error('Не удалось обработать изображение. Попробуйте другое фото.');
+    }
+    return new File([blob], 'avatar.jpg', { type: 'image/jpeg' });
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
 export function AvatarUploader({ currentAvatar, onAvatarUpdate, token }) {
   const { addToast } = useToast();
   const [uploading, setUploading] = useState(false);
@@ -20,8 +81,9 @@ export function AvatarUploader({ currentAvatar, onAvatarUpdate, token }) {
   const [pendingFile, setPendingFile] = useState(null);
   const fileInputRef = useRef(null);
 
-  const handleFileSelect = (e) => {
+  const handleFileSelect = async (e) => {
     const file = e.target.files?.[0];
+    e.target.value = ''; // сброс до await, иначе повторный выбор того же файла не сработает
     if (!file) return;
 
     // Валидация типа файла
@@ -30,20 +92,21 @@ export function AvatarUploader({ currentAvatar, onAvatarUpdate, token }) {
       return;
     }
 
-    // Валидация размера (макс 5MB)
-    if (file.size > 5 * 1024 * 1024) {
-      addToast('Изображение слишком большое. Максимум 5MB', 'error');
+    // Валидация размера (макс 10MB — до конвертации; в JPEG станет меньше)
+    if (file.size > 10 * 1024 * 1024) {
+      addToast('Изображение слишком большое. Максимум 10 МБ', 'error');
       return;
     }
 
-    // Превью — только для показа, на сервер уйдёт сам файл
-    setPendingFile(file);
-    const reader = new FileReader();
-    reader.onloadend = () => setPreview(reader.result);
-    reader.readAsDataURL(file);
-
-    // Сброс value, иначе повторный выбор того же файла не вызовет onChange
-    e.target.value = '';
+    try {
+      const prepared = await toJpeg(file);
+      setPendingFile(prepared);
+      const reader = new FileReader();
+      reader.onloadend = () => setPreview(reader.result);
+      reader.readAsDataURL(prepared);
+    } catch (err) {
+      addToast(err.message, 'error');
+    }
   };
 
   const handleUpload = async () => {
