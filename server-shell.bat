@@ -2,22 +2,28 @@
 chcp 65001 >nul
 setlocal
 set SERVER=root@213.21.229.145
-set APPDIR=/opt/delo-marketplace
 
 REM Full path to ssh.exe - see comment in deploy.bat.
 set SSH="%SystemRoot%\System32\OpenSSH\ssh.exe"
 
 echo ================================================
-echo   DELO - Backend logs (last 50 lines)
+echo   DELO - Shell on production server
 echo ================================================
 echo.
-%SSH% %SERVER% "cd %APPDIR% && docker compose -f docker-compose.prod.yml logs --tail 50 backend"
+echo   %SERVER%  (Ubuntu 22.04)
 echo.
-echo ================================================
-echo   Live tail - run inside the server:
-echo     server-shell.bat
+echo   Useful once inside:
 echo     cd /opt/delo-marketplace
+echo     bash scripts/vps_update.sh           - update app
+echo     docker compose -f docker-compose.prod.yml ps
 echo     docker compose -f docker-compose.prod.yml logs -f backend
-echo ================================================
+echo     nano .env                            - edit secrets
 echo.
+echo   To exit: type  exit
+echo.
+echo   Connecting now...
+echo.
+%SSH% %SERVER%
+echo.
+echo   Disconnected.
 pause
