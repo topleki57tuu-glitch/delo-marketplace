@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useToast } from '../components/Toast';
+import { IconCheck, IconPin, IconSearch, IconStar } from '../components/icons.jsx';
 
 export default function SpecialistProfilePage({ user, onOpenAuth }) {
   const { specialistId } = useParams();
@@ -48,7 +49,7 @@ export default function SpecialistProfilePage({ user, onOpenAuth }) {
     return (
       <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex items-center justify-center p-4">
         <div className="bg-white dark:bg-slate-800 p-8 rounded-3xl max-w-md w-full text-center space-y-4 shadow-xl border border-slate-200 dark:border-slate-700">
-          <div className="text-4xl">🔍</div>
+          <div className="text-4xl"><IconSearch /></div>
           <h2 className="text-xl font-bold">Профиль не найден</h2>
           <Link to="/tasks" className="inline-block px-4 py-2 bg-indigo-600 text-white rounded-xl font-medium">
             К списку заданий
@@ -97,14 +98,14 @@ export default function SpecialistProfilePage({ user, onOpenAuth }) {
               )}
               {profile.verified && (
                 <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">
-                  ✓ Проверен
+                  <IconCheck /> Проверен
                 </span>
               )}
             </div>
 
             <div className="flex flex-wrap items-center gap-4 text-xs sm:text-sm text-slate-500 dark:text-slate-400">
               <span className="flex items-center gap-1 font-bold text-amber-500">
-                ⭐ {profile.rating ? profile.rating.toFixed(1) : '5.0'}
+                <IconStar /> {profile.rating ? profile.rating.toFixed(1) : '5.0'}
               </span>
               <span>•</span>
               <span>{reviews.length} отзывов</span>
@@ -113,7 +114,7 @@ export default function SpecialistProfilePage({ user, onOpenAuth }) {
               {profile.city && (
                 <>
                   <span>•</span>
-                  <span>📍 {profile.city}</span>
+                  <span><IconPin /> {profile.city}</span>
                 </>
               )}
             </div>
@@ -175,7 +176,7 @@ export default function SpecialistProfilePage({ user, onOpenAuth }) {
               <div key={rev.id} className="pt-4 first:pt-0 space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="font-bold text-sm text-slate-900 dark:text-white">{rev.reviewer_name}</span>
-                  <span className="text-amber-500 font-bold text-sm">{'⭐'.repeat(rev.rating)}</span>
+                  <span className="text-amber-500 font-bold text-sm">{<IconStar />.repeat(rev.rating)}</span>
                 </div>
                 {rev.task_title && (
                   <span className="text-xs text-slate-400 block">Задание: «{rev.task_title}»</span>

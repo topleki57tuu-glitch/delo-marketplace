@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useToast } from './Toast';
 import CityInput from './CityInput';
 import { AvatarUploader } from './Avatar';
+import { IconClose } from '../components/icons.jsx';
 
 /**
  * Форма редактирования профиля
@@ -215,7 +216,7 @@ export function DepositModal({ isOpen, onClose, token, onSuccess }) {
             className="text-slate-400 hover:text-slate-600 text-xl font-bold"
             aria-label="Закрыть"
           >
-            ✕
+            <IconClose />
           </button>
         </div>
 

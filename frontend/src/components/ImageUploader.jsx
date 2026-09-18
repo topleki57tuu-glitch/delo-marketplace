@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useAuthStore } from '../store/authStore';
+import { IconClose, IconUpload } from '../components/icons.jsx';
 
 // Относительный путь — запросы уходят через Vite-прокси на backend
 //
@@ -95,7 +96,7 @@ export const ImageUploader = ({
                 </>
             ) : (
                 <>
-                    <span>📤</span>
+                    <span><IconUpload /></span>
                     <span>{buttonText}</span>
                 </>
             )}
@@ -144,7 +145,7 @@ export const ImageUploader = ({
                                 title="Удалить изображение"
                                 className="absolute top-1.5 right-1.5 w-7 h-7 rounded-full bg-red-600 hover:bg-red-700 text-white text-sm font-bold shadow-lg transition-colors"
                             >
-                                ✕
+                                <IconClose />
                             </button>
                         </div>
                     ))}
@@ -205,7 +206,7 @@ export const PortfolioUploader = ({ token, portfolio = [], onUploadSuccess, onDe
                                         title="Удалить из портфолио"
                                         className="absolute top-1.5 right-1.5 w-7 h-7 rounded-full bg-red-600 hover:bg-red-700 text-white text-sm font-bold shadow-lg transition-colors md:opacity-0 md:group-hover:opacity-100"
                                     >
-                                        ✕
+                                        <IconClose />
                                     </button>
                                 )}
                             </div>

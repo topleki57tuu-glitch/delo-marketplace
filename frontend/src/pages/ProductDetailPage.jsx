@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useProductsStore } from '../store/productsStore';
 import { useAuthStore } from '../store/authStore';
 import './ProductDetailPage.css';
+import { IconRecycle, IconBox, IconCheck, IconDelivery, IconEdit, IconPin, IconPurchases, IconStar, IconUser } from '../components/icons.jsx';
 
 export default function ProductDetailPage() {
   const { id } = useParams();
@@ -88,7 +89,7 @@ export default function ProductDetailPage() {
             </div>
           ) : (
             <div className="gallery-main no-image">
-              <span>📦</span>
+              <span><IconBox /></span>
             </div>
           )}
 
@@ -108,7 +109,7 @@ export default function ProductDetailPage() {
           <div className="product-header">
             <h1>{product.title}</h1>
             <div className="product-condition-badge">
-              {product.condition === 'new' ? '🆕 Новое' : '♻️ Б/У'}
+              {product.condition === 'new' ? '🆕 Новое' : <><IconRecycle /> Б/У</>}
             </div>
           </div>
 
@@ -129,17 +130,17 @@ export default function ProductDetailPage() {
                 {product.seller_avatar ? (
                   <img src={product.seller_avatar} alt={product.seller_name} />
                 ) : (
-                  <div className="avatar-placeholder">👤</div>
+                  <div className="avatar-placeholder"><IconUser /></div>
                 )}
               </div>
               <div className="seller-details">
                 <div className="seller-name">
-                  {product.seller_verified && <span className="verified">✓</span>}
+                  {product.seller_verified && <span className="verified"><IconCheck /></span>}
                   {product.seller_name}
                 </div>
                 {product.seller_rating && (
                   <div className="seller-rating">
-                    ⭐ {product.seller_rating} ({product.seller_reviews_count} отзывов)
+                    <IconStar /> {product.seller_rating} ({product.seller_reviews_count} отзывов)
                   </div>
                 )}
               </div>
@@ -151,14 +152,14 @@ export default function ProductDetailPage() {
             <h3>Доставка</h3>
             <div className="delivery-options">
               {(product.delivery_options === 'both' || product.delivery_options === 'pickup') && (
-                <div className="delivery-option">📍 Самовывоз</div>
+                <div className="delivery-option"><IconPin /> Самовывоз</div>
               )}
               {(product.delivery_options === 'both' || product.delivery_options === 'delivery') && (
-                <div className="delivery-option">🚚 Доставка</div>
+                <div className="delivery-option"><IconDelivery /> Доставка</div>
               )}
             </div>
             {product.city && (
-              <div className="location">📍 {product.city}</div>
+              <div className="location"><IconPin /> {product.city}</div>
             )}
           </div>
 
@@ -170,13 +171,13 @@ export default function ProductDetailPage() {
                   className="btn btn-secondary"
                   onClick={() => navigate(`/products/${product.id}/edit`)}
                 >
-                  ✏️ Редактировать
+                  <IconEdit /> Редактировать
                 </button>
                 <button
                   className="btn btn-secondary"
                   onClick={() => navigate('/my-products')}
                 >
-                  📦 Мои товары
+                  <IconBox /> Мои товары
                 </button>
               </>
             ) : canOrder ? (
@@ -184,7 +185,7 @@ export default function ProductDetailPage() {
                 className="btn btn-primary btn-large"
                 onClick={() => setShowOrderForm(!showOrderForm)}
               >
-                🛒 Купить
+                <IconPurchases /> Купить
               </button>
             ) : !user ? (
               <button
@@ -224,7 +225,7 @@ export default function ProductDetailPage() {
                         checked={deliveryMethod === 'pickup'}
                         onChange={(e) => setDeliveryMethod(e.target.value)}
                       />
-                      📍 Самовывоз
+                      <IconPin /> Самовывоз
                     </label>
                   )}
                   {(product.delivery_options === 'both' || product.delivery_options === 'delivery') && (
@@ -236,7 +237,7 @@ export default function ProductDetailPage() {
                         checked={deliveryMethod === 'delivery'}
                         onChange={(e) => setDeliveryMethod(e.target.value)}
                       />
-                      🚚 Доставка
+                      <IconDelivery /> Доставка
                     </label>
                   )}
                 </div>

@@ -4,20 +4,21 @@ import CityInput from '../components/CityInput';
 import { ImageUploader } from '../components/ImageUploader';
 import { AITaskAssistant } from '../components/AITaskAssistant';
 import { useToast } from '../components/Toast';
+import { IconCatBeauty, IconCatBusiness, IconCatCleaning, IconCatDelivery, IconCatDesign, IconCatDevelopment, IconCatEvents, IconCatOther, IconCatPhotoVideo, IconCatRepairs, IconCatTutoring, IconCatWriting, IconLock, IconSparkles } from '../components/icons.jsx';
 
 const CATEGORIES = [
-  { id: 'development', label: 'Разработка сайтов и IT', icon: '💻' },
-  { id: 'design', label: 'Дизайн и графика', icon: '🎨' },
-  { id: 'writing', label: 'Тексты и переводы', icon: '✍️' },
-  { id: 'repairs', label: 'Ремонт и строительство', icon: '🔨' },
-  { id: 'cleaning', label: 'Уборка и клининг', icon: '✨' },
-  { id: 'delivery', label: 'Курьеры и доставка', icon: '🚚' },
-  { id: 'photo_video', label: 'Фото и видеосъемка', icon: '📷' },
-  { id: 'tutoring', label: 'Репетиторы и обучение', icon: '📚' },
-  { id: 'beauty', label: 'Красота и здоровье', icon: '💅' },
-  { id: 'events', label: 'Мероприятия и промо', icon: '🎉' },
-  { id: 'business', label: 'Бизнес и юридические услуги', icon: '💼' },
-  { id: 'other', label: 'Другое', icon: '📦' },
+  { id: 'development', label: 'Разработка сайтов и IT', icon: <IconCatDevelopment /> },
+  { id: 'design', label: 'Дизайн и графика', icon: <IconCatDesign /> },
+  { id: 'writing', label: 'Тексты и переводы', icon: <IconCatWriting /> },
+  { id: 'repairs', label: 'Ремонт и строительство', icon: <IconCatRepairs /> },
+  { id: 'cleaning', label: 'Уборка и клининг', icon: <IconCatCleaning /> },
+  { id: 'delivery', label: 'Курьеры и доставка', icon: <IconCatDelivery /> },
+  { id: 'photo_video', label: 'Фото и видеосъемка', icon: <IconCatPhotoVideo /> },
+  { id: 'tutoring', label: 'Репетиторы и обучение', icon: <IconCatTutoring /> },
+  { id: 'beauty', label: 'Красота и здоровье', icon: <IconCatBeauty /> },
+  { id: 'events', label: 'Мероприятия и промо', icon: <IconCatEvents /> },
+  { id: 'business', label: 'Бизнес и юридические услуги', icon: <IconCatBusiness /> },
+  { id: 'other', label: 'Другое', icon: <IconCatOther /> },
 ];
 
 export default function CreateTaskPage({ user, token, onOpenAuth, onTaskCreated }) {
@@ -40,7 +41,7 @@ export default function CreateTaskPage({ user, token, onOpenAuth, onTaskCreated 
     return (
       <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex items-center justify-center p-4">
         <div className="bg-white dark:bg-slate-800 max-w-md w-full p-8 rounded-2xl border border-slate-200 dark:border-slate-700 text-center space-y-4 shadow-xl">
-          <div className="text-4xl">🔒</div>
+          <div className="text-4xl"><IconLock /></div>
           <h2 className="text-xl font-bold text-slate-800 dark:text-white">Требуется авторизация</h2>
           <p className="text-sm text-slate-500 dark:text-slate-400">
             Чтобы опубликовать задание, войдите в аккаунт заказчика или зарегистрируйтесь.
@@ -130,7 +131,7 @@ export default function CreateTaskPage({ user, token, onOpenAuth, onTaskCreated 
             onClick={() => setShowAiModal(true)}
             className="px-4 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold rounded-xl text-sm shadow-md shadow-indigo-500/20 flex items-center gap-2 transition-all"
           >
-            <span>✨</span>
+            <span><IconSparkles /></span>
             <span>Помощь AI-ассистента</span>
           </button>
         </div>
@@ -149,7 +150,7 @@ export default function CreateTaskPage({ user, token, onOpenAuth, onTaskCreated 
             >
               {CATEGORIES.map((c) => (
                 <option key={c.id} value={c.id}>
-                  {c.icon} {c.label}
+                  {c.label}
                 </option>
               ))}
             </select>

@@ -7,14 +7,15 @@ import { WithdrawModal } from '../components/WithdrawModal';
 import { PaymentModal } from '../components/PaymentModal';
 import { Avatar, AvatarUploader } from '../components/Avatar';
 import { useAuthStore } from '../store/authStore';
+import { IconPhone, IconTools, IconCard, IconCatBusiness, IconCatElectronics, IconPayout, IconPurchases, IconWallet, IconAdmin, IconBank, IconChart, IconCheck, IconClose, IconDownload, IconLock, IconPin, IconPro, IconRefresh, IconRocket, IconStar, IconUser } from '../components/icons.jsx';
 
 const TX_TYPE_NAMES = {
-  deposit: '💰 Пополнение',
-  escrow_hold: '🔒 Заморозка (эскроу)',
-  escrow_release: '💸 Выплата (эскроу)',
+  deposit: <><IconWallet /> Пополнение</>,
+  escrow_hold: <><IconLock /> Заморозка (эскроу)</>,
+  escrow_release: <><IconPayout /> Выплата (эскроу)</>,
   escrow_refund: '↩ Возврат (эскроу)',
-  purchase: '🛒 Покупка пакета',
-  withdraw_hold: '🏦 Вывод средств (заявка)',
+  purchase: <><IconPurchases /> Покупка пакета</>,
+  withdraw_hold: <><IconBank /> Вывод средств (заявка)</>,
   withdraw_refund: '↩ Возврат заявки на вывод',
 };
 
@@ -301,7 +302,7 @@ export default function ProfilePage({ user, token, onUpdateUser, onLogout, onOpe
     return (
       <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex items-center justify-center p-4">
         <div className="bg-white dark:bg-slate-800 p-8 rounded-3xl max-w-md w-full text-center space-y-4 shadow-xl border border-slate-200 dark:border-slate-700">
-          <div className="text-4xl">👤</div>
+          <div className="text-4xl"><IconUser /></div>
           <h2 className="text-xl font-bold">Войдите в профиль</h2>
           <button
             onClick={() => onOpenAuth('login')}
@@ -401,7 +402,7 @@ export default function ProfilePage({ user, token, onUpdateUser, onLogout, onOpe
             <Avatar user={user} size="2xl" className="shadow-lg" />
             {user.verified && (
               <span className="absolute -bottom-1 -right-1 bg-emerald-500 text-white p-1 rounded-full shadow-md text-xs font-bold" title="Документы проверены">
-                ✓
+                <IconCheck />
               </span>
             )}
           </div>
@@ -413,7 +414,7 @@ export default function ProfilePage({ user, token, onUpdateUser, onLogout, onOpe
               </h1>
               {user.verified && (
                 <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 flex items-center gap-1 border border-emerald-300 dark:border-emerald-700">
-                  <span>✓</span> Проверен
+                  <span><IconCheck /></span> Проверен
                 </span>
               )}
               {user.is_pro && (
@@ -425,15 +426,15 @@ export default function ProfilePage({ user, token, onUpdateUser, onLogout, onOpe
             <p className="text-sm text-slate-500 dark:text-slate-400">{user.email}</p>
             <div className="flex flex-wrap items-center gap-3 text-xs pt-1">
               <span className="px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-700 font-medium">
-                {isSpecialist ? '🛠️ Специалист' : '💼 Заказчик'}
+                {isSpecialist ? <><IconTools /> Специалист</> : <><IconCatBusiness /> Заказчик</>}
               </span>
-              <span>⭐ Рейтинг: {user.rating || '5.0'}</span>
+              <span><IconStar /> Рейтинг: {user.rating || '5.0'}</span>
               <span>•</span>
               <span>Завершено: {user.completed_tasks || 0}</span>
               {user.city && (
                 <>
                   <span>•</span>
-                  <span>📍 {user.city}</span>
+                  <span><IconPin /> {user.city}</span>
                 </>
               )}
             </div>
@@ -466,7 +467,7 @@ export default function ProfilePage({ user, token, onUpdateUser, onLogout, onOpe
       <div className="bg-gradient-to-r from-slate-900 to-indigo-950 text-white p-6 sm:p-7 rounded-3xl shadow-md border border-indigo-900/50 flex flex-col md:flex-row items-start md:items-center justify-between gap-5">
         <div className="space-y-2 max-w-2xl">
           <div className="flex items-center gap-2">
-            <span className="text-xl">🛡️</span>
+            <span className="text-xl"><IconAdmin /></span>
             <h2 className="text-lg font-bold text-white">Безопасность и доверие сервиса «ДЕЛО»</h2>
           </div>
           <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
@@ -483,7 +484,7 @@ export default function ProfilePage({ user, token, onUpdateUser, onLogout, onOpe
         <div className="shrink-0 flex items-center gap-3">
           {user.verified ? (
             <div className="px-4 py-2 rounded-xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 font-bold text-xs flex items-center gap-2">
-              <span>✓</span> Документы подтверждены
+              <span><IconCheck /></span> Документы подтверждены
             </div>
           ) : reqStatus === 'pending' ? (
             <div className="px-4 py-2 rounded-xl bg-amber-500/20 border border-amber-500/40 text-amber-300 font-bold text-xs flex items-center gap-2">
@@ -494,7 +495,7 @@ export default function ProfilePage({ user, token, onUpdateUser, onLogout, onOpe
               onClick={() => setShowVerifyModal(true)}
               className="px-5 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs sm:text-sm rounded-xl shadow-lg shadow-emerald-500/20 transition-all flex items-center gap-2"
             >
-              <span>🛡️</span> Пройти верификацию
+              <span><IconAdmin /></span> Пройти верификацию
             </button>
           )}
 
@@ -504,19 +505,19 @@ export default function ProfilePage({ user, token, onUpdateUser, onLogout, onOpe
                 onClick={() => setShowAdminVerifications(!showAdminVerifications)}
                 className="px-4 py-2 bg-indigo-800/80 hover:bg-indigo-700 text-indigo-100 text-xs font-semibold rounded-xl border border-indigo-600 transition-all"
               >
-              👑 Модерация заявок
+              <IconPro /> Модерация заявок
             </button>
               <button
                 onClick={() => setShowAdminWithdrawals(!showAdminWithdrawals)}
                 className="px-4 py-2 bg-indigo-800/80 hover:bg-indigo-700 text-indigo-100 text-xs font-semibold rounded-xl border border-indigo-600 transition-all"
               >
-                🏦 Заявки на вывод
+                <IconBank /> Заявки на вывод
               </button>
               <button
                 onClick={() => setShowAdminStats(!showAdminStats)}
                 className="px-4 py-2 bg-indigo-800/80 hover:bg-indigo-700 text-indigo-100 text-xs font-semibold rounded-xl border border-indigo-600 transition-all"
               >
-                📊 Сводка
+                <IconChart /> Сводка
               </button>
             </div>
           )}
@@ -528,13 +529,13 @@ export default function ProfilePage({ user, token, onUpdateUser, onLogout, onOpe
         <div className="bg-white dark:bg-slate-800 p-6 sm:p-8 rounded-3xl border border-amber-300 dark:border-amber-700/60 shadow-lg space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
-              <span>👑</span> Панель модератора: Заявки на верификацию
+              <span><IconPro /></span> Панель модератора: Заявки на верификацию
             </h3>
             <button
               onClick={loadAdminVerifications}
               className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline"
             >
-              🔄 Обновить
+              <IconRefresh /> Обновить
             </button>
           </div>
 
@@ -577,7 +578,7 @@ export default function ProfilePage({ user, token, onUpdateUser, onLogout, onOpe
                         disabled={processingAdminId === item.id}
                         className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-sm transition-all"
                       >
-                        ✓ Одобрить
+                        <IconCheck /> Одобрить
                       </button>
                       <button
                         onClick={() => {
@@ -587,7 +588,7 @@ export default function ProfilePage({ user, token, onUpdateUser, onLogout, onOpe
                         disabled={processingAdminId === item.id}
                         className="px-3.5 py-1.5 bg-red-600 hover:bg-red-500 text-white font-bold text-xs rounded-xl shadow-sm transition-all"
                       >
-                        ✕ Отклонить
+                        <IconClose /> Отклонить
                       </button>
                     </div>
                   )}
@@ -603,10 +604,10 @@ export default function ProfilePage({ user, token, onUpdateUser, onLogout, onOpe
         <div className="bg-white dark:bg-slate-800 p-6 sm:p-8 rounded-3xl border border-indigo-200 dark:border-indigo-800 shadow-lg space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
-              <span>🏦</span> Панель модератора: Заявки на вывод
+              <span><IconBank /></span> Панель модератора: Заявки на вывод
             </h3>
             <button onClick={loadAdminWithdrawals} className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline">
-              🔄 Обновить
+              <IconRefresh /> Обновить
             </button>
           </div>
 
@@ -631,7 +632,7 @@ export default function ProfilePage({ user, token, onUpdateUser, onLogout, onOpe
                         {w.user_name} ({w.user_email}) · баланс: {(w.user_balance || 0).toLocaleString('ru-RU')} ₽
                       </div>
                       <div className="font-mono text-slate-700 dark:text-slate-300">
-                        {w.method === 'card' ? '💳' : '📱'} {w.requisites}
+                        {w.method === 'card' ? <IconCard /> : <IconPhone />} {w.requisites}
                       </div>
                       {w.comment && <div className="text-[10px] text-slate-400">{w.comment}</div>}
                     </div>
@@ -643,7 +644,7 @@ export default function ProfilePage({ user, token, onUpdateUser, onLogout, onOpe
                           disabled={processingWdId === w.id}
                           className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-sm transition-all"
                         >
-                          ✓ Выплачено
+                          <IconCheck /> Выплачено
                         </button>
                         <button
                           onClick={() => {
@@ -653,7 +654,7 @@ export default function ProfilePage({ user, token, onUpdateUser, onLogout, onOpe
                           disabled={processingWdId === w.id}
                           className="px-3.5 py-1.5 bg-red-600 hover:bg-red-500 text-white font-bold text-xs rounded-xl shadow-sm transition-all"
                         >
-                          ✕ Отклонить
+                          <IconClose /> Отклонить
                         </button>
                       </div>
                     )}
@@ -669,7 +670,7 @@ export default function ProfilePage({ user, token, onUpdateUser, onLogout, onOpe
       {isAdmin && showAdminStats && adminStats && (
         <div className="bg-white dark:bg-slate-800 p-6 sm:p-8 rounded-3xl border border-indigo-200 dark:border-indigo-800 shadow-lg space-y-5">
           <h3 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
-            <span>📊</span> Сводка по платформе
+            <span><IconChart /></span> Сводка по платформе
           </h3>
 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -787,7 +788,7 @@ export default function ProfilePage({ user, token, onUpdateUser, onLogout, onOpe
                 title={(user.balance || 0) < 500 ? 'Минимальная сумма вывода — 500 ₽' : 'Вывести средства'}
                 className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold rounded-xl text-sm shadow-md shadow-indigo-600/20 transition-all"
               >
-                🏦 Вывести
+                <IconBank /> Вывести
               </button>
             </div>
             <Link
@@ -853,7 +854,7 @@ export default function ProfilePage({ user, token, onUpdateUser, onLogout, onOpe
         <div className="bg-gradient-to-br from-indigo-50 to-purple-50 dark:from-slate-800 dark:to-slate-800/60 p-6 sm:p-8 rounded-3xl border border-indigo-100 dark:border-slate-700 shadow-sm space-y-6">
           <div>
             <h3 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
-              <span>🚀</span> Выгодная монетизация для специалистов
+              <span><IconRocket /></span> Выгодная монетизация для специалистов
             </h3>
             <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 mt-1">
               Сравните условия работы: окупите подписку PRO уже с первого заказа благодаря отсутствию 5% комиссии!
@@ -933,7 +934,7 @@ export default function ProfilePage({ user, token, onUpdateUser, onLogout, onOpe
               onClick={handleDownloadCsv}
               className="px-4 py-2 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-xs font-bold rounded-xl transition-all"
             >
-              ⬇ Скачать CSV
+              <IconDownload /> Скачать CSV
             </button>
             <button
               onClick={() => setShowTransactions(!showTransactions)}
@@ -1007,7 +1008,7 @@ export default function ProfilePage({ user, token, onUpdateUser, onLogout, onOpe
               disabled={(user.balance || 0) < 500}
               className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-bold rounded-xl transition-all"
             >
-              🏦 Новая заявка
+              <IconBank /> Новая заявка
             </button>
           </div>
         </div>
@@ -1033,7 +1034,7 @@ export default function ProfilePage({ user, token, onUpdateUser, onLogout, onOpe
                     <div className="min-w-0">
                       <span className="font-semibold text-slate-800 dark:text-slate-200">
                         {w.amount.toLocaleString('ru-RU')} ₽
-                        <span className="text-slate-400 font-normal"> · {w.method === 'card' ? '💳 карта' : '📱 СБП'} {w.requisites}</span>
+                        <span className="text-slate-400 font-normal"> · {w.method === 'card' ? <><IconCard /> карта</> : <><IconCatElectronics /> СБП</>} {w.requisites}</span>
                       </span>
                       {w.comment && (
                         <span className="block text-[11px] text-slate-400">{w.comment}</span>
@@ -1059,13 +1060,13 @@ export default function ProfilePage({ user, token, onUpdateUser, onLogout, onOpe
           <div className="bg-white dark:bg-slate-800 max-w-md w-full p-6 sm:p-8 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-2xl space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                <span>🛡️</span> Верификация специалиста
+                <span><IconAdmin /></span> Верификация специалиста
               </h3>
               <button
                 onClick={() => setShowVerifyModal(false)}
                 className="text-slate-400 hover:text-slate-600 text-lg"
               >
-                ✕
+                <IconClose />
               </button>
             </div>
 
@@ -1112,7 +1113,7 @@ export default function ProfilePage({ user, token, onUpdateUser, onLogout, onOpe
               </div>
 
               <div className="bg-emerald-50 dark:bg-emerald-950/30 p-3.5 rounded-xl border border-emerald-200 dark:border-emerald-800 text-[11px] text-emerald-800 dark:text-emerald-300">
-                🔒 Данные защищены и обрабатываются в строгом соответствии с 152-ФЗ.
+                <IconLock /> Данные защищены и обрабатываются в строгом соответствии с 152-ФЗ.
               </div>
 
               <div className="flex justify-end gap-2 pt-2">

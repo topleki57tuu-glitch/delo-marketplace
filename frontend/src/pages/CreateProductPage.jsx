@@ -4,15 +4,16 @@ import { useProductsStore } from '../store/productsStore';
 import { useAuthStore } from '../store/authStore';
 import { ImageUploader } from '../components/ImageUploader';
 import './CreateProductPage.css';
+import { IconCatAuto, IconCatClothing, IconCatElectronics, IconCatHobby, IconCatHome, IconCatKids, IconCatOther, IconDelivery, IconPin, IconRecycle } from '../components/icons.jsx';
 
 const PRODUCT_CATEGORIES = [
-  { id: 'electronics', label: 'Электроника', icon: '📱' },
-  { id: 'clothing', label: 'Одежда и обувь', icon: '👕' },
-  { id: 'home', label: 'Товары для дома', icon: '🏠' },
-  { id: 'hobby', label: 'Хобби и развлечения', icon: '🎮' },
-  { id: 'auto', label: 'Авто и мото', icon: '🚗' },
-  { id: 'kids', label: 'Детские товары', icon: '👶' },
-  { id: 'other', label: 'Другое', icon: '📦' },
+  { id: 'electronics', label: 'Электроника' },
+  { id: 'clothing', label: 'Одежда и обувь' },
+  { id: 'home', label: 'Товары для дома' },
+  { id: 'hobby', label: 'Хобби и развлечения' },
+  { id: 'auto', label: 'Авто и мото' },
+  { id: 'kids', label: 'Детские товары' },
+  { id: 'other', label: 'Другое' },
 ];
 
 export default function CreateProductPage() {
@@ -180,7 +181,7 @@ export default function CreateProductPage() {
               >
                 {PRODUCT_CATEGORIES.map(cat => (
                   <option key={cat.id} value={cat.id}>
-                    {cat.icon} {cat.label}
+                    {cat.label}
                   </option>
                 ))}
               </select>
@@ -196,7 +197,7 @@ export default function CreateProductPage() {
                 onChange={handleChange}
               >
                 <option value="new">🆕 Новое</option>
-                <option value="used">♻️ Б/У</option>
+                <option value="used"><IconRecycle /> Б/У</option>
               </select>
             </div>
           </div>
@@ -277,7 +278,7 @@ export default function CreateProductPage() {
                   checked={formData.delivery_options === 'both'}
                   onChange={handleChange}
                 />
-                <span>🚚📍 Доставка и самовывоз</span>
+                <span><IconDelivery /><IconPin /> Доставка и самовывоз</span>
               </label>
               <label className="radio-label">
                 <input
@@ -287,7 +288,7 @@ export default function CreateProductPage() {
                   checked={formData.delivery_options === 'delivery'}
                   onChange={handleChange}
                 />
-                <span>🚚 Только доставка</span>
+                <span><IconDelivery /> Только доставка</span>
               </label>
               <label className="radio-label">
                 <input
@@ -297,7 +298,7 @@ export default function CreateProductPage() {
                   checked={formData.delivery_options === 'pickup'}
                   onChange={handleChange}
                 />
-                <span>📍 Только самовывоз</span>
+                <span><IconPin /> Только самовывоз</span>
               </label>
             </div>
           </div>
@@ -305,7 +306,7 @@ export default function CreateProductPage() {
 
         {/* Информация */}
         <div className="info-block">
-          <h3>ℹ️ Как работает продажа</h3>
+          <h3>ℹ Как работает продажа</h3>
           <ul>
             <li>Покупатель оформляет заказ → деньги замораживаются в эскроу</li>
             <li>Вы подтверждаете заказ и отправляете товар</li>

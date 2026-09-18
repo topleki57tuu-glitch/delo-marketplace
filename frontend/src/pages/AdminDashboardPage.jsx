@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useToast } from '../components/Toast';
+import { IconBell, IconLightning, IconJustice, IconOnline, IconPayout, IconAdmin, IconChart, IconCheck, IconLock, IconRefresh, IconStar, IconTasks, IconUsers, IconWallet } from '../components/icons.jsx';
 
 export default function AdminDashboardPage({ user, token }) {
   const { addToast } = useToast();
@@ -266,8 +267,8 @@ export default function AdminDashboardPage({ user, token }) {
                     <td className="px-4 py-3 text-sm font-semibold text-slate-900 dark:text-white">{u.balance?.toLocaleString() || 0} ₽</td>
                     <td className="px-4 py-3">
                       <div className="flex gap-1">
-                        {u.verified && <span className="text-green-600" title="Верифицирован">✓</span>}
-                        {u.is_pro && <span className="text-amber-500" title="PRO">★</span>}
+                        {u.verified && <span className="text-green-600" title="Верифицирован"><IconCheck /></span>}
+                        {u.is_pro && <span className="text-amber-500" title="PRO"><IconStar /></span>}
                       </div>
                     </td>
                     <td className="px-4 py-3 text-xs text-slate-500 dark:text-slate-400">
@@ -325,7 +326,7 @@ export default function AdminDashboardPage({ user, token }) {
       <div className="grid md:grid-cols-3 gap-6">
         {/* Новые пользователи */}
         <div className="bg-white dark:bg-slate-800 rounded-xl p-6 shadow-lg border border-slate-200 dark:border-slate-700">
-          <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-4">👥 Новые пользователи</h3>
+          <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-4"><IconUsers /> Новые пользователи</h3>
           <div className="space-y-2">
             {activity.users?.slice(0, 5).map(u => (
               <div key={u.id} className="flex justify-between items-center text-sm border-b border-slate-100 dark:border-slate-700 pb-2">
@@ -341,7 +342,7 @@ export default function AdminDashboardPage({ user, token }) {
 
         {/* Новые задачи */}
         <div className="bg-white dark:bg-slate-800 rounded-xl p-6 shadow-lg border border-slate-200 dark:border-slate-700">
-          <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-4">📋 Новые задачи</h3>
+          <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-4"><IconTasks /> Новые задачи</h3>
           <div className="space-y-2">
             {activity.tasks?.slice(0, 5).map(t => (
               <Link key={t.id} to={`/tasks/${t.id}`} className="block text-sm border-b border-slate-100 dark:border-slate-700 pb-2 hover:bg-slate-50 dark:hover:bg-slate-700/50 -mx-2 px-2 rounded transition">
@@ -357,7 +358,7 @@ export default function AdminDashboardPage({ user, token }) {
 
         {/* Крупные транзакции */}
         <div className="bg-white dark:bg-slate-800 rounded-xl p-6 shadow-lg border border-slate-200 dark:border-slate-700">
-          <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-4">💰 Крупные транзакции</h3>
+          <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-4"><IconWallet /> Крупные транзакции</h3>
           <div className="space-y-2">
             {activity.transactions?.slice(0, 5).map(tr => (
               <div key={tr.id} className="flex justify-between items-center text-sm border-b border-slate-100 dark:border-slate-700 pb-2">
@@ -388,7 +389,7 @@ export default function AdminDashboardPage({ user, token }) {
     return (
       <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex items-center justify-center p-4">
         <div className="bg-white dark:bg-slate-800 p-8 rounded-3xl max-w-md w-full text-center space-y-4 shadow-xl border border-slate-200 dark:border-slate-700">
-          <div className="text-6xl">🔒</div>
+          <div className="text-6xl"><IconLock /></div>
           <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Доступ запрещён</h2>
           <p className="text-slate-600 dark:text-slate-400">
             Эта страница доступна только администраторам платформы.
@@ -408,7 +409,7 @@ export default function AdminDashboardPage({ user, token }) {
         <div className="flex justify-between items-center">
           <div>
             <h1 className="text-3xl font-bold text-slate-900 dark:text-white flex items-center gap-3">
-              🛡️ Admin Dashboard
+              <IconAdmin /> Admin Dashboard
             </h1>
             <p className="text-slate-500 dark:text-slate-400 mt-1">
               Управление платформой ДЕЛО
@@ -418,7 +419,7 @@ export default function AdminDashboardPage({ user, token }) {
             onClick={fetchData}
             className="px-4 py-2 bg-indigo-600 text-white rounded-xl font-medium hover:bg-indigo-700 transition shadow-lg"
           >
-            🔄 Обновить
+            <IconRefresh /> Обновить
           </button>
         </div>
 
@@ -428,27 +429,27 @@ export default function AdminDashboardPage({ user, token }) {
             <StatCard
               title="Пользователи"
               value={stats.users?.total || 0}
-              icon="👥"
+              icon={<IconUsers size={22} />}
               change={stats.users?.new_7d}
               color="blue"
             />
             <StatCard
               title="Задачи"
               value={stats.tasks?.total || 0}
-              icon="📋"
+              icon={<IconTasks size={22} />}
               change={stats.tasks?.new_7d}
               color="purple"
             />
             <StatCard
               title="GMV"
               value={`${((stats.money?.gmv || 0) / 1000).toFixed(0)}K ₽`}
-              icon="💰"
+              icon={<IconWallet size={22} />}
               color="green"
             />
             <StatCard
               title="Онлайн"
               value={stats.users?.online || 0}
-              icon="🟢"
+              icon={<IconOnline size={22} />}
               color="emerald"
             />
           </div>
@@ -459,11 +460,11 @@ export default function AdminDashboardPage({ user, token }) {
           <div className="grid md:grid-cols-2 gap-6">
             <SimpleLineChart
               data={stats.charts.users_growth_7d}
-              title="📈 Рост пользователей (7 дней)"
+              title="Рост пользователей (7 дней)"
             />
             <SimpleLineChart
               data={stats.charts.revenue_7d}
-              title="💵 Доход - комиссия (7 дней)"
+              title="Доход - комиссия (7 дней)"
             />
           </div>
         )}
@@ -472,34 +473,34 @@ export default function AdminDashboardPage({ user, token }) {
         {stats?.charts?.tasks_by_category && (
           <SimpleBarChart
             data={stats.charts.tasks_by_category}
-            title="📊 Задачи по категориям"
+            title="Задачи по категориям"
           />
         )}
 
         {/* Очереди - требуют внимания */}
         {stats?.queues && (
           <div>
-            <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-4">🔔 Требуют внимания</h2>
+            <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-4"><IconBell className="inline align-[-2px]" /> Требуют внимания</h2>
             <div className="grid md:grid-cols-3 gap-4">
               <QueueCard
                 title="Споры"
                 count={stats.queues.disputes_open}
                 link="/admin/disputes"
-                icon="⚖️"
+                icon={<IconJustice size={22} />}
                 color="red"
               />
               <QueueCard
                 title="Верификация"
                 count={stats.queues.verifications_pending}
                 link="/verification"
-                icon="✅"
+                icon={<IconCheck size={22} />}
                 color="amber"
               />
               <QueueCard
                 title="Выводы средств"
                 count={stats.queues.withdrawals_pending}
                 link="/wallet"
-                icon="💸"
+                icon={<IconPayout size={22} />}
                 color="green"
               />
             </div>
@@ -511,9 +512,9 @@ export default function AdminDashboardPage({ user, token }) {
           <div className="border-b border-slate-200 dark:border-slate-700 mb-6">
             <div className="flex gap-4 overflow-x-auto">
               {[
-                { id: 'overview', label: '📊 Обзор', icon: '📊' },
-                { id: 'users', label: '👥 Пользователи', icon: '👥' },
-                { id: 'activity', label: '⚡ Активность', icon: '⚡' },
+                { id: 'overview', label: <><IconChart /> Обзор</>, icon: <IconChart /> },
+                { id: 'users', label: <><IconUsers /> Пользователи</>, icon: <IconUsers /> },
+                { id: 'activity', label: <><IconLightning /> Активность</>, icon: <IconLightning /> },
               ].map(tab => (
                 <button
                   key={tab.id}
@@ -534,7 +535,7 @@ export default function AdminDashboardPage({ user, token }) {
           {activeTab === 'overview' && stats && (
             <div className="space-y-6">
               <div className="bg-white dark:bg-slate-800 rounded-xl p-6 shadow-lg border border-slate-200 dark:border-slate-700">
-                <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-4">💰 Финансы</h3>
+                <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-4"><IconWallet /> Финансы</h3>
                 <div className="grid md:grid-cols-3 gap-6">
                   <div>
                     <p className="text-sm text-slate-500 dark:text-slate-400">GMV (оборот)</p>
@@ -552,7 +553,7 @@ export default function AdminDashboardPage({ user, token }) {
               </div>
 
               <div className="bg-white dark:bg-slate-800 rounded-xl p-6 shadow-lg border border-slate-200 dark:border-slate-700">
-                <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-4">📊 Статистика</h3>
+                <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-4"><IconChart /> Статистика</h3>
                 <div className="grid md:grid-cols-2 gap-6">
                   <div>
                     <p className="text-sm text-slate-500 dark:text-slate-400 mb-2">Пользователи</p>

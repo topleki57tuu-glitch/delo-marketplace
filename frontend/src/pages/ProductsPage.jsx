@@ -2,15 +2,16 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useProductsStore } from '../store/productsStore';
 import './ProductsPage.css';
+import { IconRecycle, IconCatAuto, IconCatClothing, IconCatElectronics, IconCatHobby, IconCatHome, IconCatKids, IconCatOther, IconBox, IconCheck, IconPin, IconProducts, IconSearch } from '../components/icons.jsx';
 
 const PRODUCT_CATEGORIES = [
-  { id: 'electronics', label: 'Электроника', icon: '📱' },
-  { id: 'clothing', label: 'Одежда и обувь', icon: '👕' },
-  { id: 'home', label: 'Товары для дома', icon: '🏠' },
-  { id: 'hobby', label: 'Хобби и развлечения', icon: '🎮' },
-  { id: 'auto', label: 'Авто и мото', icon: '🚗' },
-  { id: 'kids', label: 'Детские товары', icon: '👶' },
-  { id: 'other', label: 'Другое', icon: '📦' },
+  { id: 'electronics', label: 'Электроника', icon: <IconCatElectronics /> },
+  { id: 'clothing', label: 'Одежда и обувь', icon: <IconCatClothing /> },
+  { id: 'home', label: 'Товары для дома', icon: <IconCatHome /> },
+  { id: 'hobby', label: 'Хобби и развлечения', icon: <IconCatHobby /> },
+  { id: 'auto', label: 'Авто и мото', icon: <IconCatAuto /> },
+  { id: 'kids', label: 'Детские товары', icon: <IconCatKids /> },
+  { id: 'other', label: 'Другое', icon: <IconCatOther /> },
 ];
 
 const PRODUCT_CONDITIONS = [
@@ -60,7 +61,7 @@ export default function ProductsPage() {
   return (
     <div className="products-page">
       <div className="products-header">
-        <h1>🛍️ Маркетплейс товаров</h1>
+        <h1><IconProducts /> Маркетплейс товаров</h1>
         <button
           className="btn btn-primary"
           onClick={() => navigate('/create-product')}
@@ -77,7 +78,7 @@ export default function ProductsPage() {
           value={localSearch}
           onChange={(e) => setLocalSearch(e.target.value)}
         />
-        <button type="submit" className="btn">🔍 Найти</button>
+        <button type="submit" className="btn"><IconSearch /> Найти</button>
       </form>
 
       {/* Фильтры */}
@@ -159,7 +160,7 @@ export default function ProductsPage() {
         </div>
       ) : products.length === 0 ? (
         <div className="no-products">
-          <div className="no-products-icon">🛍️</div>
+          <div className="no-products-icon"><IconProducts /></div>
           <h2>Товары не найдены</h2>
           <p>Попробуйте изменить параметры поиска</p>
           <button className="btn btn-primary" onClick={() => {
@@ -182,10 +183,10 @@ export default function ProductsPage() {
                 {product.first_image ? (
                   <img src={product.first_image} alt={product.title} />
                 ) : (
-                  <div className="no-image">📦</div>
+                  <div className="no-image"><IconBox /></div>
                 )}
                 <div className={`product-condition-badge ${product.condition}`}>
-                  {product.condition === 'new' ? '🆕 Новое' : '♻️ Б/У'}
+                  {product.condition === 'new' ? '🆕 Новое' : <><IconRecycle /> Б/У</>}
                 </div>
               </div>
 
@@ -201,12 +202,12 @@ export default function ProductsPage() {
 
                 <div className="product-meta">
                   <div className="product-city">
-                    📍 {product.city || 'Не указан'}
+                    <IconPin /> {product.city || 'Не указан'}
                   </div>
                 </div>
 
                 <div className="product-seller">
-                  {product.seller_verified && <span className="seller-verified">✓</span>}
+                  {product.seller_verified && <span className="seller-verified"><IconCheck /></span>}
                   <span>{product.seller_name}</span>
                 </div>
               </div>

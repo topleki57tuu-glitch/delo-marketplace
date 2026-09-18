@@ -7,6 +7,7 @@ import isToday from 'date-fns/isToday';
 import isYesterday from 'date-fns/isYesterday';
 import ru from 'date-fns/locale/ru';
 import { EmojiPicker } from '../components/EmojiPicker';
+import { IconRefresh, IconLink, IconMessages, IconSmile } from '../components/icons.jsx';
 
 // Форматирование времени для чата
 function formatMessageTime(dateStr) {
@@ -356,7 +357,7 @@ export default function ChatsPage({ user, token, onOpenAuth }) {
     return (
       <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex items-center justify-center p-4">
         <div className="bg-white dark:bg-slate-800 p-8 rounded-3xl max-w-md w-full text-center space-y-4 shadow-xl border border-slate-200 dark:border-slate-700">
-          <div className="text-4xl">💬</div>
+          <div className="text-4xl"><IconMessages /></div>
           <h2 className="text-xl font-bold">Войдите для доступа к чатам</h2>
           <button onClick={() => onOpenAuth('login')} className="w-full py-3 bg-indigo-600 text-white font-bold rounded-xl">
             Войти в аккаунт
@@ -577,7 +578,7 @@ export default function ChatsPage({ user, token, onOpenAuth }) {
                                       isMe ? 'bg-indigo-500 hover:bg-indigo-400' : 'bg-slate-100 dark:bg-slate-600 hover:bg-slate-200 dark:hover:bg-slate-500'
                                     } transition-colors`}
                                   >
-                                    <span className="text-2xl">📎</span>
+                                    <span className="text-2xl"><IconLink /></span>
                                     <div className="flex-1 min-w-0">
                                       <div className="font-semibold text-xs truncate">{m.file_name}</div>
                                       <div className={`text-[10px] ${isMe ? 'text-indigo-200' : 'text-slate-400'}`}>
@@ -640,7 +641,7 @@ export default function ChatsPage({ user, token, onOpenAuth }) {
                       className="p-3 text-2xl hover:bg-slate-100 dark:hover:bg-slate-700 rounded-xl transition-colors"
                       title="Добавить эмодзи"
                     >
-                      😊
+                      <IconSmile />
                     </button>
 
                     {/* Emoji Picker Popup */}
@@ -674,7 +675,7 @@ export default function ChatsPage({ user, token, onOpenAuth }) {
                       className="p-3 text-xl hover:bg-slate-100 dark:hover:bg-slate-700 rounded-xl transition-colors disabled:opacity-50"
                       title="Прикрепить файл"
                     >
-                      {uploadingFile ? '⏳' : '📎'}
+                      {uploadingFile ? <IconRefresh className="animate-spin" /> : <IconLink />}
                     </button>
                   </div>
 
@@ -705,7 +706,7 @@ export default function ChatsPage({ user, token, onOpenAuth }) {
           ) : (
             <div className="flex-1 flex items-center justify-center text-slate-400">
               <div className="text-center">
-                <div className="text-6xl mb-4">💬</div>
+                <div className="text-6xl mb-4"><IconMessages /></div>
                 <p className="text-sm">Выберите чат для начала общения</p>
               </div>
             </div>

@@ -4,15 +4,28 @@ import format from 'date-fns/format';
 import isToday from 'date-fns/isToday';
 import isYesterday from 'date-fns/isYesterday';
 import ru from 'date-fns/locale/ru';
+import { IconLock, IconPurchases, IconBank, IconDownload, IconPayout, IconWallet } from '../components/icons.jsx';
 
 const TX_TYPE_NAMES = {
-  deposit: '💰 Пополнение',
-  escrow_hold: '🔒 Заморозка (эскроу)',
-  escrow_release: '💸 Выплата (эскроу)',
-  escrow_refund: '↩ Возврат (эскроу)',
-  purchase: '🛒 Покупка пакета',
-  withdraw_hold: '🏦 Вывод средств (заявка)',
-  withdraw_refund: '↩ Возврат заявки на вывод',
+  deposit: <><IconWallet /> Пополнение</>,
+  escrow_hold: <><IconLock /> Заморозка (эскроу)</>,
+  escrow_release: <><IconPayout /> Выплата (эскроу)</>,
+  escrow_refund: <><IconRefresh /> Возврат (эскроу)</>,
+  purchase: <><IconPurchases /> Покупка пакета</>,
+  withdraw_hold: <><IconBank /> Вывод средств (заявка)</>,
+  withdraw_refund: <><IconRefresh /> Возврат заявки на вывод</>,
+};
+
+// Текстовые подписи для поиска. В TX_TYPE_NAMES лежат элементы React —
+// вызывать у них toLowerCase нельзя, поэтому поиск идёт по этой карте.
+const TX_TYPE_TEXT = {
+  deposit: 'Пополнение',
+  escrow_hold: 'Заморозка (эскроу)',
+  escrow_release: 'Выплата (эскроу)',
+  escrow_refund: 'Возврат (эскроу)',
+  purchase: 'Покупка пакета',
+  withdraw_hold: 'Вывод средств (заявка)',
+  withdraw_refund: 'Возврат заявки на вывод',
 };
 
 function formatTransactionDate(dateStr) {
@@ -84,7 +97,7 @@ export function TransactionsHistory({ token }) {
 
     // Поиск по типу или сумме
     if (searchQuery) {
-      const typeName = TX_TYPE_NAMES[tx.type] || tx.type;
+      const typeName = TX_TYPE_TEXT[tx.type] || tx.type;
       const query = searchQuery.toLowerCase();
       if (!typeName.toLowerCase().includes(query) &&
           !tx.amount.toString().includes(query)) {
@@ -123,7 +136,7 @@ export function TransactionsHistory({ token }) {
           onClick={handleDownloadCsv}
           className="px-3 py-1.5 text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 rounded-lg transition-colors"
         >
-          📥 Скачать CSV
+          <IconDownload /> Скачать CSV
         </button>
       </div>
 
@@ -156,7 +169,7 @@ export function TransactionsHistory({ token }) {
                 : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'
             }`}
           >
-            💰 Пополнения
+            <IconWallet /> Пополнения
           </button>
           <button
             onClick={() => setFilterType('escrow_release')}
@@ -166,7 +179,7 @@ export function TransactionsHistory({ token }) {
                 : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'
             }`}
           >
-            💸 Выплаты
+            <IconPayout /> Выплаты
           </button>
           <button
             onClick={() => setFilterType('withdraw_hold')}
@@ -176,7 +189,7 @@ export function TransactionsHistory({ token }) {
                 : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'
             }`}
           >
-            🏦 Выводы
+            <IconBank /> Выводы
           </button>
         </div>
       </div>

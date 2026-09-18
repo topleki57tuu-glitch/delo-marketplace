@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useToast } from '../components/Toast';
+import { IconPayout, IconBox, IconBriefcase, IconJustice, IconLock, IconParty, IconTools } from '../components/icons.jsx';
 
 export default function DisputesPage({ user, token, onOpenAuth }) {
   const { addToast } = useToast();
@@ -66,7 +67,7 @@ export default function DisputesPage({ user, token, onOpenAuth }) {
     return (
       <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex items-center justify-center p-4">
         <div className="bg-white dark:bg-slate-800 p-8 rounded-3xl max-w-md w-full text-center space-y-4 shadow-xl border border-slate-200 dark:border-slate-700">
-          <div className="text-4xl">⚖️</div>
+          <div className="text-4xl"><IconJustice /></div>
           <h2 className="text-xl font-bold text-slate-900 dark:text-white">Арбитраж споров</h2>
           <p className="text-sm text-slate-500 dark:text-slate-400">Войдите под учётной записью арбитра</p>
           <button
@@ -92,7 +93,7 @@ export default function DisputesPage({ user, token, onOpenAuth }) {
     return (
       <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex items-center justify-center p-4">
         <div className="bg-white dark:bg-slate-800 p-8 rounded-3xl max-w-md w-full text-center space-y-4 shadow-xl border border-slate-200 dark:border-slate-700">
-          <div className="text-4xl">🔒</div>
+          <div className="text-4xl"><IconLock /></div>
           <h2 className="text-xl font-bold text-slate-900 dark:text-white">Нет доступа</h2>
           <p className="text-sm text-slate-500 dark:text-slate-400">
             Эта страница доступна только арбитрам платформы.
@@ -109,7 +110,7 @@ export default function DisputesPage({ user, token, onOpenAuth }) {
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 py-8 px-4 sm:px-6 lg:px-8 max-w-4xl mx-auto space-y-6">
       <div>
         <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 dark:text-white">
-          ⚖️ Арбитраж споров
+          <IconJustice /> Арбитраж споров
         </h1>
         <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">
           Открытых споров: <span className="font-semibold text-red-600 dark:text-red-400">{disputes.length}</span>
@@ -118,7 +119,7 @@ export default function DisputesPage({ user, token, onOpenAuth }) {
 
       {disputes.length === 0 ? (
         <div className="bg-white dark:bg-slate-800 p-10 rounded-3xl border border-slate-200 dark:border-slate-700 text-center space-y-3">
-          <div className="text-4xl">🎉</div>
+          <div className="text-4xl"><IconParty /></div>
           <p className="font-bold text-slate-900 dark:text-white">Открытых споров нет</p>
           <p className="text-sm text-slate-500 dark:text-slate-400">Все сделки идут без конфликтов.</p>
         </div>
@@ -135,7 +136,7 @@ export default function DisputesPage({ user, token, onOpenAuth }) {
                       (order_id) — арбитру нужна одна очередь на оба вида. */}
                   {d.kind === 'order' ? (
                     <span className="text-lg font-bold text-slate-900 dark:text-white">
-                      📦 {d.title || `Заказ #${d.order_id}`}
+                      <IconBox /> {d.title || `Заказ #${d.order_id}`}
                     </span>
                   ) : (
                     <Link
@@ -146,9 +147,9 @@ export default function DisputesPage({ user, token, onOpenAuth }) {
                     </Link>
                   )}
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 dark:text-slate-400 mt-1">
-                    <span>💼 {d.customer_name}</span>
+                    <span><IconBriefcase /> {d.customer_name}</span>
                     <span>→</span>
-                    <span>🛠️ {d.executor_name}</span>
+                    <span><IconTools /> {d.executor_name}</span>
                     <span>•</span>
                     <span>Спор открыл: <b>{d.opened_by_name}</b></span>
                   </div>
@@ -187,7 +188,7 @@ export default function DisputesPage({ user, token, onOpenAuth }) {
                   disabled={!!resolvingId}
                   className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-sm shadow-md disabled:opacity-50 transition-all"
                 >
-                  {resolvingId === d.id + 'pay_specialist' ? 'Обработка...' : '💸 Выплатить исполнителю'}
+                  {resolvingId === d.id + 'pay_specialist' ? 'Обработка...' : <><IconPayout /> Выплатить исполнителю</>}
                 </button>
               </div>
             </div>

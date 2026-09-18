@@ -1,6 +1,7 @@
 import React from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
+import { IconMap, IconMessages, IconTasks, IconUser } from '../components/icons.jsx';
 
 /**
  * Нижняя мобильная навигация.
@@ -108,7 +109,7 @@ export const BottomNav = ({
                     }`}
                 >
                     <div className="relative">
-                        <span className="text-xl">📋</span>
+                        <span className="text-xl"><IconTasks /></span>
                         {feedActive && (
                             <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full bg-accent glow-accent-sm"></span>
                         )}
@@ -128,7 +129,7 @@ export const BottomNav = ({
                     }`}
                 >
                     <div className="relative">
-                        <span className="text-xl">🗺️</span>
+                        <span className="text-xl"><IconMap /></span>
                         {mapActive && (
                             <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full bg-accent glow-accent-sm"></span>
                         )}
@@ -159,7 +160,7 @@ export const BottomNav = ({
                     }`}
                 >
                     <div className="relative">
-                        <span className="text-xl">💬</span>
+                        <span className="text-xl"><IconMessages /></span>
                         {unreadMessagesCount > 0 && (
                             <span className="absolute -top-1 -right-2 min-w-[18px] h-[18px] px-1 bg-danger text-white text-[10px] font-extrabold rounded-full flex items-center justify-center border-2 border-surface animate-pulse">
                                 {unreadMessagesCount > 9 ? '9+' : unreadMessagesCount}
@@ -181,7 +182,7 @@ export const BottomNav = ({
                     }`}
                 >
                     <div className="relative">
-                        <span className="text-xl">👤</span>
+                        <span className="text-xl"><IconUser /></span>
                         {unreadNotificationsCount > 0 && !isProfilePage && (
                             <span className="absolute -top-1 -right-1.5 w-2 h-2 bg-accent rounded-full animate-ping"></span>
                         )}

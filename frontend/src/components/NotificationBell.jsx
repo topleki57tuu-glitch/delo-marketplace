@@ -1,12 +1,21 @@
 import React, { useState, useEffect, useRef } from 'react';
+import {
+    IconBell,
+    IconCheck,
+    IconMail,
+    IconMessages,
+    IconParty,
+    IconStar,
+} from './icons.jsx';
 
 // Используем относительные пути (проксируются vite → backend:8000)
+// Значения — компоненты иконок, а не строки: они рендерятся как JSX-потомок
 const TYPE_ICONS = {
-    new_response: '💬',
-    assigned:     '🎉',
-    message:      '✉️',
-    completed:    '✅',
-    review:       '⭐',
+    new_response: <IconMessages size={18} />,
+    assigned:     <IconParty size={18} />,
+    message:      <IconMail size={18} />,
+    completed:    <IconCheck size={18} />,
+    review:       <IconStar size={18} />,
 };
 
 export const NotificationBell = ({ token }) => {
@@ -101,7 +110,7 @@ export const NotificationBell = ({ token }) => {
                     <div className="max-h-96 overflow-y-auto">
                         {notifications.length === 0 ? (
                             <div className="py-10 text-center text-muted">
-                                <div className="text-4xl mb-2">🔔</div>
+                                <div className="mb-2 flex justify-center text-slate-300 dark:text-slate-600"><IconBell size={36} /></div>
                                 <p className="text-sm font-semibold">Уведомлений пока нет</p>
                             </div>
                         ) : (
@@ -113,7 +122,7 @@ export const NotificationBell = ({ token }) => {
                                 >
                                     <div className="flex gap-3 items-start">
                                         <span className="text-xl mt-0.5 shrink-0">
-                                            {TYPE_ICONS[n.type] || '🔔'}
+                                            {TYPE_ICONS[n.type] || <IconBell size={18} />}
                                         </span>
                                         <div className="flex-1 min-w-0">
                                             <p className="font-bold text-sm leading-tight">

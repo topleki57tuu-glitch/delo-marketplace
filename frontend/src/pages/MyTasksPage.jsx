@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
+import { IconCatBusiness, IconBriefcase, IconCalendar, IconGlobe, IconLock, IconMailOpen, IconMessages, IconPin, IconTools, IconWarning } from '../components/icons.jsx';
 
 const STATUS_META = {
   open:        { label: 'Открыт',     cls: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300' },
@@ -67,7 +68,7 @@ export default function MyTasksPage({ onOpenAuth }) {
     return (
       <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex items-center justify-center p-4">
         <div className="bg-white dark:bg-slate-800 max-w-md w-full p-8 rounded-3xl border border-slate-200 dark:border-slate-700 text-center space-y-4">
-          <div className="text-4xl">🔒</div>
+          <div className="text-4xl"><IconLock /></div>
           <h2 className="text-xl font-extrabold text-slate-900 dark:text-white">Требуется вход</h2>
           <p className="text-sm text-slate-500 dark:text-slate-400">
             Войдите, чтобы видеть свои заказы: опубликованные вами и те, где вы исполнитель.
@@ -98,8 +99,8 @@ export default function MyTasksPage({ onOpenAuth }) {
       {/* Кто я в этих заказах */}
       <div className="flex gap-2 mb-3">
         {[
-          { id: 'customer', label: 'Я заказчик', icon: '💼' },
-          { id: 'executor', label: 'Я исполнитель', icon: '🛠️' },
+          { id: 'customer', label: 'Я заказчик', icon: <IconCatBusiness /> },
+          { id: 'executor', label: 'Я исполнитель', icon: <IconTools /> },
         ].map((r) => (
           <button
             key={r.id}
@@ -139,12 +140,12 @@ export default function MyTasksPage({ onOpenAuth }) {
         </div>
       ) : error ? (
         <div className="py-16 text-center bg-white dark:bg-slate-800 rounded-2xl border border-dashed border-red-300 dark:border-red-800 p-8">
-          <div className="text-4xl mb-3">⚠️</div>
+          <div className="text-4xl mb-3"><IconWarning /></div>
           <p className="text-sm text-red-500">{error}</p>
         </div>
       ) : tasks.length === 0 ? (
         <div className="py-16 text-center bg-white dark:bg-slate-800 rounded-2xl border border-dashed border-slate-300 dark:border-slate-700 p-8">
-          <div className="text-4xl mb-3">📭</div>
+          <div className="text-4xl mb-3"><IconMailOpen /></div>
           <h3 className="text-lg font-bold text-slate-800 dark:text-slate-200 mb-1">
             {role === 'customer' ? 'Вы ещё не публиковали заказы' : 'Вы пока не исполнитель ни по одному заказу'}
           </h3>
@@ -184,18 +185,18 @@ export default function MyTasksPage({ onOpenAuth }) {
                     <span className="font-bold text-slate-800 dark:text-slate-200">
                       {t.budget ? `${t.budget.toLocaleString('ru-RU')} ₽` : 'По договорённости'}
                     </span>
-                    {t.is_remote ? <span>🌐 Удалённо</span> : t.city ? <span>📍 {t.city}</span> : null}
+                    {t.is_remote ? <span><IconGlobe /> Удалённо</span> : t.city ? <span><IconPin /> {t.city}</span> : null}
                   </div>
 
                   <div className="flex items-center gap-3 flex-wrap">
                     {role === 'customer' ? (
                       t.counterparty_name
-                        ? <span>🛠️ Исполнитель: <b>{t.counterparty_name}</b></span>
-                        : <span>💬 Откликов: <b>{t.responses_count}</b></span>
+                        ? <span><IconTools /> Исполнитель: <b>{t.counterparty_name}</b></span>
+                        : <span><IconMessages /> Откликов: <b>{t.responses_count}</b></span>
                     ) : (
-                      <span>💼 Заказчик: <b>{t.counterparty_name || '—'}</b></span>
+                      <span><IconBriefcase /> Заказчик: <b>{t.counterparty_name || '—'}</b></span>
                     )}
-                    {t.deadline && <span>📅 до {t.deadline}</span>}
+                    {t.deadline && <span><IconCalendar /> до {t.deadline}</span>}
                   </div>
 
                   {t.created_at && (

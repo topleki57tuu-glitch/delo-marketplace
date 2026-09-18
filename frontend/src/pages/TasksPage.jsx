@@ -2,21 +2,22 @@ import React, { useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { TaskMap } from '../components/TaskMap';
 import CityInput from '../components/CityInput';
+import { IconCatBeauty, IconCatBusiness, IconCatCleaning, IconCatDelivery, IconCatDesign, IconCatDevelopment, IconCatEvents, IconCatOther, IconCatPhotoVideo, IconCatRepairs, IconCatTutoring, IconCatWriting, IconLightning, IconMap, IconMessages, IconPin, IconSearch } from '../components/icons.jsx';
 
 const CATEGORIES = [
-  { id: 'all', label: 'Все категории', icon: '⚡' },
-  { id: 'development', label: 'Разработка сайтов и IT', icon: '💻' },
-  { id: 'design', label: 'Дизайн и графика', icon: '🎨' },
-  { id: 'writing', label: 'Тексты и переводы', icon: '✍️' },
-  { id: 'repairs', label: 'Ремонт и строительство', icon: '🔨' },
-  { id: 'cleaning', label: 'Уборка и клининг', icon: '✨' },
-  { id: 'delivery', label: 'Курьеры и доставка', icon: '🚚' },
-  { id: 'photo_video', label: 'Фото и видео', icon: '📷' },
-  { id: 'tutoring', label: 'Репетиторы', icon: '📚' },
-  { id: 'beauty', label: 'Красота', icon: '💅' },
-  { id: 'events', label: 'Мероприятия', icon: '🎉' },
-  { id: 'business', label: 'Бизнес-услуги', icon: '💼' },
-  { id: 'other', label: 'Другое', icon: '📦' },
+  { id: 'all', label: 'Все категории', icon: <IconLightning /> },
+  { id: 'development', label: 'Разработка сайтов и IT', icon: <IconCatDevelopment /> },
+  { id: 'design', label: 'Дизайн и графика', icon: <IconCatDesign /> },
+  { id: 'writing', label: 'Тексты и переводы', icon: <IconCatWriting /> },
+  { id: 'repairs', label: 'Ремонт и строительство', icon: <IconCatRepairs /> },
+  { id: 'cleaning', label: 'Уборка и клининг', icon: <IconCatCleaning /> },
+  { id: 'delivery', label: 'Курьеры и доставка', icon: <IconCatDelivery /> },
+  { id: 'photo_video', label: 'Фото и видео', icon: <IconCatPhotoVideo /> },
+  { id: 'tutoring', label: 'Репетиторы', icon: <IconCatTutoring /> },
+  { id: 'beauty', label: 'Красота', icon: <IconCatBeauty /> },
+  { id: 'events', label: 'Мероприятия', icon: <IconCatEvents /> },
+  { id: 'business', label: 'Бизнес-услуги', icon: <IconCatBusiness /> },
+  { id: 'other', label: 'Другое', icon: <IconCatOther /> },
 ];
 
 export default function TasksPage({
@@ -92,7 +93,7 @@ export default function TasksPage({
                 : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700'
             }`}
           >
-            <span>🗺️</span>
+            <span><IconMap /></span>
             <span>{showMap ? 'Скрыть карту' : 'Показать на карте'}</span>
           </button>
 
@@ -123,7 +124,7 @@ export default function TasksPage({
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-10 pr-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
             />
-            <span className="absolute left-3 top-3 text-slate-400">🔍</span>
+            <span className="absolute left-3 top-3 text-slate-400"><IconSearch /></span>
           </div>
 
           {/* City Input */}
@@ -203,7 +204,7 @@ export default function TasksPage({
         </div>
       ) : filteredTasks.length === 0 ? (
         <div className="py-16 text-center bg-white dark:bg-slate-800 rounded-2xl border border-dashed border-slate-300 dark:border-slate-700 p-8">
-          <div className="text-4xl mb-3">🔍</div>
+          <div className="text-4xl mb-3"><IconSearch /></div>
           <h3 className="text-lg font-bold text-slate-800 dark:text-slate-200 mb-1">Ничего не найдено</h3>
           <p className="text-sm text-slate-500 dark:text-slate-400 max-w-sm mx-auto mb-4">
             Попробуйте изменить параметры поиска или сбросить фильтры.
@@ -252,12 +253,12 @@ export default function TasksPage({
 
               <div className="pt-3 border-t border-slate-100 dark:border-slate-700/50 flex items-center justify-between text-xs text-slate-400">
                 <div className="flex items-center gap-1.5">
-                  <span>📍</span>
+                  <span><IconPin /></span>
                   <span>{t.is_remote ? 'Удаленно' : t.city || 'Город не указан'}</span>
                 </div>
                 <div className="flex items-center gap-2">
                   {t.responses_count !== undefined && (
-                    <span className="text-indigo-500 font-medium">💬 {t.responses_count}</span>
+                    <span className="text-indigo-500 font-medium"><IconMessages /> {t.responses_count}</span>
                   )}
                   <span className="text-slate-400 group-hover:translate-x-0.5 transition-transform">
                     Подробнее &rarr;

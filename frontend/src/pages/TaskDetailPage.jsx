@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useToast } from '../components/Toast';
+import { IconCheck, IconOnline, IconStarEmpty, IconCalendar, IconJustice, IconMessages, IconPin, IconQuestion, IconStar, IconUser, IconWarning } from '../components/icons.jsx';
 
 export default function TaskDetailPage({ user, token, onOpenAuth, onOpenChat, onOpenPublicProfile }) {
   const { taskId } = useParams();
@@ -250,7 +251,7 @@ export default function TaskDetailPage({ user, token, onOpenAuth, onOpenChat, on
     return (
       <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex items-center justify-center p-4">
         <div className="bg-white dark:bg-slate-800 p-8 rounded-2xl text-center space-y-4 max-w-md w-full shadow-lg">
-          <div className="text-4xl">❓</div>
+          <div className="text-4xl"><IconQuestion /></div>
           <h2 className="text-xl font-bold">Заказ не найден</h2>
           <button
             onClick={() => navigate('/tasks')}
@@ -306,11 +307,11 @@ export default function TaskDetailPage({ user, token, onOpenAuth, onOpenChat, on
                       : 'bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-300'
                   }`}
                 >
-                  {task.status === 'open' ? '🟢 Открыт'
-                    : task.status === 'in_progress' ? '🟡 В работе'
-                    : task.status === 'disputed' ? '🔴 Арбитраж'
+                  {task.status === 'open' ? <><IconOnline /> Открыт</>
+                    : task.status === 'in_progress' ? <><IconOnline /> В работе</>
+                    : task.status === 'disputed' ? <><IconOnline /> Арбитраж</>
                     : task.status === 'cancelled' ? 'Отменён'
-                    : '✅ Завершен'}
+                    : <><IconCheck /> Завершен</>}
                 </span>
               </div>
 
@@ -357,27 +358,27 @@ export default function TaskDetailPage({ user, token, onOpenAuth, onOpenChat, on
             <div>
               <span className="block text-slate-400 text-xs mb-0.5">Локация</span>
               <span className="font-semibold text-slate-800 dark:text-slate-200">
-                📍 {task.is_remote ? 'Удаленная работа' : task.city || 'Не указан'}
+                <IconPin /> {task.is_remote ? 'Удаленная работа' : task.city || 'Не указан'}
               </span>
             </div>
             {task.deadline && (
               <div>
                 <span className="block text-slate-400 text-xs mb-0.5">Срок сдачи</span>
                 <span className="font-semibold text-slate-800 dark:text-slate-200">
-                  📅 {new Date(task.deadline).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })}
+                  <IconCalendar /> {new Date(task.deadline).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })}
                 </span>
               </div>
             )}
             <div>
               <span className="block text-slate-400 text-xs mb-0.5">Заказчик</span>
               <span className="font-semibold text-slate-800 dark:text-slate-200">
-                👤 {task.customer_name || 'Заказчик'}
+                <IconUser /> {task.customer_name || 'Заказчик'}
               </span>
             </div>
             <div>
               <span className="block text-slate-400 text-xs mb-0.5">Откликов</span>
               <span className="font-semibold text-indigo-600 dark:text-indigo-400">
-                💬 {responses.length || task.responses_count || 0}
+                <IconMessages /> {responses.length || task.responses_count || 0}
               </span>
             </div>
           </div>
@@ -390,7 +391,7 @@ export default function TaskDetailPage({ user, token, onOpenAuth, onOpenChat, on
                   onClick={() => onOpenChat(task.id)}
                   className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl text-sm flex items-center gap-2 shadow-md shadow-indigo-600/20 transition-all"
                 >
-                  <span>💬</span>
+                  <span><IconMessages /></span>
                   <span>Открыть чат сделки</span>
                 </button>
               )}
@@ -403,7 +404,7 @@ export default function TaskDetailPage({ user, token, onOpenAuth, onOpenChat, on
                   disabled={completing}
                   className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-sm shadow-md shadow-emerald-600/20 transition-all"
                 >
-                  {completing ? 'Завершение...' : '✅ Подтвердить выполнение и выплатить'}
+                  {completing ? 'Завершение...' : <><IconCheck /> Подтвердить выполнение и выплатить</>}
                 </button>
               )}
 
@@ -412,7 +413,7 @@ export default function TaskDetailPage({ user, token, onOpenAuth, onOpenChat, on
                   onClick={() => setShowDisputeModal(true)}
                   className="px-4 py-2.5 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/40 font-bold rounded-xl text-sm border border-red-200 dark:border-red-800 transition-all"
                 >
-                  ⚠️ Открыть спор
+                  <IconWarning /> Открыть спор
                 </button>
               )}
 
@@ -517,7 +518,7 @@ export default function TaskDetailPage({ user, token, onOpenAuth, onOpenChat, on
                           )}
                         </div>
                         <div className="flex items-center gap-2 text-xs text-slate-400">
-                          <span>⭐ {resp.specialist_rating || '5.0'}</span>
+                          <span><IconStar /> {resp.specialist_rating || '5.0'}</span>
                           <span>•</span>
                           <span>{resp.specialist_completed_tasks || 0} заданий</span>
                         </div>
@@ -568,7 +569,7 @@ export default function TaskDetailPage({ user, token, onOpenAuth, onOpenChat, on
       {dispute && dispute.status === 'open' && (
         <div className="max-w-4xl mx-auto mt-6 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-2xl p-4 sm:p-5">
           <div className="flex items-start gap-3">
-            <span className="text-xl">⚖️</span>
+            <span className="text-xl"><IconJustice /></span>
             <div className="text-sm">
               <p className="font-bold text-red-700 dark:text-red-300">Спор открыт — средства заморожены</p>
               <p className="text-red-600 dark:text-red-400 mt-1">
@@ -584,7 +585,7 @@ export default function TaskDetailPage({ user, token, onOpenAuth, onOpenChat, on
       {dispute && dispute.status !== 'open' && dispute.resolution_comment && (
         <div className="max-w-4xl mx-auto mt-6 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 sm:p-5">
           <div className="flex items-start gap-3">
-            <span className="text-xl">⚖️</span>
+            <span className="text-xl"><IconJustice /></span>
             <div className="text-sm">
               <p className="font-bold text-slate-700 dark:text-slate-200">Спор закрыт</p>
               <p className="text-slate-500 dark:text-slate-400 mt-1">{dispute.resolution_comment}</p>
@@ -650,7 +651,7 @@ export default function TaskDetailPage({ user, token, onOpenAuth, onOpenChat, on
                     onClick={() => setReviewRating(star)}
                     className="text-3xl transition-transform hover:scale-125 focus:outline-none"
                   >
-                    {star <= reviewRating ? '⭐' : '☆'}
+                    {star <= reviewRating ? <IconStar /> : <IconStarEmpty />}
                   </button>
                 ))}
               </div>

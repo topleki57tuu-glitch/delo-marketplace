@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
+import { IconClose, IconInbox, IconLock, IconMessages } from '../components/icons.jsx';
 
 // Используем относительные пути: Vite proxies /tasks → backend:8000
 
@@ -42,7 +43,7 @@ export const ChatsDrawer = ({ isOpen, onClose, onSelectTask, onOpenAuth }) => {
                 {/* Header */}
                 <div className="flex items-center justify-between pb-4 border-b border-border">
                     <div className="flex items-center gap-2">
-                        <span className="text-2xl">💬</span>
+                        <span className="text-2xl"><IconMessages /></span>
                         <h2 className="font-display font-bold text-lg md:text-xl uppercase">
                             Мои чаты и диалоги
                         </h2>
@@ -52,7 +53,7 @@ export const ChatsDrawer = ({ isOpen, onClose, onSelectTask, onOpenAuth }) => {
                         onClick={close}
                         className="w-9 h-9 rounded-xl bg-surface-2 border border-border text-ink hover:border-accent hover:text-accent flex items-center justify-center font-bold transition"
                     >
-                        ✕
+                        <IconClose />
                     </button>
                 </div>
 
@@ -60,7 +61,7 @@ export const ChatsDrawer = ({ isOpen, onClose, onSelectTask, onOpenAuth }) => {
                 <div className="flex-1 overflow-y-auto py-4 space-y-3">
                     {!isAuth ? (
                         <div className="text-center py-12 px-4">
-                            <span className="text-4xl block mb-3">🔒</span>
+                            <span className="text-4xl block mb-3"><IconLock /></span>
                             <h3 className="font-bold text-base uppercase">Требуется вход</h3>
                             <p className="text-xs text-muted mt-2">
                                 Войдите в аккаунт, чтобы просматривать переписку с заказчиками и исполнителями.
@@ -91,7 +92,7 @@ export const ChatsDrawer = ({ isOpen, onClose, onSelectTask, onOpenAuth }) => {
                         </div>
                     ) : tasks.length === 0 ? (
                         <div className="text-center py-12 px-4 rounded-2xl border border-dashed border-border/80 my-4">
-                            <span className="text-4xl block mb-2">📬</span>
+                            <span className="text-4xl block mb-2"><IconInbox /></span>
                             <h3 className="font-bold text-sm uppercase">Нет активных диалогов</h3>
                             <p className="text-xs text-muted mt-1 max-w-xs mx-auto">
                                 Когда вы откликнетесь на заказ или назначите исполнителя, здесь появится рабочий чат.

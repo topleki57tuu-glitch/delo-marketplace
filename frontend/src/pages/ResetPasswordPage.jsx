@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useSearchParams, useNavigate, Link } from 'react-router-dom';
 import { useToast } from '../components/Toast';
+import { IconKey } from '../components/icons.jsx';
 
 export default function ResetPasswordPage() {
   const [searchParams] = useSearchParams();
@@ -45,7 +46,7 @@ export default function ResetPasswordPage() {
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex items-center justify-center p-4">
       <div className="bg-white dark:bg-slate-800 p-8 rounded-3xl max-w-md w-full space-y-5 shadow-xl border border-slate-200 dark:border-slate-700">
         <div className="text-center space-y-2">
-          <div className="text-4xl">🔑</div>
+          <div className="text-4xl"><IconKey /></div>
           <h1 className="text-xl font-bold text-slate-900 dark:text-white">Новый пароль</h1>
         </div>
 

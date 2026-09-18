@@ -1,15 +1,16 @@
 import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { IconCatBeauty, IconCatCleaning, IconCatDelivery, IconCatDesign, IconCatDevelopment, IconCatPhotoVideo, IconCatRepairs, IconCatTutoring, IconAdmin, IconLightning, IconMessages, IconRocket, IconStar } from '../components/icons.jsx';
 
 const CATEGORIES = [
-  { id: 'development', label: 'Разработка сайтов и IT', icon: '💻', count: '120+' },
-  { id: 'design', label: 'Дизайн и графика', icon: '🎨', count: '85+' },
-  { id: 'repairs', label: 'Ремонт и строительство', icon: '🔨', count: '240+' },
-  { id: 'cleaning', label: 'Уборка и клининг', icon: '✨', count: '90+' },
-  { id: 'delivery', label: 'Курьеры и доставка', icon: '🚚', count: '150+' },
-  { id: 'photo_video', label: 'Фото и видеосъемка', icon: '📷', count: '65+' },
-  { id: 'tutoring', label: 'Репетиторы и обучение', icon: '📚', count: '110+' },
-  { id: 'beauty', label: 'Красота и здоровье', icon: '💅', count: '75+' },
+  { id: 'development', label: 'Разработка сайтов и IT', icon: <IconCatDevelopment />, count: '120+' },
+  { id: 'design', label: 'Дизайн и графика', icon: <IconCatDesign />, count: '85+' },
+  { id: 'repairs', label: 'Ремонт и строительство', icon: <IconCatRepairs />, count: '240+' },
+  { id: 'cleaning', label: 'Уборка и клининг', icon: <IconCatCleaning />, count: '90+' },
+  { id: 'delivery', label: 'Курьеры и доставка', icon: <IconCatDelivery />, count: '150+' },
+  { id: 'photo_video', label: 'Фото и видеосъемка', icon: <IconCatPhotoVideo />, count: '65+' },
+  { id: 'tutoring', label: 'Репетиторы и обучение', icon: <IconCatTutoring />, count: '110+' },
+  { id: 'beauty', label: 'Красота и здоровье', icon: <IconCatBeauty />, count: '75+' },
 ];
 
 export default function HomePage({ user, onOpenAuth, onOpenCreateTask }) {
@@ -22,7 +23,7 @@ export default function HomePage({ user, onOpenAuth, onOpenCreateTask }) {
         <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-10">
           <div className="flex-1 text-center md:text-left space-y-6">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-500/20 text-indigo-200 border border-indigo-400/30 text-sm font-medium">
-              <span>🚀</span>
+              <span><IconRocket /></span>
               <span>Платформа безопасных сделок №1</span>
             </div>
             <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight leading-tight">
@@ -55,7 +56,7 @@ export default function HomePage({ user, onOpenAuth, onOpenCreateTask }) {
 
           <div className="flex-1 w-full max-w-md bg-white/10 p-6 rounded-2xl border border-white/20 backdrop-blur-md shadow-2xl text-white">
             <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
-              <span>⚡</span>
+              <span><IconLightning /></span>
               <span>Как работает сервис</span>
             </h3>
             <div className="space-y-4">
@@ -122,21 +123,21 @@ export default function HomePage({ user, onOpenAuth, onOpenCreateTask }) {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8 text-center md:text-left">
             <div className="space-y-3">
               <div className="w-12 h-12 rounded-2xl bg-indigo-500/20 text-indigo-400 flex items-center justify-center text-2xl mx-auto md:mx-0">
-                🛡️
+                <IconAdmin />
               </div>
               <h3 className="text-xl font-bold">Эскроу защита</h3>
               <p className="text-sm text-slate-300">Деньги находятся в безопасности на специальном счете до окончания работы.</p>
             </div>
             <div className="space-y-3">
               <div className="w-12 h-12 rounded-2xl bg-amber-500/20 text-amber-400 flex items-center justify-center text-2xl mx-auto md:mx-0">
-                ⭐
+                <IconStar />
               </div>
               <h3 className="text-xl font-bold">Честные отзывы</h3>
               <p className="text-sm text-slate-300">Отзывы и оценки могут оставлять только реальные участники завершенных сделок.</p>
             </div>
             <div className="space-y-3">
               <div className="w-12 h-12 rounded-2xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center text-2xl mx-auto md:mx-0">
-                💬
+                <IconMessages />
               </div>
               <h3 className="text-xl font-bold">Чат в реальном времени</h3>
               <p className="text-sm text-slate-300">Обсуждайте детали, обменивайтесь файлами и согласовывайте условия онлайн.</p>

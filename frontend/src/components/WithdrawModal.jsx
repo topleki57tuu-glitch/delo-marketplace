@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
 import { useToast } from './Toast';
 import { useAuthStore } from '../store/authStore';
+import { IconCard, IconCatElectronics, IconClose } from '../components/icons.jsx';
 
 const MIN_AMOUNT = 500;
 
 const METHODS = [
-  { id: 'card', label: 'На карту', icon: '💳', hint: 'Номер карты, 16 цифр' },
-  { id: 'sbp',  label: 'По СБП',   icon: '📱', hint: 'Номер телефона, привязанный к банку' },
+  { id: 'card', label: 'На карту', icon: <IconCard />, hint: 'Номер карты, 16 цифр' },
+  { id: 'sbp',  label: 'По СБП',   icon: <IconCatElectronics />, hint: 'Номер телефона, привязанный к банку' },
 ];
 
 /**
@@ -71,7 +72,7 @@ export const WithdrawModal = ({ balance = 0, onClose, onCreated }) => {
             aria-label="Закрыть"
             className="shrink-0 w-8 h-8 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-500 hover:text-slate-900 dark:hover:text-white font-bold transition"
           >
-            ✕
+            <IconClose />
           </button>
         </div>
 

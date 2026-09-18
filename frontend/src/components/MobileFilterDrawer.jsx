@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import CityInput from './CityInput';
+import { IconGlobe, IconSparkles } from '../components/icons.jsx';
 
 export const MobileFilterDrawer = ({
     isOpen,
@@ -97,7 +98,7 @@ export const MobileFilterDrawer = ({
                                         : 'bg-surface-2 text-ink border-border'
                                 }`}
                             >
-                                🌟 Все категории
+                                <IconSparkles /> Все категории
                             </button>
                             {categories.map((cat) => (
                                 <button
@@ -132,7 +133,7 @@ export const MobileFilterDrawer = ({
                     {/* 3. Remote Only */}
                     <div>
                         <label className="flex items-center justify-between p-3.5 rounded-xl border border-border bg-surface-2 cursor-pointer select-none">
-                            <span className="font-bold text-sm text-ink">🌐 Только удалённая работа</span>
+                            <span className="font-bold text-sm text-ink"><IconGlobe /> Только удалённая работа</span>
                             <input
                                 type="checkbox"
                                 checked={remoteOnly}

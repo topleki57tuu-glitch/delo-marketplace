@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useProductsStore } from '../store/productsStore';
 import { useAuthStore } from '../store/authStore';
 import './MyProductsPage.css';
+import { IconCheck, IconClose, IconRecycle, IconTrash, IconWarning, IconBox, IconEdit, IconEye } from '../components/icons.jsx';
 
 export default function MyProductsPage() {
   const navigate = useNavigate();
@@ -54,11 +55,11 @@ export default function MyProductsPage() {
   const getStatusLabel = (status) => {
     switch (status) {
       case 'active':
-        return { label: 'Активен', color: '#28a745', icon: '✓' };
+        return { label: 'Активен', color: '#28a745', icon: <IconCheck /> };
       case 'sold_out':
-        return { label: 'Нет в наличии', color: '#ffc107', icon: '⚠' };
+        return { label: 'Нет в наличии', color: '#ffc107', icon: <IconWarning /> };
       case 'removed':
-        return { label: 'Удалён', color: '#6c757d', icon: '✖' };
+        return { label: 'Удалён', color: '#6c757d', icon: <IconClose /> };
       default:
         return { label: status, color: '#999', icon: '•' };
     }
@@ -89,7 +90,7 @@ export default function MyProductsPage() {
       ) : myProducts.length === 0 ? (
         <div className="no-products">
           <div className="empty-state">
-            <div className="empty-icon">📦</div>
+            <div className="empty-icon"><IconBox /></div>
             <h2>У вас пока нет товаров</h2>
             <p>Создайте первый товар и начните продавать</p>
             <button
@@ -135,10 +136,10 @@ export default function MyProductsPage() {
                     {product.first_image ? (
                       <img src={product.first_image} alt={product.title} />
                     ) : (
-                      <div className="no-image">📦</div>
+                      <div className="no-image"><IconBox /></div>
                     )}
                     <div className="product-condition">
-                      {product.condition === 'new' ? '🆕' : '♻️'}
+                      {product.condition === 'new' ? '🆕' : <IconRecycle />}
                     </div>
                   </div>
 
@@ -193,20 +194,20 @@ export default function MyProductsPage() {
                         className="btn btn-secondary btn-sm"
                         onClick={() => navigate(`/products/${product.id}`)}
                       >
-                        👁 Просмотр
+                        <IconEye /> Просмотр
                       </button>
                       <button
                         className="btn btn-secondary btn-sm"
                         onClick={() => navigate(`/products/${product.id}/edit`)}
                       >
-                        ✏️ Редактировать
+                        <IconEdit /> Редактировать
                       </button>
                       <button
                         className="btn btn-danger btn-sm"
                         onClick={() => handleDelete(product.id, product.title)}
                         disabled={isDeleting}
                       >
-                        {isDeleting ? 'Удаление...' : '🗑 Удалить'}
+                        {isDeleting ? 'Удаление...' : <><IconTrash /> Удалить</>}
                       </button>
                     </div>
                   </div>

@@ -1,4 +1,5 @@
 import React from 'react';
+import { IconWarning } from '../components/icons.jsx';
 
 export class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -30,7 +31,7 @@ export class ErrorBoundary extends React.Component {
         <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-900 p-4">
           <div className="max-w-md w-full bg-white dark:bg-slate-800 rounded-2xl p-8 text-center border border-slate-200 dark:border-slate-700 shadow-xl">
             <div className="text-6xl mb-4" role="img" aria-label="Предупреждение">
-              ⚠️
+              <IconWarning />
             </div>
             <h1 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">
               Что-то пошло не так

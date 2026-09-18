@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
+import { IconClose, IconPin, IconTarget, IconWarning } from '../components/icons.jsx';
 
 const YANDEX_API_KEY = import.meta.env.VITE_YANDEX_MAPS_API_KEY || '';
 const MOSCOW_CENTER = [55.751574, 37.573856];
@@ -21,7 +22,7 @@ export function calculateDistance(lat1, lon1, lat2, lon2) {
 const CATEGORY_ICONS = {
     design: '🎨',
     development: '💻',
-    writing: '✍️',
+    writing: '✍',
     repairs: '🔧',
     cleaning: '🧹',
     delivery: '🚚',
@@ -360,7 +361,7 @@ export const TaskMap = ({
             {/* Error Overlay */}
             {mapError && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center bg-surface/95 p-6 text-center z-20">
-                    <div className="text-4xl mb-3">⚠️</div>
+                    <div className="text-4xl mb-3"><IconWarning /></div>
                     <p className="font-bold text-ink text-base">{mapError}</p>
                     <button
                         onClick={() => { setMapError(null); initMap(); }}
@@ -394,7 +395,7 @@ export const TaskMap = ({
                             {geoLocating ? (
                                 <span className="animate-spin text-sm">⏳</span>
                             ) : (
-                                <span className="text-sm">📍</span>
+                                <span className="text-sm"><IconPin /></span>
                             )}
                             <span className="hidden sm:inline">Рядом со мной</span>
                         </button>
@@ -405,7 +406,7 @@ export const TaskMap = ({
                             title="Показать все заказы на карте"
                             className="px-2.5 py-1.5 bg-surface-2 hover:bg-elevated text-ink rounded-lg text-xs font-bold transition flex items-center gap-1"
                         >
-                            <span>🎯</span>
+                            <span><IconTarget /></span>
                             <span className="hidden sm:inline">Все метки ({filteredTasks.length})</span>
                         </button>
                     </div>
@@ -480,7 +481,7 @@ export const TaskMap = ({
                                 </span>
                                 {userLocation && (
                                     <span className="rounded-full bg-accent/20 border border-accent/40 text-accent-bright text-[10px] font-bold px-2 py-0.5">
-                                        📍 ~{calculateDistance(userLocation[0], userLocation[1], activePreviewTask.latitude, activePreviewTask.longitude)} км от вас
+                                        <IconPin /> ~{calculateDistance(userLocation[0], userLocation[1], activePreviewTask.latitude, activePreviewTask.longitude)} км от вас
                                     </span>
                                 )}
                             </div>
@@ -490,7 +491,7 @@ export const TaskMap = ({
                                 className="w-7 h-7 rounded-full bg-surface-2 hover:bg-elevated text-muted hover:text-ink flex items-center justify-center text-sm font-bold transition"
                                 title="Закрыть"
                             >
-                                ✕
+                                <IconClose />
                             </button>
                         </div>
 
@@ -506,7 +507,7 @@ export const TaskMap = ({
 
                         {/* Address & Description */}
                         <div className="text-xs text-muted mb-2 flex items-center gap-1.5 font-medium">
-                            <span>📍 {activePreviewTask.city}{activePreviewTask.address ? `, ${activePreviewTask.address}` : ''}</span>
+                            <span><IconPin /> {activePreviewTask.city}{activePreviewTask.address ? `, ${activePreviewTask.address}` : ''}</span>
                         </div>
                         <p className="text-xs text-ink/80 line-clamp-2 mb-3 leading-relaxed">
                             {activePreviewTask.description}
@@ -691,7 +692,7 @@ export const LocationPicker = ({
         <div className="w-full relative">
             <div className="flex items-center justify-between gap-2 mb-2">
                 <span className="text-xs font-bold text-muted uppercase tracking-wider">
-                    📍 Укажите точку на карте
+                    <IconPin /> Укажите точку на карте
                 </span>
                 <button
                     type="button"

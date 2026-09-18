@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useToast } from './Toast';
+import { IconCard, IconCheck, IconClose, IconLink } from '../components/icons.jsx';
 
 /**
  * Модальное окно для пополнения через ЮMoney
@@ -101,7 +102,7 @@ export function PaymentModal({ onClose, onSuccess, token }) {
             onClick={onClose}
             className="text-slate-400 hover:text-slate-600 text-lg"
           >
-            ✕
+            <IconClose />
           </button>
         </div>
 
@@ -109,7 +110,7 @@ export function PaymentModal({ onClose, onSuccess, token }) {
           <form onSubmit={handleCreatePayment} className="space-y-4">
             <div className="bg-indigo-50 dark:bg-indigo-950/30 p-4 rounded-xl border border-indigo-200 dark:border-indigo-800 text-sm space-y-2">
               <div className="flex items-center gap-2 font-semibold text-indigo-700 dark:text-indigo-300">
-                <span>💳</span> Оплата через ЮMoney
+                <span><IconCard /></span> Оплата через ЮMoney
               </div>
               <p className="text-xs text-slate-600 dark:text-slate-400">
                 Принимаем банковские карты, ЮMoney кошельки и другие способы оплаты
@@ -166,7 +167,7 @@ export function PaymentModal({ onClose, onSuccess, token }) {
           <div className="space-y-4">
             <div className="bg-emerald-50 dark:bg-emerald-950/30 p-4 rounded-xl border border-emerald-200 dark:border-emerald-800 space-y-2">
               <div className="flex items-center gap-2 font-semibold text-emerald-700 dark:text-emerald-300">
-                <span>✓</span> Платеж создан
+                <span><IconCheck /></span> Платеж создан
               </div>
               <p className="text-sm text-slate-700 dark:text-slate-300">
                 Сумма: <span className="font-bold">{paymentData.amount} ₽</span>
@@ -193,14 +194,14 @@ export function PaymentModal({ onClose, onSuccess, token }) {
                 disabled={checkingPayment}
                 className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold rounded-xl shadow-md transition-all"
               >
-                {checkingPayment ? 'Проверка...' : '✓ Проверить статус платежа'}
+                {checkingPayment ? 'Проверка...' : <><IconCheck /> Проверить статус платежа</>}
               </button>
 
               <button
                 onClick={() => window.open(paymentData.confirmation_url, '_blank')}
                 className="w-full py-2.5 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-300 font-semibold rounded-xl text-sm transition-colors"
               >
-                🔗 Открыть форму оплаты снова
+                <IconLink /> Открыть форму оплаты снова
               </button>
 
               <button

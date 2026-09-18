@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useToast } from './Toast';
 import { useAuthStore } from '../store/authStore';
+import { IconCheck, IconClose, IconFolder, IconGlobe, IconIdea, IconPin, IconSparkles, IconWallet } from '../components/icons.jsx';
 
 const EXAMPLE_PROMPTS = [
     "Починить стиральную машину Samsung, течет вода снизу, Москва, ул. Тверская 10",
@@ -83,7 +84,7 @@ export const AITaskAssistant = ({ onApplySuggestion, onClose, currentTask }) => 
                 <div className="relative flex items-start justify-between gap-3 mb-3">
                     <div className="flex items-center gap-2">
                         <span className="w-8 h-8 rounded-xl bg-accent/20 border border-accent/40 flex items-center justify-center text-lg">
-                            ✨
+                            <IconSparkles />
                         </span>
                         <div>
                             <h4 className="font-display font-bold uppercase text-sm text-ink flex items-center gap-2">
@@ -104,7 +105,7 @@ export const AITaskAssistant = ({ onApplySuggestion, onClose, currentTask }) => 
                         aria-label="Закрыть AI-помощник"
                         className="shrink-0 w-8 h-8 rounded-xl bg-surface border border-border text-muted hover:text-ink hover:border-accent flex items-center justify-center font-bold transition"
                     >
-                        ✕
+                        <IconClose />
                     </button>
                 </div>
 
@@ -149,7 +150,7 @@ export const AITaskAssistant = ({ onApplySuggestion, onClose, currentTask }) => 
                                     Анализирую...
                                 </>
                             ) : (
-                                <>✨ Разобрать с AI</>
+                                <><IconSparkles /> Разобрать с AI</>
                             )}
                         </button>
 
@@ -174,7 +175,7 @@ export const AITaskAssistant = ({ onApplySuggestion, onClose, currentTask }) => 
                                     Результат анализа
                                 </span>
                                 <span className="text-xs font-bold text-ink">
-                                    💰 Рекомендуемый бюджет:{' '}
+                                    <IconWallet /> Рекомендуемый бюджет:{' '}
                                     <span className="text-accent">{result.suggested_budget} ₽</span>
                                 </span>
                             </div>
@@ -184,11 +185,11 @@ export const AITaskAssistant = ({ onApplySuggestion, onClose, currentTask }) => 
                             </div>
 
                             <div className="text-xs text-muted flex items-center gap-3 flex-wrap mb-3">
-                                <span>📂 Категория: <b>{categoryLabel}</b></span>
+                                <span><IconFolder /> Категория: <b>{categoryLabel}</b></span>
                                 {result.is_remote ? (
-                                    <span>🌐 Удалённо</span>
+                                    <span><IconGlobe /> Удалённо</span>
                                 ) : (
-                                    <span>📍 {result.city || 'Город не распознан'}</span>
+                                    <span><IconPin /> {result.city || 'Город не распознан'}</span>
                                 )}
                             </div>
 
@@ -198,7 +199,7 @@ export const AITaskAssistant = ({ onApplySuggestion, onClose, currentTask }) => 
 
                             {result.explanation && (
                                 <div className="p-2.5 rounded-lg bg-accent/5 border border-accent/20 text-[11px] text-muted mb-4">
-                                    💡 {result.explanation}
+                                    <IconIdea /> {result.explanation}
                                 </div>
                             )}
 
@@ -207,7 +208,7 @@ export const AITaskAssistant = ({ onApplySuggestion, onClose, currentTask }) => 
                                 onClick={handleApply}
                                 className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-accent text-white px-5 py-2.5 font-display text-xs uppercase tracking-wider transition hover:bg-accent-bright hover:glow-accent-sm active:scale-[0.98]"
                             >
-                                ✅ Использовать эти данные в заказе
+                                <IconCheck /> Использовать эти данные в заказе
                             </button>
                         </div>
                     </div>

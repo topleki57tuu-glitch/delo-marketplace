@@ -3,15 +3,16 @@ import { useNavigate } from 'react-router-dom';
 import { useProductsStore } from '../store/productsStore';
 import { useAuthStore } from '../store/authStore';
 import './MyOrdersPage.css';
+import { IconPin, IconCatDelivery, IconCatOther, IconClose, IconCheck, IconDelivery, IconPurchases, IconWallet, IconWarning } from '../components/icons.jsx';
 
 const ORDER_STATUS_LABELS = {
   pending: { label: 'Ожидает подтверждения', icon: '⏳', color: '#ffc107' },
-  confirmed: { label: 'Подтверждён', icon: '✅', color: '#28a745' },
-  shipped: { label: 'Отправлен', icon: '🚚', color: '#007bff' },
-  delivered: { label: 'Доставлен', icon: '📦', color: '#17a2b8' },
-  completed: { label: 'Завершён', icon: '✓', color: '#28a745' },
-  disputed: { label: 'Спор', icon: '⚠️', color: '#dc3545' },
-  cancelled: { label: 'Отменён', icon: '✖', color: '#6c757d' },
+  confirmed: { label: 'Подтверждён', icon: <IconCheck />, color: '#28a745' },
+  shipped: { label: 'Отправлен', icon: <IconCatDelivery />, color: '#007bff' },
+  delivered: { label: 'Доставлен', icon: <IconCatOther />, color: '#17a2b8' },
+  completed: { label: 'Завершён', icon: <IconCheck />, color: '#28a745' },
+  disputed: { label: 'Спор', icon: <IconWarning />, color: '#dc3545' },
+  cancelled: { label: 'Отменён', icon: <IconClose />, color: '#6c757d' },
 };
 
 export default function MyOrdersPage() {
@@ -168,7 +169,7 @@ export default function MyOrdersPage() {
           <div className="detail-row">
             <span>Способ получения:</span>
             <span>
-              {order.delivery_method === 'pickup' ? '📍 Самовывоз' : '🚚 Доставка'}
+              {order.delivery_method === 'pickup' ? <><IconPin /> Самовывоз</> : <><IconCatDelivery /> Доставка</>}
             </span>
           </div>
           {order.delivery_address && (
@@ -209,7 +210,7 @@ export default function MyOrdersPage() {
                   onClick={() => handleConfirm(order.id)}
                   disabled={isLoading}
                 >
-                  ✅ Подтвердить заказ
+                  <IconCheck /> Подтвердить заказ
                 </button>
                 <button
                   className="btn btn-secondary"
@@ -237,7 +238,7 @@ export default function MyOrdersPage() {
                   onClick={() => handleShip(order.id)}
                   disabled={isLoading}
                 >
-                  🚚 Отправить
+                  <IconDelivery /> Отправить
                 </button>
               </div>
             )}
@@ -248,7 +249,7 @@ export default function MyOrdersPage() {
                 onClick={() => handleDispute(order.id)}
                 disabled={isLoading}
               >
-                ⚠️ Открыть спор
+                <IconWarning /> Открыть спор
               </button>
             )}
           </div>
@@ -273,7 +274,7 @@ export default function MyOrdersPage() {
                 onClick={() => handleComplete(order.id)}
                 disabled={isLoading}
               >
-                ✓ Подтвердить получение
+                <IconCheck /> Подтвердить получение
               </button>
             )}
 
@@ -283,7 +284,7 @@ export default function MyOrdersPage() {
                 onClick={() => handleDispute(order.id)}
                 disabled={isLoading}
               >
-                ⚠️ Открыть спор
+                <IconWarning /> Открыть спор
               </button>
             )}
           </div>
@@ -308,13 +309,13 @@ export default function MyOrdersPage() {
           className={`tab ${activeTab === 'purchases' ? 'active' : ''}`}
           onClick={() => setActiveTab('purchases')}
         >
-          🛒 Покупки ({orders.purchases?.length || 0})
+          <IconPurchases /> Покупки ({orders.purchases?.length || 0})
         </button>
         <button
           className={`tab ${activeTab === 'sales' ? 'active' : ''}`}
           onClick={() => setActiveTab('sales')}
         >
-          💰 Продажи ({orders.sales?.length || 0})
+          <IconWallet /> Продажи ({orders.sales?.length || 0})
         </button>
       </div>
 

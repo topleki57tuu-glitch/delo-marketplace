@@ -12,6 +12,7 @@ import { Avatar } from './components/Avatar';
 
 // Eager load только критичные страницы
 import HomePage from './pages/HomePage';
+import { IconAdmin, IconBox, IconBriefcase, IconClose, IconMessages, IconReceipt, IconTasks, IconTools, IconUser } from './components/icons.jsx';
 
 // Lazy load остальные страницы (загружаются по требованию)
 const TasksPage = lazy(() => import('./pages/TasksPage'));
@@ -141,19 +142,19 @@ function NavigationBar({ user, token, onOpenAuth, onOpenChatsDrawer, onLogout })
                   className="absolute right-0 mt-2 w-56 p-1.5 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-pop"
                 >
                   <Link to="/profile" className={menuItemClass} onClick={() => setMenuOpen(false)}>
-                    👤 Мой профиль
+                    <IconUser /> Мой профиль
                   </Link>
                   <Link to="/my-tasks" className={menuItemClass} onClick={() => setMenuOpen(false)}>
-                    📋 Мои заказы
+                    <IconTasks /> Мои заказы
                   </Link>
                   <Link to="/my-orders" className={menuItemClass} onClick={() => setMenuOpen(false)}>
-                    🧾 Мои покупки
+                    <IconReceipt /> Мои покупки
                   </Link>
                   <Link to="/my-products" className={menuItemClass} onClick={() => setMenuOpen(false)}>
-                    📦 Мои товары
+                    <IconBox /> Мои товары
                   </Link>
                   <Link to="/chats" className={menuItemClass} onClick={() => setMenuOpen(false)}>
-                    💬 Сообщения
+                    <IconMessages /> Сообщения
                   </Link>
                   {isAdmin && (
                     <Link
@@ -161,7 +162,7 @@ function NavigationBar({ user, token, onOpenAuth, onOpenChatsDrawer, onLogout })
                       className={`${menuItemClass} text-red-600 dark:text-red-400`}
                       onClick={() => setMenuOpen(false)}
                     >
-                      🛡️ Админ-панель
+                      <IconAdmin /> Админ-панель
                     </Link>
                   )}
                   <div className="my-1.5 h-px bg-slate-200 dark:bg-slate-700" />
@@ -320,7 +321,7 @@ function AuthModal({ isOpen, mode, onClose, onLoginSuccess }) {
             aria-label="Закрыть модальное окно"
             className="text-slate-400 hover:text-slate-600 text-xl font-bold"
           >
-            ✕
+            <IconClose />
           </button>
         </div>
 
@@ -390,7 +391,7 @@ function AuthModal({ isOpen, mode, onClose, onLoginSuccess }) {
                         : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
                     }`}
                   >
-                    💼 Я Заказчик
+                    <IconBriefcase /> Я Заказчик
                   </button>
                   <button
                     type="button"
@@ -401,7 +402,7 @@ function AuthModal({ isOpen, mode, onClose, onLoginSuccess }) {
                         : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
                     }`}
                   >
-                    🛠️ Я Исполнитель
+                    <IconTools /> Я Исполнитель
                   </button>
                 </div>
               </div>

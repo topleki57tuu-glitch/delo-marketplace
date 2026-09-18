@@ -2,11 +2,12 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useToast } from '../components/Toast';
 import CityInput from '../components/CityInput';
+import { IconMessages, IconPin, IconCheck, IconLightning, IconSearch, IconStar } from '../components/icons.jsx';
 
 const SORT_OPTIONS = [
-  { id: 'rating', label: '⭐ По рейтингу' },
-  { id: 'completed', label: '✅ По выполненным заказам' },
-  { id: 'reviews', label: '💬 По числу отзывов' },
+  { id: 'rating', label: <><IconStar /> По рейтингу</> },
+  { id: 'completed', label: <><IconCheck /> По выполненным заказам</> },
+  { id: 'reviews', label: <><IconMessages /> По числу отзывов</> },
   { id: 'newest', label: '🆕 Новые' },
 ];
 
@@ -76,7 +77,7 @@ export default function SpecialistsPage({ user, onOpenAuth }) {
           to="/tasks"
           className="self-start md:self-auto px-4 py-2 rounded-xl text-sm font-semibold bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700 transition-all"
         >
-          ⚡ К заданиям
+          <IconLightning /> К заданиям
         </Link>
       </div>
 
@@ -86,7 +87,7 @@ export default function SpecialistsPage({ user, onOpenAuth }) {
           type="text"
           value={searchInput}
           onChange={(e) => setSearchInput(e.target.value)}
-          placeholder="🔍 Имя, навык или описание..."
+          placeholder="Имя, навык или описание..."
           className="w-full p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-500"
         />
         <CityInput selectedCity={city} onSelectCity={(c) => { setCity(c); setPage(1); }} placeholder="Город" />
@@ -108,7 +109,7 @@ export default function SpecialistsPage({ user, onOpenAuth }) {
         </div>
       ) : items.length === 0 ? (
         <div className="bg-white dark:bg-slate-800 p-10 rounded-3xl border border-slate-200 dark:border-slate-700 text-center space-y-3">
-          <div className="text-4xl">🔍</div>
+          <div className="text-4xl"><IconSearch /></div>
           <p className="font-bold text-slate-900 dark:text-white">Специалисты не найдены</p>
           <p className="text-sm text-slate-500 dark:text-slate-400">Попробуйте изменить запрос или снять фильтры.</p>
         </div>
@@ -143,10 +144,10 @@ export default function SpecialistsPage({ user, onOpenAuth }) {
                         {s.is_pro && (
                           <span className="px-1.5 py-0.5 rounded-full text-[9px] font-black bg-gradient-to-r from-amber-400 to-orange-500 text-slate-950">PRO</span>
                         )}
-                        {s.verified && <span className="text-blue-500 text-xs" title="Проверен">✓</span>}
+                        {s.verified && <span className="text-blue-500 text-xs" title="Проверен"><IconCheck /></span>}
                       </div>
                       <div className="text-xs text-slate-500 dark:text-slate-400">
-                        ⭐ {s.rating != null ? s.rating.toFixed(1) : '—'} • {s.reviews_count} отзывов • {s.completed_tasks} заказов
+                        <IconStar /> {s.rating != null ? s.rating.toFixed(1) : '—'} • {s.reviews_count} отзывов • {s.completed_tasks} заказов
                       </div>
                     </div>
                   </div>
@@ -169,7 +170,7 @@ export default function SpecialistsPage({ user, onOpenAuth }) {
                   )}
 
                   <div className="text-[11px] text-slate-400">
-                    {s.city ? `📍 ${s.city}` : '📍 Город не указан'}
+                    {s.city ? <><IconPin /> ${s.city}</> : <><IconPin /> Город не указан</>}
                   </div>
                 </button>
               );

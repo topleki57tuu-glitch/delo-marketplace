@@ -1,4 +1,5 @@
 import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
+import { IconCheck } from '../components/icons.jsx';
 
 const ToastContext = createContext(null);
 
@@ -41,7 +42,7 @@ export const ToastProvider = ({ children }) => {
                         className={`flex items-start gap-3 glass rounded-xl shadow-pop p-3.5 pr-9 relative font-semibold text-sm ${t.type === 'error' ? 'text-danger' : 'text-ink'}`}
                     >
                         <span className={`shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-extrabold ${t.type === 'error' ? 'bg-danger' : t.type === 'info' ? 'bg-accent' : 'bg-success'}`}>
-                            {t.type === 'error' ? '!' : t.type === 'info' ? 'i' : '✓'}
+                            {t.type === 'error' ? '!' : t.type === 'info' ? 'i' : <IconCheck />}
                         </span>
                         <span className="pt-0.5">{t.text}</span>
                         <button

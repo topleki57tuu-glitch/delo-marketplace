@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { IconCheck, IconClose, IconPin, IconPlus } from '../components/icons.jsx';
 
 // Обширная база городов России по всем федеральным округам и ключевым регионам
 export const POPULAR_CITIES = [
@@ -256,7 +257,7 @@ export default function CityInput({
         <div className={`relative ${className}`} ref={wrapperRef}>
             <div className="relative flex items-center">
                 <span className="absolute left-3.5 text-slate-400 text-sm select-none">
-                    📍
+                    <IconPin />
                 </span>
                 <input
                     type="text"
@@ -273,7 +274,7 @@ export default function CityInput({
                         className="absolute right-3 w-5 h-5 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-500 hover:text-slate-700 dark:hover:text-white flex items-center justify-center text-xs font-bold transition-colors"
                         title="Очистить"
                     >
-                        ✕
+                        <IconClose />
                     </button>
                 )}
             </div>
@@ -288,7 +289,7 @@ export default function CityInput({
                             onClick={() => handleSelectCity(searchTerm.trim())}
                             className="w-full text-left px-3.5 py-2.5 rounded-xl text-xs font-bold bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 transition-colors flex items-center justify-between mb-1"
                         >
-                            <span>➕ Использовать: «{searchTerm.trim()}»</span>
+                            <span><IconPlus /> Использовать: «{searchTerm.trim()}»</span>
                             <span className="text-[10px] opacity-75">Любой населенный пункт РФ</span>
                         </button>
                     )}
@@ -312,7 +313,7 @@ export default function CityInput({
                                     }`}
                                 >
                                     <span>{city}</span>
-                                    {isSelected && <span>✓</span>}
+                                    {isSelected && <span><IconCheck /></span>}
                                 </button>
                             );
                         })
