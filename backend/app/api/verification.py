@@ -4,12 +4,14 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.csrf import verify_csrf
+from app.core.file_cleanup import file_id_from_url
 from app.core.security import (
     oauth2_scheme, decode_token, is_admin,
     encrypt_sensitive, decrypt_sensitive, mask_document_number,
+    file_url_with_token,
 )
 from app.models import (
-    User, UserRole, Notification,
+    User, UserRole, Notification, StoredFile,
     VerificationRequest, VerificationStatus
 )
 from app.schemas import (
@@ -38,11 +40,18 @@ def _request_out(r: VerificationRequest, *, reveal_number: bool) -> dict:
         "full_name": r.full_name,
         "document_type": r.document_type,
         "document_number": number if reveal_number else mask_document_number(number),
-        "file_url": r.file_url,
+        # Скан отдаём подписанной ссылкой: файл помечен приватным (см.
+        # submit_verification), поэтому без подписи ни владелец, ни модератор
+        # его не откроют — получат 403. Подпись нужна обоим, а выдаём мы её
+        # только тем, кто уже прошёл проверку прав выше.
+        "file_url": file_url_with_token(r.file_url),
         "status": r.status.value if hasattr(r.status, "value") else str(r.status),
         "rejection_reason": r.rejection_reason,
-        "created_at": r.created_at,
-        "resolved_at": r.resolved_at,
+        # Даты приводим к строке здесь, а не полагаемся на сериализатор:
+        # схема объявляет их как str, и без .isoformat() FastAPI падал на
+        # валидации ответа — то есть эндпоинт отдавал 500 целиком.
+        "created_at": r.created_at.isoformat() if r.created_at else None,
+        "resolved_at": r.resolved_at.isoformat() if r.resolved_at else None,
     }
 
 @router.post("/submit", response_model=VerificationRequestOut)
@@ -70,7 +79,28 @@ def submit_verification(
     ).first()
     if existing:
         raise HTTPException(400, "Заявка на верификацию уже отправлена и ожидает проверки модератором")
-    
+
+    # Скан документа: проверяем, что это действительно файл заявителя, и
+    # закрываем его от посторонних.
+    #
+    # Раньше значение из запроса клалось в БД как есть. Из-за этого в заявке
+    # можно было сослаться на чужой файл (модератор сверял бы номер с чужим
+    # сканом), а сам скан, загруженный как публичный, оставался перечислимым
+    # по `/files/<id>` — то есть фото паспорта лежало в открытом доступе.
+    if req.file_url:
+        file_id = file_id_from_url(req.file_url)
+        stored = (
+            db.query(StoredFile).filter(StoredFile.id == file_id).first()
+            if file_id is not None else None
+        )
+        if not stored:
+            raise HTTPException(400, "Файл не найден — загрузите скан заново")
+        if stored.owner_id != user_id:
+            raise HTTPException(403, "К заявке можно приложить только свой файл")
+        # Документ не должен оставаться публичным: у загрузки по умолчанию
+        # scope=public (это верно для аватара), а здесь содержимое личное.
+        stored.is_private = True
+
     new_req = VerificationRequest(
         user_id=user_id,
         full_name=req.full_name,
