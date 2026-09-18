@@ -273,6 +273,24 @@ print(f"   запросов к провайдеру: {narrow_calls} (узкий,
 print("10. Операции нет ни в узком, ни в широком поиске")
 print(f"   paid={missing.get('paid')}  запросов: {broad_calls}")
 
+# --- Доступ: эндпоинт двигает деньги ---------------------------------------
+# Зачисление без аутентификации означало бы, что чужой баланс можно
+# пополнить (или, при ошибке в фильтре, увидеть чужие платежи) одним
+# запросом без токена.
+balance_before_auth = _balance(me)
+r_noauth = client.post("/payments/confirm-pending")
+r_badtoken = client.post(
+    "/payments/confirm-pending",
+    headers={"Authorization": "Bearer not-a-real-token"},
+)
+balance_after_auth = _balance(me)
+
+print()
+print("11. Доступ")
+print(f"   без токена:        HTTP {r_noauth.status_code}  (ожидается 401)")
+print(f"   с битым токеном:   HTTP {r_badtoken.status_code}  (ожидается 401 или 403)")
+print(f"   баланс: {balance_before_auth} -> {balance_after_auth}")
+
 print()
 failures = []
 
@@ -333,6 +351,19 @@ if missing.get("paid") or broad_calls != 2:
         f"отсутствующая операция обработана неверно: paid={missing.get('paid')}, "
         f"запросов={broad_calls}"
     )
+
+if r_noauth.status_code != 401:
+    failures.append(
+        f"эндпоинт доступен без токена: HTTP {r_noauth.status_code}"
+    )
+
+if r_badtoken.status_code not in (401, 403):
+    failures.append(
+        f"битый токен принят: HTTP {r_badtoken.status_code}"
+    )
+
+if balance_after_auth != balance_before_auth:
+    failures.append("неаутентифицированный запрос всё равно изменил баланс")
 
 if failures:
     print("НАЙДЕНЫ ДЕФЕКТЫ:")
