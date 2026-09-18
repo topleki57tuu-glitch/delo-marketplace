@@ -278,3 +278,27 @@ def downgrade() -> None:
 
     op.drop_table('disputes')
     # ### end Alembic commands ###
+
+    _drop_enum_types()
+
+
+def _drop_enum_types() -> None:
+    """Удалить PG-типы, созданные этой миграцией.
+
+    `op.drop_table` типы не трогает — они живут отдельно от таблиц. Из-за
+    этого повторный `upgrade` после `downgrade base` падал с «тип
+    disputestatus уже существует»: таблиц нет, а типы остались.
+
+    На SQLite шаг не нужен — там enum это VARCHAR, типов как объектов нет.
+    """
+    if op.get_bind().dialect.name != "postgresql":
+        return
+    for type_name in (
+        'disputestatus',
+        'taskcategory',
+        'taskstatus',
+        'transactiontype',
+        'userrole',
+        'verificationstatus',
+    ):
+        op.execute(f"DROP TYPE IF EXISTS {type_name}")

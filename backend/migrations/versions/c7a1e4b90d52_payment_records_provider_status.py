@@ -129,3 +129,9 @@ def downgrade() -> None:
         op.drop_column('payment_records', 'status')
     if 'provider' in existing:
         op.drop_column('payment_records', 'provider')
+
+    # Тип `paymentstatus` создаётся нами в upgrade (см. выше), поэтому и
+    # удаляем его сами: иначе повторный `upgrade` упадёт с «тип paymentstatus
+    # уже существует». drop_column освобождает тип, но не удаляет его.
+    if op.get_bind().dialect.name == "postgresql":
+        op.execute("DROP TYPE IF EXISTS paymentstatus")

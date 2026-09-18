@@ -132,3 +132,10 @@ def downgrade() -> None:
     for table in ('refresh_tokens', 'products', 'orders'):
         if table in tables:
             op.drop_table(table)
+
+    # PG-типы, созданные этой миграцией, живут отдельно от таблиц: без
+    # явного DROP повторный `upgrade` после `downgrade` падает с «тип
+    # orderstatus уже существует». На SQLite шаг не нужен.
+    if op.get_bind().dialect.name == "postgresql":
+        for type_name in ('orderstatus', 'productcategory', 'productcondition'):
+            op.execute(f"DROP TYPE IF EXISTS {type_name}")

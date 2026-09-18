@@ -83,12 +83,35 @@ def _to_datetime_expr(field: str, dialect: str) -> str:
 
 
 def _to_string_expr(field: str, dialect: str) -> str:
-    """SQL-выражение «DateTime → строка ISO» для нужного диалекта."""
+    """SQL-выражение «DateTime → строка ISO» для нужного диалекта.
+
+    Явное приведение `{field}::timestamp` обязательно: PostgreSQL не находит
+    `to_char(varchar, text)` и падает с «функция to_char(character varying,
+    unknown) не существует». Ошибка всплывает на повторном прогоне downgrade:
+    часть колонок уже перелита в varchar, и без каста на них ломается.
+    """
     if dialect == "postgresql":
-        return f"to_char({field}, 'YYYY-MM-DD\"T\"HH24:MI:SS')"
+        return f"to_char({field}::timestamp, 'YYYY-MM-DD\"T\"HH24:MI:SS')"
     if dialect == "sqlite":
         return f"strftime('%Y-%m-%dT%H:%M:%S', {field})"
     raise NotImplementedError(dialect)
+
+
+def _column_is_datetime(table: str, field: str) -> bool:
+    """Является ли колонка уже DateTime.
+
+    Нужно для идемпотентности: миграция может запускаться повторно, а после
+    частичного прогона часть колонок уже перелита. Без проверки повторный
+    `downgrade` падал на `to_char` от varchar.
+    """
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    if table not in inspector.get_table_names():
+        return False
+    for column in inspector.get_columns(table):
+        if column["name"] == field:
+            return isinstance(column["type"], sa.DateTime)
+    return False
 
 
 def _convert_python_side(table: str, field: str, to_datetime: bool) -> None:
@@ -137,6 +160,12 @@ def _convert_python_side(table: str, field: str, to_datetime: bool) -> None:
 def _convert(table: str, field: str, to_datetime: bool) -> None:
     """Перелить одну колонку: VARCHAR(ISO) <-> DateTime, через временную колонку."""
     if field not in _table_columns(table):
+        return
+
+    # Если колонка уже нужного типа — переливать нечего. Это не только
+    # экономит работу, но и делает миграцию перезапускаемой: после частичного
+    # прогона повторный запуск не падает на уже перелитых колонках.
+    if _column_is_datetime(table, field) == to_datetime:
         return
 
     conn = op.get_bind()

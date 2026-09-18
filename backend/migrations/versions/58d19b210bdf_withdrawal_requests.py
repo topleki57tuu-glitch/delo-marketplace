@@ -102,4 +102,10 @@ def downgrade() -> None:
         batch_op.drop_index(batch_op.f('ix_withdrawal_requests_id'))
 
     op.drop_table('withdrawal_requests')
+
+    # Тип `withdrawalstatus` создан этой миграцией — убираем его сами, иначе
+    # повторный `upgrade` упадёт с «тип withdrawalstatus уже существует».
+    # `transactiontype` не трогаем: он создан в 4634d648e920 и удаляется там.
+    if op.get_bind().dialect.name == "postgresql":
+        op.execute("DROP TYPE IF EXISTS withdrawalstatus")
     # ### end Alembic commands ###

@@ -187,10 +187,20 @@ jobs:
           ENV: development
           DATABASE_URL: postgresql+psycopg2://marketplace:ci_password@localhost:5432/marketplace_migrations
         run: |
+          # Два полных круга, а не один. Один круг не ловит два дефекта:
+          #   - b31957f1dbe9 падала на ПОВТОРНОМ прогоне (колонки уже перелиты,
+          #     to_char получал varchar без каста);
+          #   - drop_table не удаляет PG-типы, поэтому повторный upgrade падал
+          #     с «тип disputestatus уже существует».
+          # Оба видны только со второго прохода.
+          for round in 1 2; do
+            echo "::group::PostgreSQL round ${round}"
+            alembic upgrade head
+            alembic downgrade base
+            echo "::endgroup::"
+          done
           alembic upgrade head
-          alembic downgrade base
-          alembic upgrade head
-          echo "PostgreSQL: схема разворачивается, откатывается и разворачивается снова"
+          echo "PostgreSQL: два полных круга upgrade/downgrade и финальный upgrade"
 
       - name: Migrate a clean SQLite database
         working-directory: backend
@@ -199,8 +209,14 @@ jobs:
           DATABASE_URL: sqlite:////tmp/migrations_check.db
         run: |
           rm -f /tmp/migrations_check.db
-          alembic upgrade head
-          echo "SQLite: схема разворачивается (регресс по диалекту не внесён)"
+          # SQLite: только upgrade. Полный цикл здесь не гоняем — в SQLite
+          # DDL не транзакционен, и частично откаченная схема не откатится
+          # целиком, поэтому «повторный прогон» проверяет не то, что в PG.
+          for round in 1 2; do
+            rm -f /tmp/migrations_check.db
+            alembic upgrade head
+          done
+          echo "SQLite: схема разворачивается с нуля дважды (регресс по диалекту не внесён)"
 
       - name: Schema matches the models
         working-directory: backend
