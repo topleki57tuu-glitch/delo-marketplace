@@ -9,6 +9,8 @@ import json
 import time
 from datetime import datetime, timezone
 
+from sqlalchemy import text
+
 from app.core.config import settings
 from app.core.database import engine, Base, SessionLocal
 from app.core.csrf import generate_csrf_token, set_csrf_cookie
@@ -253,9 +255,16 @@ def health_db():
     """
     try:
         pool_status = get_connection_pool_status(engine)
-        # Simple query to verify DB connectivity
+        # Simple query to verify DB connectivity.
+        #
+        # `text()` обязателен: в SQLAlchemy 2.0 голая строка в `execute()`
+        # больше не принимается — драйвер получает её как есть, и запрос
+        # падает с «Textual SQL expression 'SELECT 1' should be explicitly
+        # declared as text('SELECT 1')». Эндпоинт из-за этого отдавал 503
+        # «database disconnected» на живой базе, то есть мониторинг был
+        # сломан целиком и всегда.
         with SessionLocal() as db:
-            db.execute("SELECT 1")
+            db.execute(text("SELECT 1"))
 
         return {
             "status": "ok",
