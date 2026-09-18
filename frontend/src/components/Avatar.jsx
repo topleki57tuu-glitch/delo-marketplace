@@ -3,12 +3,21 @@ import { useToast } from './Toast';
 
 /**
  * Компонент для загрузки и отображения аватара пользователя
- * Поддерживает: загрузку файла, preview, crop (базовый), base64 encoding
+ *
+ * Файл загружается на сервер через POST /upload/image, в профиль пишется
+ * полученная короткая ссылка (/files/<id>).
+ *
+ * Раньше файл читался через FileReader.readAsDataURL и отправлялся в поле
+ * `avatar` как base64. Бэкенд режет значение длиннее 500 символов
+ * (_MAX_MEDIA_URL_LEN в app/api/users.py), а base64 картинки на 100 КБ —
+ * это ~136 000 символов. Поэтому любое фото, кроме крошечного, отклонялось
+ * с «Ссылка на изображение слишком длинная», и аватар не сохранялся.
  */
 export function AvatarUploader({ currentAvatar, onAvatarUpdate, token }) {
   const { addToast } = useToast();
   const [uploading, setUploading] = useState(false);
   const [preview, setPreview] = useState(null);
+  const [pendingFile, setPendingFile] = useState(null);
   const fileInputRef = useRef(null);
 
   const handleFileSelect = (e) => {
@@ -27,63 +36,62 @@ export function AvatarUploader({ currentAvatar, onAvatarUpdate, token }) {
       return;
     }
 
-    // Читаем файл и показываем preview
+    // Превью — только для показа, на сервер уйдёт сам файл
+    setPendingFile(file);
     const reader = new FileReader();
-    reader.onloadend = () => {
-      setPreview(reader.result);
-    };
+    reader.onloadend = () => setPreview(reader.result);
     reader.readAsDataURL(file);
+
+    // Сброс value, иначе повторный выбор того же файла не вызовет onChange
+    e.target.value = '';
   };
 
   const handleUpload = async () => {
-    if (!preview) return;
-
-    console.log('[Avatar] handleUpload started');
-    console.log('[Avatar] preview length:', preview.length);
-    console.log('[Avatar] token exists:', !!token);
+    if (!pendingFile) return;
 
     setUploading(true);
     try {
-      console.log('[Avatar] Sending PUT /users/me...');
-      // Отправляем base64 изображение на сервер
+      // 1. Загружаем файл — получаем короткую ссылку /files/<id>
+      const formData = new FormData();
+      formData.append('file', pendingFile);
+
+      const uploadRes = await fetch('/upload/image', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
+
+      if (!uploadRes.ok) {
+        const err = await uploadRes.json().catch(() => ({}));
+        throw new Error(err.detail || 'Не удалось загрузить изображение');
+      }
+
+      const { url } = await uploadRes.json();
+      if (!url) throw new Error('Сервер не вернул ссылку на файл');
+
+      // 2. Пишем ссылку в профиль
       const res = await fetch('/users/me', {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
+          Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ avatar: preview })
+        body: JSON.stringify({ avatar: url }),
       });
 
-      console.log('[Avatar] Response status:', res.status);
-
       if (!res.ok) {
-        const errorData = await res.json();
-        console.error('[Avatar] Error response:', errorData);
+        const errorData = await res.json().catch(() => ({}));
         throw new Error(errorData.detail || 'Не удалось обновить аватар');
       }
 
-      const responseData = await res.json();
-      console.log('[Avatar] Success response:', responseData);
-
       addToast('Аватар обновлен!', 'success');
       setPreview(null);
-
-      console.log('[Avatar] Calling onAvatarUpdate...');
-      // Принудительно обновляем данные пользователя
+      setPendingFile(null);
       await onAvatarUpdate();
-
-      // Дополнительная задержка и повторное обновление для надёжности
-      setTimeout(() => {
-        console.log('[Avatar] Calling onAvatarUpdate again (delayed)...');
-        onAvatarUpdate();
-      }, 1000);
     } catch (err) {
-      console.error('[Avatar] Exception:', err);
       addToast(err.message, 'error');
     } finally {
       setUploading(false);
-      console.log('[Avatar] handleUpload finished');
     }
   };
 
@@ -96,19 +104,20 @@ export function AvatarUploader({ currentAvatar, onAvatarUpdate, token }) {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
+          Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ avatar: "" })
+        body: JSON.stringify({ avatar: '' }),
       });
 
       if (!res.ok) {
-        const errorData = await res.json();
+        const errorData = await res.json().catch(() => ({}));
         throw new Error(errorData.detail || 'Не удалось удалить аватар');
       }
 
       addToast('Аватар удален', 'success');
       setPreview(null);
-      onAvatarUpdate(); // Перезагружаем данные пользователя
+      setPendingFile(null);
+      onAvatarUpdate();
     } catch (err) {
       addToast(err.message, 'error');
     } finally {
@@ -139,7 +148,7 @@ export function AvatarUploader({ currentAvatar, onAvatarUpdate, token }) {
             </button>
             <button
               type="button"
-              onClick={() => setPreview(null)}
+              onClick={() => { setPreview(null); setPendingFile(null); }}
               disabled={uploading}
               className="px-4 py-2 bg-slate-200 hover:bg-slate-300 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-900 dark:text-white text-sm font-bold rounded-xl transition-colors"
             >
