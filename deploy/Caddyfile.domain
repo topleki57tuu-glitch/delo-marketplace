@@ -1,5 +1,18 @@
 # Вариант для домена: Caddy сам выпустит и продлит Let's Encrypt сертификат.
 # В docker-compose.prod.yml в environment сервиса caddy передаётся DOMAIN.
+#
+# ВАЖНО: DOMAIN должен быть в punycode, а не юникодом.
+#   1) Caddy требует, чтобы хост состоял только из alphanumerics/hyphens/dots
+#      (см. https://caddyserver.com/docs/automatic-https#hostname-requirements),
+#      а PR «Support IDN in Caddyfile» так и не влили — юникод не парсится.
+#   2) Let's Encrypt выдаёт сертификаты только на ASCII-имя (xn--...).
+#   3) Браузер шлёт в Origin тоже punycode, а backend сравнивает строки
+#      буквально (_parse_origins в app/core/config.py) — юникод в
+#      CORS_ORIGINS не совпадёт и CORS отвалится.
+# Поэтому в .env: DOMAIN=xn--d1acsm.online, а не DOMAIN=дело.online.
+#
+# www в шаблоне не прописан: {$DOMAIN} матчит только голый хост.
+# Если нужен www — vps_deploy.sh с INCLUDE_WWW=1 подставит его через sed.
 {$DOMAIN} {
 	reverse_proxy frontend:80
 }

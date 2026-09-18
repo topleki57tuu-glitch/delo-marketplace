@@ -82,6 +82,9 @@ services:
       YOOMONEY_CLIENT_ID: ${YOOMONEY_CLIENT_ID:-}
       YOOMONEY_REDIRECT_URI: ${YOOMONEY_REDIRECT_URI:-}
       YOOMONEY_NOTIFICATION_SECRET: ${YOOMONEY_NOTIFICATION_SECRET:-}
+      # Куда возвращать пользователя после оплаты. Без переменной возврат
+      # уходил на пустой путь и платёж не подтверждался автоматически.
+      YOOMONEY_RETURN_PATH: ${YOOMONEY_RETURN_PATH:-/profile}
     volumes:
       - backend_uploads:/app/uploads
 
