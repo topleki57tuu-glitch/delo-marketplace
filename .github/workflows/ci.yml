@@ -64,6 +64,10 @@ jobs:
       ADMIN_EMAILS: admin@delo.ru
       # Пароль демо-аккаунтов фиксируем, чтобы тесты знали, чем логиниться
       DEMO_PASSWORD: ci-demo-password
+      # Секрет вебхука ЮMoney нужен И серверу, И тесту: тест считает подпись
+      # тем же алгоритмом, и без общего секрета набор печатал SKIP и выходил
+      # с кодом 0 — то есть выглядел пройденным, ничего не проверив.
+      YOOMONEY_NOTIFICATION_SECRET: ci-yoomoney-notification-secret
       # CSRF включаем принудительно — тесты должны доказывать защиту,
       # а не проходить из-за выключенной проверки.
       CSRF_ENABLED: "1"
@@ -121,12 +125,47 @@ jobs:
       - name: Run test suites
         run: |
           set -e
+          # Все наборы ниже работают по HTTP против поднятого backend и его
+          # базы (DATABASE_URL задан в env джобы — и серверу, и тестам, иначе
+          # тест вебхука писал бы запись в другую базу и падал с 404).
+          #
+          # Порядок важен: e2e_new_features_test ожидает свежесидированную
+          # базу, поэтому идёт первым из наборов, которые её меняют.
           for suite in \
             test_auth_flow \
             test_csrf_coverage \
             test_chat_reviews_notifications \
+            e2e_new_features_test \
             e2e_api_test \
-            e2e_new_features_test
+            test_yoomoney_webhook \
+            repro_chat_attachment_base64 \
+            security/repro_files_public_access
+          do
+            echo "::group::$suite"
+            python "tests/${suite}.py"
+            echo "::endgroup::"
+          done
+
+      # Самодостаточные наборы: поднимают приложение через TestClient и работают
+      # с собственной временной SQLite-базой. DATABASE_URL здесь снимаем —
+      # иначе они подхватят базу CI-джобы и будут писать в неё.
+      #
+      # Раньше эти наборы не запускались в CI вообще, и среди них были
+      # регрессы на денежные дефекты (зачисление без оплаты, бессрочная
+      # PRO-подписка) и на удаление данных (уборка файлов). Такой регресс без
+      # прогона не защищает ни от чего: откат фикса давал зелёный CI.
+      - name: Run self-contained regression suites
+        run: |
+          set -e
+          unset DATABASE_URL
+          for suite in \
+            repro_payment_cycle \
+            repro_mobile_avatar \
+            security/repro_upload_reject \
+            security/check_pro_expiry \
+            security/repro_yookassa_unpaid_credit \
+            security/check_file_cleanup \
+            security/repro_verification_document_access
           do
             echo "::group::$suite"
             python "tests/${suite}.py"
