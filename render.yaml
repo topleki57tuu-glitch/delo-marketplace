@@ -6,8 +6,11 @@ services:
     buildCommand: cd backend && pip install -r requirements.txt
     startCommand: cd backend && uvicorn main:app --host 0.0.0.0 --port $PORT
     envVars:
+      # Версия закреплена и совпадает с CI и Dockerfile: раньше CI гонял
+      # 3.13, а прод собирался на 3.11 — то есть проверялся не тот
+      # интерпретатор, который едет в бой.
       - key: PYTHON_VERSION
-        value: 3.11.8
+        value: 3.13.12
       - key: ENV
         value: production
       - key: SECRET_KEY
