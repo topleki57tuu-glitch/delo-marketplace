@@ -516,7 +516,14 @@ export default function ChatsPage({ user, token, onOpenAuth }) {
         </div>
 
         {/* Chat Window */}
-        <div className="flex-1 flex flex-col bg-white dark:bg-slate-800">
+        {/* min-w-0 обязателен. У flex-1 минимум по умолчанию — min-content, и
+            панель не могла сжаться ниже 1166px. Причина в строке быстрых фраз
+            ниже: кнопки там с whitespace-nowrap, их суммарная ширина 1134px.
+            Строка 320 + 1166 = 1486 не влезала в контейнер 1216, и он, будучи
+            overflow: hidden, прокручивался вправо (scrollLeft 256) при
+            автоскролле на фокус — из-за этого список диалогов уезжал за левый
+            край и был виден полоской ~50px. */}
+        <div className="flex-1 min-w-0 flex flex-col bg-white dark:bg-slate-800">
           {activeChat ? (
             <>
               {/* Header */}

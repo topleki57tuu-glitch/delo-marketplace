@@ -82,7 +82,16 @@ export default defineConfig({
       '/uploads': 'http://localhost:8000',
       '/notifications': 'http://localhost:8000',
       '/ai': 'http://localhost:8000',
-      '/chats': 'http://localhost:8000',
+      // Путь /chats совпадает с маршрутом SPA, поэтому навигацию браузера
+      // уводим в index.html — иначе прямой заход и F5 отдают JSON
+      // {"detail":"Not authenticated"} вместо страницы. У /tasks, /products,
+      // /specialists и /admin bypass был, а у /chats его забыли.
+      '/chats': {
+        target: 'http://localhost:8000',
+        bypass(req) {
+          if (req.headers.accept && req.headers.accept.includes('text/html')) return '/index.html';
+        },
+      },
       // Без этой строки запросы верификации уходили в SPA-fallback: Vite отдавал
       // index.html со статусом 200, r.json() падал, и профиль показывал
       // «заявок нет», хотя заявки были. В nginx-конфиге /verification есть.
