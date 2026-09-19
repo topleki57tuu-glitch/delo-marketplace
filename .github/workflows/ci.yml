@@ -145,6 +145,7 @@ jobs:
           # базу, поэтому идёт первым из наборов, которые её меняют.
           for suite in \
             test_auth_flow \
+            security/check_refresh_token_whitelist \
             test_csrf_coverage \
             test_chat_reviews_notifications \
             e2e_new_features_test \

@@ -76,7 +76,7 @@ def verify_refresh_token(token: str, db) -> Optional[dict]:
     1. Подпись токена
     2. Срок действия
     3. Тип токена (должен быть refresh)
-    4. Не отозван ли токен (blacklist)
+    4. Что токен есть в refresh_tokens, не отозван и принадлежит тому же юзеру
     """
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
@@ -85,16 +85,24 @@ def verify_refresh_token(token: str, db) -> Optional[dict]:
         if payload.get("type") != "refresh":
             return None
 
-        # Проверка blacklist (отозван ли токен)
+        # Белый список, а не чёрный. Раньше здесь искалась строка с revoked=True,
+        # и отсутствие строки означало «токен жив». Из-за этого удаление записи
+        # не отзывало токен, а воскрешало отозванный. Измерено: после удаления
+        # аккаунта вместе с его токенами refresh выдавал access-токен на новый
+        # аккаунт, которому достался тот же id. Теперь без строки токен мёртв.
+        from app.models import RefreshToken
         jti = payload.get("jti")
-        if jti:
-            from app.models import RefreshToken
-            db_token = db.query(RefreshToken).filter(
-                RefreshToken.token == jti,
-                RefreshToken.revoked == True
-            ).first()
-            if db_token:
-                return None  # Токен отозван
+        if not jti:
+            return None  # без jti токен нечем отозвать — не принимаем
+
+        row = db.query(RefreshToken).filter(RefreshToken.token == jti).first()
+        if not row or row.revoked:
+            return None
+
+        # sub сверяем со строкой в базе, а не только с подписью: если id когда-то
+        # переиспользуется, токен не должен «переехать» на нового владельца.
+        if str(row.user_id) != str(payload.get("sub")):
+            return None
 
         return payload
     except JWTError:
