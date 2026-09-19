@@ -76,7 +76,8 @@ def verify_refresh_token(token: str, db) -> Optional[dict]:
     1. Подпись токена
     2. Срок действия
     3. Тип токена (должен быть refresh)
-    4. Что токен есть в refresh_tokens, не отозван и принадлежит тому же юзеру
+    4. Что токен есть в refresh_tokens, не отозван, принадлежит тому же юзеру
+       и выпущен не раньше, чем создан сам аккаунт
     """
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
@@ -102,6 +103,19 @@ def verify_refresh_token(token: str, db) -> Optional[dict]:
         # sub сверяем со строкой в базе, а не только с подписью: если id когда-то
         # переиспользуется, токен не должен «переехать» на нового владельца.
         if str(row.user_id) != str(payload.get("sub")):
+            return None
+
+        # Токен не может быть старше аккаунта. Совпадения user_id недостаточно:
+        # аккаунт удаляют, строки его токенов остаются (обычная уборка трогает
+        # только users), следующий пользователь получает тот же id — и живая
+        # строка начинает указывать на него. Измерено: refresh-токеном удалённого
+        # A выдавалась сессия новому B. Дата выпуска токена против даты создания
+        # аккаунта эти случаи различает.
+        from app.models import User
+        user = db.query(User).filter(User.id == row.user_id).first()
+        if user is None:
+            return None
+        if row.created_at and user.created_at and row.created_at < user.created_at:
             return None
 
         return payload

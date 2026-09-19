@@ -35,7 +35,10 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "backend"))
 
 A_EMAIL = "tmp_whitelist_a@delo.ru"
+A2_EMAIL = "tmp_whitelist_a2@delo.ru"
+B2_EMAIL = "tmp_whitelist_b2@delo.ru"
 A_PASSWORD = "TempWhitelist1"
+TEMP_EMAILS = (A_EMAIL, A2_EMAIL, B2_EMAIL)
 
 results = []
 
@@ -108,23 +111,28 @@ def main() -> int:
     db = SessionLocal()
 
     def purge():
-        user = db.query(User).filter(User.email == A_EMAIL).first()
-        if user:
-            db.query(RefreshToken).filter(RefreshToken.user_id == user.id).delete()
-            db.delete(user)
-            db.commit()
+        for email in TEMP_EMAILS:
+            user = db.query(User).filter(User.email == email).first()
+            if user:
+                db.query(RefreshToken).filter(RefreshToken.user_id == user.id).delete()
+                db.delete(user)
+        db.commit()
 
-    try:
-        purge()
-
+    def make_user(email):
         user = User(
-            email=A_EMAIL,
+            email=email,
             hashed_password=hash_password(A_PASSWORD),
             name="Temp Whitelist",
             role=UserRole.customer,
         )
         db.add(user)
         db.commit()
+        return user
+
+    try:
+        purge()
+
+        user = make_user(A_EMAIL)
         user_id = user.id
         print(f"временный аккаунт: id={user_id}")
 
@@ -196,6 +204,32 @@ def main() -> int:
         db.commit()
         status, _ = refresh(token)
         record("удалённый аккаунт: refresh не выдаёт сессию", status == 401, f"HTTP {status}")
+
+        # 6. Аккаунт удалён, а строки его токенов ОСТАЛИСЬ — 401.
+        #    Это не повтор пятого случая. Там строка уходила вместе с владельцем,
+        #    а здесь переживает его: строка есть, не отозвана, user_id совпадает
+        #    с sub — и всё это правда, потому что следующий аккаунт получает тот
+        #    же id (SQLite выдаёт max(id)+1). Измерено до правки: токеном
+        #    удалённого A выдавалась сессия новому B. Различает случаи только
+        #    дата выпуска токена против даты создания аккаунта.
+        user_a2 = make_user(A2_EMAIL)
+        id_a2 = user_a2.id
+        status, body = login(A2_EMAIL, A_PASSWORD)
+        if status != 200:
+            record("подготовка случая «строка пережила владельца»", False, f"логин: {status}")
+        else:
+            token2 = body["refresh_token"]
+            # Удаляем ТОЛЬКО пользователя — так и выглядит уборка аккаунта руками.
+            db.delete(db.query(User).filter(User.id == id_a2).first())
+            db.commit()
+            user_b2 = make_user(B2_EMAIL)
+            reused = user_b2.id == id_a2
+            status, _ = refresh(token2)
+            record(
+                "строка, пережившая владельца, не выдаёт сессию новому аккаунту",
+                status == 401,
+                f"HTTP {status}, id переиспользован: {reused}",
+            )
     finally:
         # Убираем за собой: временный аккаунт не должен пережить проверку.
         purge()
