@@ -186,6 +186,158 @@ jobs:
             echo "::endgroup::"
           done
 
+      # Смена пароля админа — отдельным шагом, а не строкой в общем списке.
+      #
+      # Набор меняет пароль admin@delo.ru (шаг 6) и возвращает исходный (шаг 7).
+      # В общем цикле он двигал бы login-лимиты всем, кто идёт следом, поэтому
+      # запускается последним: после него в этой джобе не логинится никто, и
+      # цена его побочных эффектов — ноль. Зависимостей от demo_password.txt
+      # внутри джобы больше нет: seed_demo.py создаёт файл до старта сервера.
+      #
+      # Ради этого набора набор переведён с сырого urllib на Session: CI
+      # поднимает бэкенд с CSRF_ENABLED=1, а POST /users/me/password требует
+      # verify_csrf. Без Session набор падал бы на первой же проверке смены.
+      - name: Check admin password change
+        run: python tests/security/check_admin_password_change.py
+
+      - name: Show backend log on failure
+        if: failure()
+        run: tail -n 200 /tmp/uvicorn.log
+
+  # ---------------------------------------------------------------------------
+  # Лимит перебора пароля по аккаунту.
+  #
+  # Здесь, а не в джобе backend, потому что требует RATE_LIMIT_ENABLED=1,
+  # а там лимиты выключены намеренно: e2e-наборы создают десятки аккаунтов
+  # с одного адреса и упираются в лимит register (5 в час), падая из-за
+  # собственного объёма, а не из-за дефекта.
+  #
+  # Проверяем именно лимит ПО АККАУНТУ, а не по IP: каждый запрос набора
+  # уходит с собственного X-Forwarded-For, поэтому 429 на девятой попытке
+  # доказывает, что счётчик привязан к учётной записи. С выключенными
+  # лимитами набор зелёный и ничего не проверяет — как раз тот случай,
+  # когда защиту «подтверждает» её отсутствие.
+  # ---------------------------------------------------------------------------
+  login-throttle:
+    name: Login throttle
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: marketplace
+          POSTGRES_PASSWORD: ci_password
+          POSTGRES_DB: marketplace_throttle
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U marketplace -d marketplace_throttle"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      ENV: development
+      DATABASE_URL: postgresql+psycopg2://marketplace:ci_password@localhost:5432/marketplace_throttle
+      REDIS_URL: redis://localhost:6379/0
+      SECRET_KEY: ci-secret-key-not-used-in-production-0123456789
+      FRONTEND_URL: http://localhost:3000
+      CORS_ORIGINS: http://localhost:3000
+      ADMIN_EMAILS: admin@delo.ru
+      DEMO_PASSWORD: ci-demo-password
+      CSRF_ENABLED: "1"
+      COOKIE_SECURE: "0"
+      # Главное отличие джобы: лимиты включены, иначе набор нечего проверять.
+      RATE_LIMIT_ENABLED: "1"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r backend/requirements.txt
+
+      - name: Apply migrations to a clean database
+        working-directory: backend
+        run: alembic upgrade head
+
+      # Файл с паролями создаёт seed_demo.py, и без него набор падает на
+      # чтении: он берёт из demo_password.txt пароль и админа, и демо-аккаунта.
+      - name: Seed demo data
+        working-directory: backend
+        run: python seed_demo.py
+
+      - name: Start backend
+        working-directory: backend
+        run: |
+          python -m uvicorn main:app --host 127.0.0.1 --port 8000 > /tmp/uvicorn.log 2>&1 &
+          echo "Waiting for the app to accept requests..."
+          for i in $(seq 1 40); do
+            if curl -sf http://127.0.0.1:8000/csrf-token > /dev/null; then
+              echo "Backend is up after ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Backend did not start, dumping log:"
+          cat /tmp/uvicorn.log
+          exit 1
+
+      # Гейт перед прогоном. Набор проверяет наличие лимита, поэтому с
+      # выключенным RATE_LIMIT_ENABLED он не «пройдёт с оговоркой» — он
+      # будет врать. Убеждаемся отдельно, что защита включена и отвечает 429
+      # после восьми неудач по одному аккаунту с разных адресов.
+      - name: Assert the account throttle is armed
+        run: |
+          python - <<'PY'
+          import json, urllib.error, urllib.parse, urllib.request
+
+          def login(email, password, ip):
+              data = urllib.parse.urlencode({"username": email, "password": password}).encode()
+              req = urllib.request.Request(
+                  "http://127.0.0.1:8000/login",
+                  data=data,
+                  headers={
+                      "Content-Type": "application/x-www-form-urlencoded",
+                      "X-Forwarded-For": ip,
+                  },
+                  method="POST",
+              )
+              try:
+                  with urllib.request.urlopen(req, timeout=15) as resp:
+                      return resp.status
+              except urllib.error.HTTPError as exc:
+                  return exc.code
+
+          codes = [login("gate-probe@delo.ru", "мусор", f"198.51.100.{i}") for i in range(1, 13)]
+          print(f"коды попыток: {codes}")
+          if 429 not in codes:
+              raise SystemExit(
+                  "лимит по аккаунту не сработал: набор нечего доказывать, "
+                  "проверь RATE_LIMIT_ENABLED и Redis"
+              )
+          print("лимит по аккаунту включён: после восьми неудач пришёл 429")
+          PY
+
+      - name: Check login throttle
+        run: python tests/security/check_login_throttle.py
+
       - name: Show backend log on failure
         if: failure()
         run: tail -n 200 /tmp/uvicorn.log
@@ -459,3 +611,194 @@ jobs:
       # товаров лежит в frontend/scripts/css-baseline.json.
       - name: Check that every className has a CSS rule
         run: npm run check:css
+
+  # ---------------------------------------------------------------------------
+  # Форма смены пароля — через настоящий браузер, а не через API.
+  #
+  # Отдельная джоба, потому что ей нужно то, чего нет ни у кого больше:
+  # браузер (Playwright) и одновременно живой фронтенд, живой бэкенд и
+  # Postgres. Проверять только API здесь бессмысленно — набор ловит дефекты
+  # уровня разметки: карточка «Безопасность» пропала из профиля, кнопка не
+  # раскрывает форму, повтор пароля не сверяется на клиенте. Такие вещи
+  # API-тесты не видят в принципе.
+  #
+  # Версия Playwright зафиксирована и не берётся из frontend/package.json:
+  # в самом приложении его нет, он нужен только этой проверке. При обновлении
+  # версии надо обновлять и кэш браузеров — их ревизия привязана к пакету.
+  # ---------------------------------------------------------------------------
+  password-form:
+    name: Profile password form (browser)
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: marketplace
+          POSTGRES_PASSWORD: ci_password
+          POSTGRES_DB: marketplace_password_form
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U marketplace -d marketplace_password_form"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      ENV: development
+      DATABASE_URL: postgresql+psycopg2://marketplace:ci_password@localhost:5432/marketplace_password_form
+      REDIS_URL: redis://localhost:6379/0
+      SECRET_KEY: ci-secret-key-not-used-in-production-0123456789
+      # Именно 3000: столько слушает dev-сервер Vite (frontend/vite.config.js),
+      # и туда набор ходит напрямую. В других джобах стоит 5173 — это дефолт
+      # vite preview, к браузерной проверке отношения не имеет.
+      FRONTEND_URL: http://localhost:3000
+      CORS_ORIGINS: http://localhost:3000
+      ADMIN_EMAILS: admin@delo.ru
+      DEMO_PASSWORD: ci-demo-password
+      # Браузер ходит на frontend, а тот проксирует /login и /users на backend.
+      # CSRF включён намеренно: набор проверяет, что форма работает и при
+      # включённой защите, а не только когда её нет.
+      CSRF_ENABLED: "1"
+      COOKIE_SECURE: "0"
+      # Лимит по аккаунту выключен. Набор сам делает вход с заведомо неверным
+      # паролем (шаг 4) и ещё раз — с уже недействительным (шаг 5), а окно
+      # лимита — 15 минут, то есть переживает весь прогон. С включённым
+      # лимитом шаг 5 получал 429 на входе по новому паролю, шаг 6 не мог
+      # вернуть исходный пароль, и набор оставлял админа с чужим паролем при
+      # старом значении в demo_password.txt.
+      #
+      # Это не ослабление проверки: лимит перебора проверяется отдельно и
+      # целенаправленно в джобе login-throttle, где для него всё и заведено.
+      RATE_LIMIT_ENABLED: "0"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install backend dependencies
+        run: pip install -r backend/requirements.txt
+
+      # Playwright ставим вне frontend: в package.json приложения его нет и
+      # не должно быть — он нужен одной проверке, а не сборке.
+      - name: Install Playwright
+        run: |
+          npm install --no-save playwright@1.55.0
+          npx playwright install --with-deps chromium
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Apply migrations to a clean database
+        working-directory: backend
+        run: alembic upgrade head
+
+      - name: Seed demo data
+        working-directory: backend
+        run: python seed_demo.py
+
+      - name: Start backend
+        working-directory: backend
+        run: |
+          python -m uvicorn main:app --host 127.0.0.1 --port 8000 > /tmp/uvicorn.log 2>&1 &
+          for i in $(seq 1 40); do
+            if curl -sf http://127.0.0.1:8000/csrf-token > /dev/null; then
+              echo "Backend is up after ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Backend did not start, dumping log:"
+          cat /tmp/uvicorn.log
+          exit 1
+
+      - name: Start frontend dev server
+        working-directory: frontend
+        run: |
+          # dev, а не preview: набор проверяет форму на том сервере, где она
+          # ходит через прокси Vite — как у разработчика.
+          npm run dev -- --host 127.0.0.1 --port 3000 > /tmp/vite.log 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -sf http://127.0.0.1:3000/ > /dev/null; then
+              echo "Frontend is up after ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Frontend did not start, dumping log:"
+          cat /tmp/vite.log
+          exit 1
+
+      # Гейт: набор доказывает, что форма работает. Если браузер не поднялся
+      # или фронтенд отдаёт не то, падение должно быть внятным здесь, а не
+      # «заголовок Безопасность не виден» внутри набора.
+      - name: Assert the page renders and CSRF is armed
+        run: |
+          set -e
+          python - <<'PY'
+          import json, urllib.error, urllib.request
+
+          with urllib.request.urlopen("http://127.0.0.1:8000/csrf-token", timeout=15) as resp:
+              token = json.loads(resp.read())["csrf_token"]
+          assert token, "GET /csrf-token не вернул токен"
+          print("CSRF армед: токен выдан")
+
+          # POST /users/me/password без токена обязан отбиваться, иначе набор
+          # шага 6 ничего не доказывал бы. Токен доступа здесь заведомо мусорный
+          # и ЛАТИНИЦЕЙ: значения HTTP-заголовков кодируются в latin-1, и
+          # кириллица в них падает с UnicodeEncodeError ещё до отправки.
+          req = urllib.request.Request(
+              "http://127.0.0.1:8000/users/me/password",
+              data=json.dumps({"current_password": "probe", "new_password": "probe-probe"}).encode(),
+              headers={"Content-Type": "application/json", "Authorization": "Bearer garbage"},
+              method="POST",
+          )
+          try:
+              with urllib.request.urlopen(req, timeout=15) as resp:
+                  raise SystemExit(f"ожидался отказ, пришло {resp.status}")
+          except urllib.error.HTTPError as exc:
+              # 403 — заголовок CSRF/X-CSRF отсутствует, 401 — токен не принят.
+              # Любой из них доказывает, что эндпоинт закрыт.
+              assert exc.code in (401, 403), f"ожидался 401/403, пришло {exc.code}"
+              print(f"эндпоинт смены пароля защищён: {exc.code}")
+          PY
+
+      - name: Check profile password form
+        run: node tests/security/check_profile_password_form.mjs
+
+      - name: Show logs on failure
+        if: failure()
+        run: |
+          echo "=== uvicorn ==="
+          tail -n 100 /tmp/uvicorn.log || true
+          echo "=== vite ==="
+          tail -n 60 /tmp/vite.log || true
+
+      - name: Upload failure screenshots
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: password-form-screenshots
+          path: visual-check/*.png
+          if-no-files-found: ignore

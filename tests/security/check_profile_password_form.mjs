@@ -1,9 +1,12 @@
 /**
  * Проверка формы смены пароля в профиле — через браузер, а не через API.
  *
- * Запуск (подняты фронтенд на :3000 и бэкенд на :8000):
- *   NODE_PATH="C:/Users/armen/.workbuddy-ai/binaries/node/workspace/node_modules" \
- *     node tests/security/check_profile_password_form.mjs
+ * Запуск (подняты фронтенд на :3000 и бэкенд на :8000, установлен playwright):
+ *   node tests/security/check_profile_password_form.mjs
+ *
+ * Playwright в package.json приложения НЕ лежит: он нужен только этой
+ * проверке, а не сборке, поэтому ставится отдельно. В CI это делает шаг
+ * «Install Playwright» (в корне репозитория, --no-save).
  *
  * Что доказываем: форму видно, она отказывает на неверном текущем пароле и на
  * несовпадающем повторе, а на верных данных действительно меняет пароль —
@@ -12,30 +15,49 @@
  * ответа 200, но не доказывает, что пароль в базе другой.
  *
  * ВНИМАНИЕ: скрипт на время меняет пароль admin@delo.ru и в конце возвращает
- * исходный (шаг 6). Если прогон прервать между шагами 5 и 6, пароль останется
- * новым — тогда верни доступ через backend/set_password.py.
+ * исходный (шаг 6). Шаг 6 делает прямой запрос к API, поэтому обязан сам
+ * подставить CSRF-пару — иначе при CSRF_ENABLED=1 получает 403, падает и
+ * оставляет админа с новым паролем, а в demo_password.txt — старый.
+ * Если прогон всё же прервался между шагами 5 и 6, верни доступ через
+ * backend/set_password.py.
  */
 import { createRequire } from 'node:module';
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
-// playwright стоит не в проекте, а в изолированном окружении ассистента.
-// Импорт по имени через NODE_PATH в ESM не работает — резолвим вручную.
+// Импорт по имени в ESM не смотрит в NODE_PATH, а playwright лежит либо в
+// корне репозитория (так ставит CI), либо в изолированном окружении
+// ассистента — поэтому резолвим его вручную, с запасным путём.
 const require = createRequire(import.meta.url);
-let chromium;
-try {
-  ({ chromium } = require('playwright'));
-} catch {
-  const fallback = createRequire(
-    'C:/Users/armen/.workbuddy-ai/binaries/node/workspace/'
-  );
-  ({ chromium } = fallback('playwright'));
-}
-
 const HERE = dirname(fileURLToPath(import.meta.url));
 // Скрипт лежит в tests/security: корень репозитория на два уровня выше.
 const ROOT = join(HERE, '..', '..');
+
+function loadChromium() {
+  // 1. Обычный путь: playwright стоит в корне репозитория (так делает CI)
+  //    или выше — тогда его находит стандартный резолв Node.
+  try {
+    return require('playwright').chromium;
+  } catch {
+    // 2. Запасной путь для локальной машины, где playwright лежит в
+    //    изолированном окружении ассистента, а не в репозитории. Абсолютный
+    //    путь к чужой установке здесь недопустим: в CI его не существует.
+    //    Поэтому берём каталог из переменной окружения, которую выставляет
+    //    вызывающая сторона, и только если она задана.
+    const workspace = process.env.DELO_PLAYWRIGHT_DIR;
+    if (workspace) {
+      return createRequire(join(workspace, 'noop.js'))('playwright').chromium;
+    }
+    throw new Error(
+      'playwright не найден: установи его (npm install --no-save playwright) ' +
+        'или укажи каталог с ним в DELO_PLAYWRIGHT_DIR'
+    );
+  }
+}
+
+const chromium = loadChromium();
+
 const API = 'http://127.0.0.1:8000';
 const SITE = 'http://127.0.0.1:3000';
 const EMAIL = 'admin@delo.ru';
@@ -62,6 +84,33 @@ async function apiLogin(email, password) {
   });
   if (!res.ok) return { status: res.status, data: null };
   return { status: res.status, data: await res.json() };
+}
+
+/**
+ * CSRF-пара для запросов, которые набор делает сам, в обход браузера.
+ *
+ * POST /users/me/password объявлен с Depends(verify_csrf), то есть требует
+ * ОБА условия: заголовок X-CSRF-Token и совпадающую с ним signed-cookie
+ * (double-submit, см. app/core/csrf.py). Шаги внутри страницы проходят без
+ * этого — их шлёт фронтенд, а он пару подставляет сам. А шаг 6 ходит через
+ * fetch напрямую, и с CSRF_ENABLED=1 (как в CI) получал 403: набор не мог
+ * вернуть исходный пароль, падал с кодом 1 и оставлял в базе новый пароль
+ * при старом значении в demo_password.txt.
+ *
+ * Cookie берём из Set-Cookie руками: у глобального fetch в Node нет
+ * cookie-jar, поэтому ответный Set-Cookie иначе просто теряется.
+ */
+async function fetchCsrf() {
+  const res = await fetch(`${API}/csrf-token`);
+  if (!res.ok) return null;
+  const { csrf_token: token } = await res.json();
+  // getSetCookie() есть в Node 18.14+; строковый get() склеил бы несколько
+  // Set-Cookie через запятую и сломал значение.
+  const cookie = res.headers
+    .getSetCookie()
+    .map((c) => c.split(';')[0])
+    .join('; ');
+  return token && cookie ? { token, cookie } : null;
 }
 
 async function toastTexts(page) {
@@ -98,11 +147,21 @@ if (!session.data) {
 }
 const sessionToken = session.data.access_token;
 
-// Версия playwright из окружения ассистента новее, чем скачанные браузеры:
-// пакет просит ревизию 1243, а на диске лежат 1208 и 1223. Поэтому сначала
-// пробуем как обычно, а при отсутствии бинарника берём то, что установлено.
+// Версия playwright и ревизия скачанного браузера могут разойтись: пакет
+// просит одну ревизию, а на диске лежит другая. Поэтому сначала пробуем
+// штатный запуск, а при отсутствии бинарника берём то, что установлено.
+//
+// Каталог берём из PLAYWRIGHT_BROWSERS_PATH, а по умолчанию — из
+// ms-playwright под каталогом пользователя. Раньше путь собирался из
+// LOCALAPPDATA и имени chrome-headless-shell-win64: на Linux-раннере CI
+// такого пути нет вообще, и запасной вариант молча не срабатывал.
 function findInstalledShell() {
-  const base = join(process.env.LOCALAPPDATA || '', 'ms-playwright');
+  const base =
+    process.env.PLAYWRIGHT_BROWSERS_PATH ||
+    join(
+      process.env.LOCALAPPDATA || process.env.HOME || '',
+      'ms-playwright'
+    );
   let entries = [];
   try {
     entries = readdirSync(base);
@@ -113,9 +172,17 @@ function findInstalledShell() {
     .filter((n) => n.startsWith('chromium_headless_shell-'))
     .sort()
     .reverse();
+  // Имя каталога с бинарником зависит от ОС: win64 на Windows, linux на
+  // Linux-раннере. Перебираем оба, а не угадываем по платформе.
+  const subdirs = ['chrome-headless-shell-win64', 'chrome-headless-shell-linux64', 'chrome-headless-shell-linux'];
+  const names = ['chrome-headless-shell.exe', 'chrome-headless-shell'];
   for (const dir of shells) {
-    const exe = join(base, dir, 'chrome-headless-shell-win64', 'chrome-headless-shell.exe');
-    if (existsSync(exe)) return exe;
+    for (const sub of subdirs) {
+      for (const name of names) {
+        const exe = join(base, dir, sub, name);
+        if (existsSync(exe)) return exe;
+      }
+    }
   }
   return null;
 }
@@ -235,16 +302,22 @@ console.log();
 console.log('='.repeat(68));
 console.log('6. Состояние возвращено как было');
 console.log('='.repeat(68));
-const restore = withNew.data
-  ? await fetch(`${API}/users/me/password`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${withNew.data.access_token}`,
-      },
-      body: JSON.stringify({ current_password: newPassword, new_password: currentPassword }),
-    })
-  : null;
+const csrf = await fetchCsrf();
+let restore = null;
+if (withNew.data) {
+  if (!csrf) {
+    console.log('  [инфо] /csrf-token не отдал пару токен+cookie — пробую без них');
+  }
+  restore = await fetch(`${API}/users/me/password`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${withNew.data.access_token}`,
+      ...(csrf ? { 'X-CSRF-Token': csrf.token, Cookie: csrf.cookie } : {}),
+    },
+    body: JSON.stringify({ current_password: newPassword, new_password: currentPassword }),
+  });
+}
 record('исходный пароль возвращён', Boolean(restore && restore.ok), restore ? `HTTP ${restore.status}` : 'вход новым паролем не удался');
 if (restore && restore.ok) {
   const backToOriginal = await apiLogin(EMAIL, currentPassword);

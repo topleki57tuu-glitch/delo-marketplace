@@ -15,9 +15,6 @@
 import json
 import re
 import sys
-import urllib.error
-import urllib.parse
-import urllib.request
 from pathlib import Path
 
 BASE = "http://127.0.0.1:8000"
@@ -26,6 +23,18 @@ BASE = "http://127.0.0.1:8000"
 # из другого места ломает поиск demo_password.txt.
 ROOT = Path(__file__).resolve().parents[2]
 PASSWORD_FILE = ROOT / "backend" / "demo_password.txt"
+
+# Ходим через Session из tests/_helpers.py, а не сырым urllib. Причина
+# конкретная: POST /users/me/password объявлен с Depends(verify_csrf), а CI
+# поднимает бэкенд с CSRF_ENABLED=1. Замерено на живом бэкенде: без заголовка
+# эндпоинт отвечает 403 «CSRF токен отсутствует в заголовке X-CSRF-Token»,
+# то есть набор падал бы в CI на первой же проверке смены пароля. Session сам
+# берёт токен через GET /csrf-token и подставляет его в каждый изменяющий
+# запрос, поэтому набор проходит и с включённым CSRF, и с выключенным.
+sys.path.insert(0, str(ROOT / "tests"))
+from _helpers import Session  # noqa: E402
+
+SESSION = Session(BASE)
 
 results = []
 
@@ -37,26 +46,18 @@ def record(name, ok, detail=""):
 
 
 def call(method, path, *, token=None, form=None, json_body=None, params=None):
-    url = BASE + path
+    """Обёртка над Session с прежней сигнатурой: (код, текст ответа)."""
+    kw = {}
     if params:
-        url += "?" + urllib.parse.urlencode(params)
-    data = None
-    headers = {}
+        kw["params"] = params
     if form is not None:
-        data = urllib.parse.urlencode(form).encode()
-        headers["Content-Type"] = "application/x-www-form-urlencoded"
+        kw["data"] = form
     elif json_body is not None:
-        data = json.dumps(json_body).encode()
-        headers["Content-Type"] = "application/json"
+        kw["json"] = json_body
     if token:
-        headers["Authorization"] = f"Bearer {token}"
-    req = urllib.request.Request(url, data=data, headers=headers, method=method)
-    try:
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            body = resp.read().decode("utf-8", "replace")
-            return resp.status, body
-    except urllib.error.HTTPError as exc:
-        return exc.code, exc.read().decode("utf-8", "replace")
+        kw["headers"] = {"Authorization": f"Bearer {token}"}
+    resp = getattr(SESSION, method.lower())(path, **kw)
+    return resp.status_code, resp.text
 
 
 def read_password(key):
@@ -74,17 +75,29 @@ def write_admin_password(password):
     (или человек) входил по значению, которое уже не работает.
     """
     text = PASSWORD_FILE.read_text(encoding="utf-8")
-    updated = re.sub(
+    # subn, а не sub: «замен не было» и «замена совпала с исходником» — разные
+    # события. При sub их не различить (оба дают updated == text), и штатный
+    # путь — возврат исходного пароля, когда в файле уже лежит он же, — печатал
+    # «строка не найдена». Ложная тревога в каждом чистом прогоне приучает её
+    # игнорировать, а настоящую пропажу строки делает неотличимой от неё.
+    # Замена — лямбдой: пароль попадает в шаблон как есть, без разбора
+    # обратных слэшей и \g<...>.
+    updated, replaced = re.subn(
         r"^admin_password\s*=\s*\S+$",
-        f"admin_password = {password}",
+        lambda _m: f"admin_password = {password}",
         text,
         flags=re.MULTILINE,
     )
-    if updated == text:
+    if replaced == 0:
         print(f"  внимание: строка admin_password в {PASSWORD_FILE} не найдена")
         return
+    if updated == text:
+        print("  demo_password.txt: значение уже актуально, файл не менялся")
+        return
     PASSWORD_FILE.write_text(updated, encoding="utf-8")
-    print(f"  demo_password.txt обновлён: admin_password = {password}")
+    # Значение не печатаем: вывод попадает в логи CI и в переписку, а сам
+    # пароль и так лежит в файле, на который ссылается сообщение.
+    print("  demo_password.txt обновлён: строка admin_password")
 
 
 def login(email, password):
@@ -213,6 +226,7 @@ def main():
 
     status, body = login("admin@delo.ru", new_password)
     record("новый пароль пускает", status == 200, f"HTTP {status}")
+    fresh = None
     if status == 200:
         fresh = json.loads(body)["access_token"]
         status, _ = call("GET", "/admin/stats", token=fresh)
@@ -220,12 +234,32 @@ def main():
 
     print()
     print("=" * 66)
+    print("7. Проверка возвращает исходный пароль")
+    print("=" * 66)
+    # Иначе каждый прогон оставляет систему не такой, какой нашёл: человек с
+    # сохранённым паролем админа обнаруживает, что тот перестал работать.
+    # В CI это незаметно (база одноразовая), локально — мешает, и именно из-за
+    # этого набор было неудобно запускать руками.
+    restored = False
+    if fresh:
+        status, _ = call(
+            "POST", "/users/me/password", token=fresh,
+            json_body={"current_password": new_password, "new_password": current},
+        )
+        restored = status == 200
+    record("смена обратно на исходный пароль принята", restored)
+    if restored:
+        status, _ = login("admin@delo.ru", current)
+        record("вход исходным паролем снова работает", status == 200, f"HTTP {status}")
+
+    print()
+    print("=" * 66)
     print("Итог")
     print("=" * 66)
     print(f"Отозвано сессий при смене: {revoked}")
-    if revoked is not None:
-        write_admin_password(new_password)
-    print("Действующий пароль админа записан в backend/demo_password.txt")
+    # В файл пишем то, что действует СЕЙЧАС, а не то, что мы задавали: если
+    # возврат не удался, врать в файле нельзя.
+    write_admin_password(current if restored else new_password)
     failed = [name for name, ok, _ in results if not ok]
     print(f"Проверок: {len(results)}, провалено: {len(failed)}")
     for name in failed:
