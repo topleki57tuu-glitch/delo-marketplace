@@ -36,7 +36,7 @@ export const ChatsDrawer = ({ isOpen, onClose, onSelectTask, onOpenAuth }) => {
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 z-50 bg-base/80 backdrop-blur-md flex justify-end transition-opacity">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex justify-end transition-opacity">
             <div 
                 className="w-full max-w-md bg-surface border-l border-border h-full flex flex-col shadow-2xl p-4 md:p-6 animate-in slide-in-from-right duration-200"
             >

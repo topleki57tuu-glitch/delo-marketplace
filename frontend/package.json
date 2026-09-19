@@ -10,7 +10,8 @@
     "start": "serve -s dist -p ${PORT:-3000}",
     "test": "vitest",
     "test:ui": "vitest --ui",
-    "test:coverage": "vitest --coverage"
+    "test:coverage": "vitest --coverage",
+    "check:css": "node scripts/check-css-classes.mjs"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.0.0",
