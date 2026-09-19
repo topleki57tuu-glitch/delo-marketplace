@@ -25,6 +25,21 @@ def verify_password(password: str, hashed: str) -> bool:
     except Exception:
         return False
 
+
+def generate_strong_password(length: int = 20) -> str:
+    """Случайный пароль, заведомо проходящий политику из app/schemas.
+
+    secrets.token_urlsafe здесь не годится: он может выдать строку без единой
+    цифры, а политика требует хотя бы одну. Поэтому собираем сами и проверяем.
+    """
+    import string
+    alphabet = string.ascii_letters + string.digits
+    while True:
+        candidate = "".join(secrets.choice(alphabet) for _ in range(length))
+        if any(c.isdigit() for c in candidate) and any(c.isalpha() for c in candidate):
+            return candidate
+
+
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
     """Создаёт access токен с коротким временем жизни (15 минут)."""
     to_encode = data.copy()
@@ -285,7 +300,13 @@ def _get_redis():
     return _redis_client
 
 
-def _client_ip(request: Request) -> str:
+def client_ip(request: Request) -> str:
+    """Адрес клиента с учётом X-Forwarded-For от нашего прокси.
+
+    Публичная, а не приватная: нужна не только лимитам, но и журналу событий
+    безопасности. В аудите должен стоять адрес нарушителя, а не адрес
+    обратного прокси, иначе все записи выглядят как один и тот же клиент.
+    """
     import ipaddress
     client_host = request.client.host if request.client else "unknown"
     # X-Forwarded-For доверяем только когда запрос пришёл с приватного адреса —
@@ -308,6 +329,19 @@ def _too_many_requests() -> HTTPException:
     )
 
 
+def _prune_rate_buckets(now: float, window_sec: int) -> None:
+    """Чистит протухшие ключи, когда словарь разросся.
+
+    Без этого каждый новый IP оставлял бы запись в памяти навсегда, и она
+    росла бы вместе с числом клиентов.
+    """
+    if len(_rate_buckets) <= _MEMORY_KEYS_SOFT_LIMIT:
+        return
+    stale = [k for k, v in _rate_buckets.items() if not v or now - v[-1] > window_sec]
+    for k in stale:
+        _rate_buckets.pop(k, None)
+
+
 def _rate_limit_memory(key: str, limit: int, window_sec: int) -> None:
     now = time.time()
     hits = [t for t in _rate_buckets.get(key, []) if now - t < window_sec]
@@ -317,20 +351,14 @@ def _rate_limit_memory(key: str, limit: int, window_sec: int) -> None:
 
     hits.append(now)
     _rate_buckets[key] = hits
-
-    # Чистим протухшие ключи: без этого каждый новый IP оставлял бы запись
-    # в словаре навсегда и память росла бы вместе с числом клиентов.
-    if len(_rate_buckets) > _MEMORY_KEYS_SOFT_LIMIT:
-        stale = [k for k, v in _rate_buckets.items() if not v or now - v[-1] > window_sec]
-        for k in stale:
-            _rate_buckets.pop(k, None)
+    _prune_rate_buckets(now, window_sec)
 
 
 def rate_limit(request: Request, bucket: str, limit: int = 60, window_sec: int = 60):
     if not settings.RATE_LIMIT_ENABLED:
         return
 
-    ip = _client_ip(request)
+    ip = client_ip(request)
     key = f"rl:{bucket}:{ip}"
 
     client = _get_redis()
@@ -355,4 +383,107 @@ def rate_limit(request: Request, bucket: str, limit: int = 60, window_sec: int =
             print(f"[rate_limit] сбой Redis ({exc}); переходим на память процесса")
 
     _rate_limit_memory(key, limit, window_sec)
+
+
+# ---------------------------------------------------------------------------
+# Перебор пароля к конкретному аккаунту.
+#
+# Лимит выше считается по IP, и одного его мало. Злоумышленник с пула адресов
+# (или просто с мобильного интернета, где адрес меняется на каждом запросе)
+# получает свежие 10 попыток на каждый новый IP — а цель у него одна и та же
+# учётная запись. Поэтому считаем ещё и по аккаунту, а не только по адресу.
+#
+# Считаем ТОЛЬКО неудачные попытки и обнуляем счётчик при успешном входе.
+# Если считать все запросы подряд, знание чужой почты становится оружием:
+# достаточно забить лимит мусорными паролями, и владелец не войдёт. Если не
+# обнулять на успехе, владелец, восемь раз опечатавшийся, ждал бы окно зря.
+# ---------------------------------------------------------------------------
+
+ACCOUNT_LOGIN_LIMIT = 8
+ACCOUNT_LOGIN_WINDOW_SEC = 900
+
+
+def _account_key(email: str) -> str:
+    # Регистр приводим сами: в базе почта лежит как введена при регистрации,
+    # и Admin@delo.ru с admin@delo.ru иначе считались бы разными аккаунтами,
+    # то есть лимит обходился бы сменой регистра.
+    return f"rl:login_acct:{email.strip().lower()}"
+
+
+def _account_failures(key: str, window_sec: int) -> int:
+    """Сколько неудач накопилось по ключу. Ничего не меняет и не бросает."""
+    client = _get_redis()
+    if client is not None:
+        try:
+            value = client.get(key)
+            return int(value) if value else 0
+        except Exception as exc:
+            print(f"[rate_limit] сбой Redis ({exc}); считаем в памяти процесса")
+    now = time.time()
+    return len([t for t in _rate_buckets.get(key, []) if now - t < window_sec])
+
+
+def check_account_login_allowed(
+    request: Request,
+    email: str,
+    limit: int = ACCOUNT_LOGIN_LIMIT,
+    window_sec: int = ACCOUNT_LOGIN_WINDOW_SEC,
+) -> None:
+    """Отказывает, если по этому аккаунту уже набралось неудач сверх меры.
+
+    Вызывать ДО проверки пароля: смысл в том, чтобы не давать перебирать.
+    """
+    if not settings.RATE_LIMIT_ENABLED:
+        return
+
+    key = _account_key(email)
+    failures = _account_failures(key, window_sec)
+    if failures >= limit:
+        log_security_event(
+            event_type="login_account_throttled",
+            ip=client_ip(request),
+            details=f"account={email.strip().lower()}, failures={failures}, limit={limit}",
+        )
+        minutes = max(1, window_sec // 60)
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=(
+                "Слишком много неудачных попыток входа в этот аккаунт. "
+                f"Повторите через {minutes} мин."
+            ),
+        )
+
+
+def record_login_failure(email: str, window_sec: int = ACCOUNT_LOGIN_WINDOW_SEC) -> None:
+    if not settings.RATE_LIMIT_ENABLED:
+        return
+
+    key = _account_key(email)
+    client = _get_redis()
+    if client is not None:
+        try:
+            count = client.incr(key)
+            if count == 1:
+                client.expire(key, window_sec)
+            return
+        except Exception as exc:
+            print(f"[rate_limit] сбой Redis ({exc}); считаем в памяти процесса")
+
+    now = time.time()
+    hits = [t for t in _rate_buckets.get(key, []) if now - t < window_sec]
+    hits.append(now)
+    _rate_buckets[key] = hits
+    _prune_rate_buckets(now, window_sec)
+
+
+def clear_login_failures(email: str) -> None:
+    """Успешный вход обнуляет счётчик: владелец не должен ждать окна."""
+    key = _account_key(email)
+    client = _get_redis()
+    if client is not None:
+        try:
+            client.delete(key)
+        except Exception as exc:
+            print(f"[rate_limit] сбой Redis ({exc}); чистим в памяти процесса")
+    _rate_buckets.pop(key, None)
 

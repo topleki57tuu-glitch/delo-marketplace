@@ -140,6 +140,22 @@ class ResetPasswordRequest(BaseModel):
     def _password_policy(cls, v: str) -> str:
         return _check_password(v)
 
+class PasswordChangeRequest(BaseModel):
+    """Смена пароля из-под логина.
+
+    Отдельно от ResetPasswordRequest: тот работает по токену из письма и
+    текущий пароль не спрашивает (человек его как раз забыл). Здесь наоборот —
+    текущий пароль обязателен, иначе угнанный access-токен позволял бы сменить
+    пароль и запереть владельца в его же аккаунте.
+    """
+    current_password: str
+    new_password: str
+
+    @field_validator("new_password")
+    @classmethod
+    def _password_policy(cls, v: str) -> str:
+        return _check_password(v)
+
 MIN_WITHDRAWAL = 500
 WITHDRAWAL_METHODS = {"card", "sbp"}
 

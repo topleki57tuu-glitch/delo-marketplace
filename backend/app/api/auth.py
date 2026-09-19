@@ -8,7 +8,8 @@ from app.core.database import get_db
 from app.core.config import settings
 from app.core.security import (
     hash_password, verify_password, create_access_token, create_refresh_token,
-    verify_refresh_token, rate_limit, oauth2_scheme
+    verify_refresh_token, rate_limit, oauth2_scheme,
+    check_account_login_allowed, record_login_failure, clear_login_failures,
 )
 from app.core.csrf import verify_csrf
 from app.models import User, PasswordResetToken, RefreshToken, UserRole
@@ -57,9 +58,19 @@ def register(user: UserCreate, request: Request, db: Session = Depends(get_db), 
 @router.post("/login")
 def login(request: Request, form: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     rate_limit(request, "login", limit=10, window_sec=300)
+    # Лимит по IP не мешает перебирать ОДИН аккаунт с разных адресов: каждый
+    # новый адрес приносит свои 10 попыток. Поэтому перед проверкой пароля
+    # смотрим счётчик неудач по самой учётной записи.
+    check_account_login_allowed(request, form.username)
+
     user = db.query(User).filter(User.email == form.username).first()
     if not user or not verify_password(form.password, user.hashed_password):
+        record_login_failure(form.username)
         raise HTTPException(status_code=401, detail="Неверный email или пароль")
+
+    # Вход удался — снимаем счётчик, иначе владелец, опечатавшийся восемь раз,
+    # ждал бы окно, уже доказав, что пароль знает.
+    clear_login_failures(form.username)
 
     # Создаём access токен (15 минут) и refresh токен (7 дней)
     access_token = create_access_token({

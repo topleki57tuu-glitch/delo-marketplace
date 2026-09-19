@@ -3,14 +3,17 @@ import io
 import json
 from datetime import datetime, timezone
 from typing import Optional, List
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.csrf import verify_csrf
-from app.core.security import oauth2_scheme, decode_token, is_admin
-from app.models import User, Review, Task, Transaction, UserRole, TaskStatus
-from app.schemas import ProfileUpdate
+from app.core.logging import log_security_event
+from app.core.security import (
+    oauth2_scheme, decode_token, is_admin, hash_password, verify_password, client_ip,
+)
+from app.models import User, Review, Task, Transaction, UserRole, TaskStatus, RefreshToken
+from app.schemas import ProfileUpdate, PasswordChangeRequest
 
 router = APIRouter(tags=["Users"])
 
@@ -184,6 +187,67 @@ def update_profile(profile: ProfileUpdate, token: str = Depends(oauth2_scheme), 
     db.refresh(user)
 
     return {"message": "Профиль успешно обновлён"}
+
+@router.post("/users/me/password")
+def change_password(
+    req: PasswordChangeRequest,
+    request: Request,
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db),
+    _csrf: None = Depends(verify_csrf),
+):
+    """Смена пароля из-под логина.
+
+    Раньше сменить пароль можно было только через письмо со сбросом, то есть
+    при неработающем SMTP владелец аккаунта оставался со своим паролем
+    навсегда. Особенно это касалось админа: у него не было другого способа
+    уйти с общеизвестного демо-пароля.
+    """
+    payload = decode_token_or_401(token)
+    user = db.query(User).filter(User.id == int(payload.get("sub"))).first()
+    if not user:
+        raise HTTPException(404, "Пользователь не найден")
+
+    # Текущий пароль обязателен: без него угнанный access-токен позволял бы
+    # сменить пароль и запереть владельца в его же аккаунте.
+    if not verify_password(req.current_password, user.hashed_password):
+        log_security_event(
+            event_type="password_change_failed",
+            user_id=user.id,
+            ip=client_ip(request),
+            details="неверный текущий пароль",
+        )
+        raise HTTPException(400, "Текущий пароль указан неверно")
+
+    if verify_password(req.new_password, user.hashed_password):
+        raise HTTPException(400, "Новый пароль совпадает с текущим")
+
+    user.hashed_password = hash_password(req.new_password)
+
+    # Смена пароля должна убивать уже выданные сессии, иначе украденный
+    # refresh-токен продолжает жить свои 7 дней и пароль ему не помеха.
+    # Access-токены отозвать нельзя — они без jti и живут максимум 15 минут;
+    # этого достаточно, а вот refresh нужно гасить явно.
+    revoked = db.query(RefreshToken).filter(
+        RefreshToken.user_id == user.id,
+        RefreshToken.revoked == False,
+    ).update({
+        "revoked": True,
+        "revoked_at": datetime.now(timezone.utc),
+    }, synchronize_session=False)
+    db.commit()
+
+    log_security_event(
+        event_type="password_changed",
+        user_id=user.id,
+        ip=client_ip(request),
+        details=f"отозвано refresh-токенов: {revoked}",
+    )
+
+    return {
+        "message": "Пароль изменён",
+        "revoked_sessions": revoked,
+    }
 
 @router.post("/users/me/switch-role")
 def switch_role(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db), _csrf: None = Depends(verify_csrf)):

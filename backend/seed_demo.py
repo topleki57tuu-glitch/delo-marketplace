@@ -8,6 +8,9 @@
 
 Полностью очищает dev-базу и создаёт:
   * 3 заказчиков + 5 специалистов (пароль общий — см. DEMO_PASSWORD)
+  * админ с отдельным паролем (см. ADMIN_PASSWORD) — общий демо-пароль
+    на аккаунте с очередью споров и выплатами означал бы, что модератором
+    становится любой, кто знает демо-пароль
   * 13 заданий по всем категориям (открытые / в работе / завершённые)
   * отклики, переписки, отзывы, уведомления, транзакции (эскроу, PRO)
 
@@ -27,7 +30,7 @@ from sqlalchemy import text
 
 from app.core.config import settings
 from app.core.database import SessionLocal, engine, Base
-from app.core.security import hash_password, encrypt_sensitive
+from app.core.security import hash_password, encrypt_sensitive, generate_strong_password
 from app.models import (
     User, Task, Response, Message, Review, Notification, Transaction,
     UserRole, TaskStatus, TaskCategory, TransactionType,
@@ -49,6 +52,13 @@ DEMO_PASSWORD = os.environ.get("DEMO_PASSWORD") or secrets.token_urlsafe(9)
 # об этом можно только зайдя туда. Поэтому почта вынесена в константу, а в конце
 # main() стоит проверка.
 ADMIN_EMAIL = "admin@delo.ru"
+
+# Пароль админа — отдельный от демо-пароля. У этого аккаунта очередь споров,
+# заявки на вывод с реквизитами и доступ к чужим данным, поэтому общий
+# демо-пароль на нём означает, что любой, кому он известен (он лежит открытым
+# текстом в demo_password.txt и печатается в лог сида), получает модератора.
+# Берём из ADMIN_PASSWORD, иначе генерируем стойкий.
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD") or generate_strong_password()
 
 # Защита от запуска на боевом контуре: seed создаёт аккаунт с правами арбитра
 # и заведомо известный (или напечатанный в лог) пароль. В проде это дыра,
@@ -101,10 +111,10 @@ def main():
 
     def add_user(key, email, name, role, *, city=None, bio=None, skills=None,
                  balance=0, is_pro=False, pro_until=None, verified=False,
-                 credits=5, last_seen_min=None):
+                 credits=5, last_seen_min=None, password=DEMO_PASSWORD):
         u = User(
             email=email,
-            hashed_password=hash_password(DEMO_PASSWORD),
+            hashed_password=hash_password(password),
             role=UserRole[role],
             name=name,
             bio=bio,
@@ -132,8 +142,10 @@ def main():
     add_user("olga", "olga@delo.ru", "Ольга Ковалёва", "customer",
              city="Казань", bio="Организую семейные праздники.",
              balance=10000, last_seen_min=180)
-    # Арбитр платформы (email входит в ADMIN_EMAILS в .env)
+    # Арбитр платформы. Пароль отдельный от демо-пароля (см. ADMIN_PASSWORD),
+    # права модератора даёт ADMIN_EMAILS — проверка ниже.
     add_user("admin", ADMIN_EMAIL, "Арбитр ДЕЛО", "customer",
+             password=ADMIN_PASSWORD,
              city="Москва", bio="Служба арбитража платформы. Рассматриваю споры по безопасным сделкам.",
              balance=0, verified=True, last_seen_min=5)
 
@@ -614,7 +626,12 @@ def main():
                 f"# Этот файл в .gitignore. Удали после первого входа.\n"
                 f"# Скрипты читают пароль машиночитаемо из строки ниже.\n"
                 f"password = {DEMO_PASSWORD}\n\n"
-                f"Админ:      admin@delo.ru\n"
+                f"# Пароль админа — отдельный от демо-пароля: у admin@delo.ru очередь\n"
+                f"# споров, заявки на вывод и доступ к чужим данным. Сменить:\n"
+                f"#   python set_password.py admin@delo.ru\n"
+                f"# или из профиля (POST /users/me/password).\n"
+                f"admin_password = {ADMIN_PASSWORD}\n\n"
+                f"Админ:      {ADMIN_EMAIL}  (пароль отдельный, см. admin_password)\n"
                 f"Заказчик:   anna@delo.ru\n"
                 f"Специалист: igor@delo.ru\n"
             )
@@ -622,7 +639,8 @@ def main():
     except OSError as exc:
         print(f"Не удалось записать {pwd_file}: {exc}")
 
-    print(f"Пользователи: {db.query(User).count()} (пароль у всех: {DEMO_PASSWORD})")
+    print(f"Пользователи: {db.query(User).count()} (пароль демо-аккаунтов: {DEMO_PASSWORD})")
+    print(f"Админ {ADMIN_EMAIL}: пароль отдельный — {ADMIN_PASSWORD}")
     print(f"Задания: {db.query(Task).count()} "
           f"(open={db.query(Task).filter(Task.status == TaskStatus.open).count()}, "
           f"in_progress={db.query(Task).filter(Task.status == TaskStatus.in_progress).count()}, "
