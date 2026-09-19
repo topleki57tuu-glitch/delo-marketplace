@@ -240,11 +240,13 @@ def is_admin(user) -> bool:
     подтверждается, поэтому права модератора получал любой, кто первым
     занял этот адрес (и вместе с ними — очередь выплат с реквизитами).
     Нет переменной — нет модераторов.
+
+    Список берём из settings, а не из os.environ напрямую: так он читается
+    из того же .env, что и остальные настройки, и о пустом значении
+    предупреждает старт приложения (app/core/config.py).
     """
-    raw = os.environ.get("ADMIN_EMAILS", "")
-    admins = [e.strip().lower() for e in raw.split(",") if e.strip()]
     email = getattr(user, "email", None)
-    return bool(email and email.lower() in admins)
+    return bool(email and email.lower() in settings.ADMIN_EMAILS)
 
 
 # ---------------------------------------------------------------------------

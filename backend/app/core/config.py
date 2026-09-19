@@ -113,6 +113,18 @@ class Settings:
     SENTRY_ENVIRONMENT: str = os.environ.get("SENTRY_ENVIRONMENT", ENV)
     SENTRY_TRACES_SAMPLE_RATE: float = float(os.environ.get("SENTRY_TRACES_SAMPLE_RATE", "0.1"))
 
+    # Кто получает права модератора, через запятую. Дефолта нет намеренно:
+    # при пустом значении модераторов не будет вовсе (см. security.is_admin).
+    # Раньше переменную читал только is_admin — из os.environ, минуя Settings,
+    # хотя все остальные настройки живут здесь. Из-за этого о пустом значении
+    # никто не предупреждал: аккаунт входил в систему, а админ-панель отдавала
+    # ему 403, и увидеть это можно было только зайдя в неё.
+    ADMIN_EMAILS: List[str] = [
+        e.strip().lower()
+        for e in os.environ.get("ADMIN_EMAILS", "").split(",")
+        if e.strip()
+    ]
+
     if not CORS_ORIGINS:
         if IS_PRODUCTION:
             if FRONTEND_URL:
@@ -133,3 +145,14 @@ class Settings:
                 CORS_ORIGINS.append(FRONTEND_URL)
 
 settings = Settings()
+
+# Пустой ADMIN_EMAILS — не ошибка запуска, но состояние, которое иначе никак
+# себя не проявляет: приложение работает, вход проходит, а очередь споров и
+# выплат недоступна никому. Печатаем при старте, чтобы это было видно в логе,
+# а не выяснялось по 403 в браузере.
+if not settings.ADMIN_EMAILS:
+    print(
+        "[security] ADMIN_EMAILS не задан: модераторов нет вовсе, админ-панель, "
+        "очередь споров и выплаты вернут 403 всем. Укажи почты через запятую "
+        "в backend/.env (см. .env.example)."
+    )

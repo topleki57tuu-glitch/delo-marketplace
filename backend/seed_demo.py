@@ -25,6 +25,7 @@ sys.path.insert(0, ".")
 
 from sqlalchemy import text
 
+from app.core.config import settings
 from app.core.database import SessionLocal, engine, Base
 from app.core.security import hash_password, encrypt_sensitive
 from app.models import (
@@ -40,6 +41,14 @@ NOW = datetime.utcnow()
 # печатаем при седировании. Хардкод «demo123» убран намеренно — он попадал
 # в README и в документацию, то есть был известен всем.
 DEMO_PASSWORD = os.environ.get("DEMO_PASSWORD") or secrets.token_urlsafe(9)
+
+# Демо-админ. Права модератора живут НЕ в БД, а в переменной окружения
+# ADMIN_EMAILS: is_admin() читает её при каждом запросе (app/core/security.py),
+# причём дефолта там нет намеренно. То есть аккаунт ниже сам по себе ничего не
+# даёт — без .env он входит в систему, но админ-панель отдаёт ему 403, и узнать
+# об этом можно только зайдя туда. Поэтому почта вынесена в константу, а в конце
+# main() стоит проверка.
+ADMIN_EMAIL = "admin@delo.ru"
 
 # Защита от запуска на боевом контуре: seed создаёт аккаунт с правами арбитра
 # и заведомо известный (или напечатанный в лог) пароль. В проде это дыра,
@@ -124,7 +133,7 @@ def main():
              city="Казань", bio="Организую семейные праздники.",
              balance=10000, last_seen_min=180)
     # Арбитр платформы (email входит в ADMIN_EMAILS в .env)
-    add_user("admin", "admin@delo.ru", "Арбитр ДЕЛО", "customer",
+    add_user("admin", ADMIN_EMAIL, "Арбитр ДЕЛО", "customer",
              city="Москва", bio="Служба арбитража платформы. Рассматриваю споры по безопасным сделкам.",
              balance=0, verified=True, last_seen_min=5)
 
@@ -634,6 +643,24 @@ def main():
     for u in users.values():
         tag = "PRO " if u.is_pro else ""
         print(f"  {u.email:20s} {('Заказчик' if u.role == UserRole.customer else 'Специалист ' + tag):24s} {u.name}")
+
+    # Права модератора приходят не из БД, поэтому проверяем окружение сразу
+    # здесь: иначе о неработающей админ-панели узнаёшь только при заходе в неё.
+    if ADMIN_EMAIL.lower() not in settings.ADMIN_EMAILS:
+        print()
+        print("!" * 74)
+        if settings.ADMIN_EMAILS:
+            print(f"ADMIN_EMAILS={', '.join(settings.ADMIN_EMAILS)} — демо-админа {ADMIN_EMAIL} в списке нет.")
+        else:
+            print("ADMIN_EMAILS не задан, поэтому модераторов не будет вовсе.")
+        print(f"Аккаунт {ADMIN_EMAIL} войдёт в систему, но админ-панель отдаст ему 403:")
+        print("права модератора считаются по переменной окружения, а не по роли в БД.")
+        print()
+        print("Как починить: создай backend/.env со строкой")
+        print(f"    ADMIN_EMAILS={ADMIN_EMAIL}")
+        print("и перезапусти бэкенд — .env читается только при старте.")
+        print("!" * 74)
+
     db.close()
 
 

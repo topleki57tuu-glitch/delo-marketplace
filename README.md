@@ -88,6 +88,14 @@ cd delo-marketplace
 # Backend
 cd backend
 pip install -r requirements.txt
+
+# Настроить окружение. Без этого шага дальше не пойдёт: без ENV=development
+# приложение считает себя боевым (fail-closed в app/core/config.py) и
+# отказывается стартовать без SECRET_KEY, а без ADMIN_EMAILS не будет
+# модераторов — админ-панель вернёт 403 даже аккаунту из seed.
+cp .env.example .env
+# в .env обязательно: ENV=development и ADMIN_EMAILS=admin@delo.ru
+
 python seed_demo.py  # Создать БД с демо данными
 python -m uvicorn main:app --host 0.0.0.0 --port 8000
 
@@ -96,6 +104,11 @@ cd frontend
 npm install
 npm run dev
 ```
+
+`.env` в `.gitignore` — у каждого разработчика свой. Образец со всеми
+переменными: `backend/.env.example`. Значения из `.env` не переопределяют
+уже заданные переменные окружения, поэтому не дублируйте их в команде
+запуска.
 
 ### Открыть:
 
@@ -110,7 +123,10 @@ npm run dev
 случайный и сохраняет в `backend/demo_password.txt` (файл в `.gitignore`).
 
 **Админ:**
-- admin@delo.ru (см. `ADMIN_EMAILS`)
+- admin@delo.ru — права модератора даёт **только** переменная окружения
+  `ADMIN_EMAILS` (не роль в БД), поэтому почта должна быть перечислена в
+  `backend/.env`. Если список пуст, вход пройдёт, но админ-панель отдаст 403;
+  при старте бэкенд в этом случае печатает предупреждение.
 
 **Покупатели:**
 - anna@delo.ru (баланс: 2970₽)
