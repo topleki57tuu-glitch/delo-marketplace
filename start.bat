@@ -44,7 +44,14 @@ REM Явно включаем режим разработки. Без этой �
 REM окружение боевым (fail-closed в app/core/config.py) и отказывается
 REM стартовать без SECRET_KEY — это защита от запуска прода без настройки.
 set ENV=development
-if not exist "delo.db" (
+REM Имя файла базы должно совпадать с DATABASE_URL (по умолчанию
+REM sqlite:///./marketplace_v3.db, см. backend/app/core/config.py).
+REM Здесь раньше стояло delo.db — файла с таким именем не бывает, поэтому
+REM условие было всегда истинным и seed_demo.py запускался при КАЖДОМ старте,
+REM а он чистит все таблицы (DELETE FROM): демо-данные и всё, что наиграно,
+REM стирались при каждом запуске.
+set DB_FILE=marketplace_v3.db
+if not exist "%DB_FILE%" (
     echo Creating demo database...
     if "%DEMO_PASSWORD%"=="" (
         echo.

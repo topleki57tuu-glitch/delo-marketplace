@@ -127,7 +127,7 @@ status.bat
 ✅ node.exe (Frontend) запущен
 
 [База данных]
-✅ backend\delo.db существует
+✅ backend\marketplace_v3.db существует
 
 [Логи]
 ✅ backend\backend.log

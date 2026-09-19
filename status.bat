@@ -62,10 +62,13 @@ if %errorlevel% equ 0 (
 echo.
 
 echo [Database]
-if exist "backend\delo.db" (
-    echo backend\delo.db exists
+REM Имя должно совпадать с DATABASE_URL (см. backend/app/core/config.py).
+REM Раньше здесь было delo.db, поэтому отчёт всегда показывал
+REM "not found", даже когда база на месте.
+if exist "backend\marketplace_v3.db" (
+    echo backend\marketplace_v3.db exists
 ) else (
-    echo backend\delo.db not found
+    echo backend\marketplace_v3.db not found
 )
 echo.
 
