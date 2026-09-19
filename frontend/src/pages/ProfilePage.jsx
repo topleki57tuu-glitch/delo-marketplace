@@ -46,6 +46,15 @@ export default function ProfilePage({ user, token, onUpdateUser, onLogout, onOpe
   const [phone, setPhone] = useState(user?.phone || '');
   const [saving, setSaving] = useState(false);
 
+  // Смена пароля. Держим отдельно от isEditing: это не часть карточки профиля,
+  // у неё своя форма и свой запрос, иначе Enter в поле пароля отправлял бы
+  // сохранение профиля вместо смены пароля.
+  const [showPasswordForm, setShowPasswordForm] = useState(false);
+  const [pwCurrent, setPwCurrent] = useState('');
+  const [pwNew, setPwNew] = useState('');
+  const [pwRepeat, setPwRepeat] = useState('');
+  const [pwSaving, setPwSaving] = useState(false);
+
   // Wallet top up modal
   const [showDepositModal, setShowDepositModal] = useState(false);
   const [depositing, setDepositing] = useState(false);
@@ -418,6 +427,71 @@ export default function ProfilePage({ user, token, onUpdateUser, onLogout, onOpe
       addToast(err.message, 'error');
     } finally {
       setSaving(false);
+    }
+  };
+
+  // Разбор ошибки от бэкенда. Pydantic на неверный пароль отдаёт не строку,
+  // а список объектов; при наивном new Error(data.detail) пользователь увидел
+  // бы «[object Object]» вместо причины отказа.
+  const readApiError = (data, fallback) => {
+    const detail = data && data.detail;
+    if (typeof detail === 'string') return detail;
+    if (Array.isArray(detail) && detail.length) {
+      const first = detail[0];
+      if (typeof first === 'string') return first;
+      if (first && typeof first.msg === 'string') {
+        return first.msg.replace(/^Value error,\s*/, '');
+      }
+    }
+    return fallback;
+  };
+
+  const handleChangePassword = async (e) => {
+    e.preventDefault();
+
+    // Проверки ниже повторяют серверные, но не заменяют их: они экономят
+    // запрос, а решение всё равно принимает бэкенд (app/schemas/_check_password).
+    // Держать политику только в браузере бессмысленно — её обойдут запросом.
+    if (pwNew !== pwRepeat) {
+      addToast('Новый пароль и повтор не совпадают', 'error');
+      return;
+    }
+    if (pwNew.length < 8) {
+      addToast('Новый пароль короче 8 символов', 'error');
+      return;
+    }
+    if (!/\d/.test(pwNew)) {
+      addToast('В новом пароле нужна хотя бы одна цифра', 'error');
+      return;
+    }
+
+    setPwSaving(true);
+    try {
+      const res = await fetch('/users/me/password', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ current_password: pwCurrent, new_password: pwNew }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(readApiError(data, 'Не удалось сменить пароль'));
+
+      setPwCurrent('');
+      setPwNew('');
+      setPwRepeat('');
+      setShowPasswordForm(false);
+      addToast('Пароль изменён', 'success');
+      // Бэкенд гасит все refresh-токены, включая выданный этой вкладке.
+      // Текущий вход доживёт до конца access-токена (15 минут), а дальше
+      // сессию продлить будет нечем — поэтому предупреждаем заранее, а не
+      // молча выкидываем в окно входа через четверть часа.
+      addToast('Все сессии закрыты. На других устройствах войдите заново.', 'info');
+    } catch (err) {
+      addToast(err.message, 'error');
+    } finally {
+      setPwSaving(false);
     }
   };
 
@@ -836,6 +910,83 @@ export default function ProfilePage({ user, token, onUpdateUser, onLogout, onOpe
           </div>
         </form>
       )}
+
+      {/* Смена пароля. Отдельная форма, а не часть формы профиля: вложенные
+          form недопустимы, и Enter в поле пароля сохранял бы профиль. */}
+      <div className="bg-white dark:bg-slate-800 p-6 sm:p-8 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h3 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+              <IconLock /> Безопасность
+            </h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+              Смена пароля закрывает все выданные сессии — на других устройствах потребуется войти заново.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowPasswordForm((v) => !v)}
+            className="shrink-0 px-4 py-2 text-sm font-semibold text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-slate-700 rounded-xl"
+          >
+            {showPasswordForm ? 'Отмена' : 'Сменить пароль'}
+          </button>
+        </div>
+
+        {showPasswordForm && (
+          <form onSubmit={handleChangePassword} className="mt-5 pt-5 border-t border-slate-200 dark:border-slate-700 space-y-4">
+            <div>
+              <label htmlFor="pw-current" className="block text-xs font-semibold text-slate-500 mb-1">Текущий пароль</label>
+              <input
+                id="pw-current"
+                type="password"
+                autoComplete="current-password"
+                value={pwCurrent}
+                onChange={(e) => setPwCurrent(e.target.value)}
+                required
+                className="w-full p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm outline-none"
+              />
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label htmlFor="pw-new" className="block text-xs font-semibold text-slate-500 mb-1">Новый пароль</label>
+                <input
+                  id="pw-new"
+                  type="password"
+                  autoComplete="new-password"
+                  value={pwNew}
+                  onChange={(e) => setPwNew(e.target.value)}
+                  required
+                  className="w-full p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm outline-none"
+                />
+              </div>
+              <div>
+                <label htmlFor="pw-repeat" className="block text-xs font-semibold text-slate-500 mb-1">Повторите новый пароль</label>
+                <input
+                  id="pw-repeat"
+                  type="password"
+                  autoComplete="new-password"
+                  value={pwRepeat}
+                  onChange={(e) => setPwRepeat(e.target.value)}
+                  required
+                  className="w-full p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm outline-none"
+                />
+              </div>
+            </div>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Не меньше 8 символов и хотя бы одна цифра.
+            </p>
+            <div className="flex justify-end">
+              <button
+                type="submit"
+                disabled={pwSaving}
+                className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 text-white text-sm font-bold rounded-xl shadow-md"
+              >
+                {pwSaving ? 'Меняем...' : 'Сменить пароль'}
+              </button>
+            </div>
+          </form>
+        )}
+      </div>
 
       {/* Wallet & Balance Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
