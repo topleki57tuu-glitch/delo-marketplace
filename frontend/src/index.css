@@ -36,6 +36,26 @@
         radial-gradient(ellipse 70% 60% at 50% 100%, rgba(79, 70, 229, 0.06), transparent);
 }
 
+/* Стеклянная панель: выпадающее меню уведомлений, тосты, кнопки поверх карты.
+   Класс был объявлен в тёмной палитре (rgba(26,35,50,.72) + blur) и при
+   переходе на светлую палитру пропал из index.css, а в разметке остался —
+   16 мест в четырёх компонентах рисовались вообще без фона, и содержимое
+   просвечивало насквозь. Ни сборка, ни тесты такое не ловят: класс в
+   разметке есть, просто для него нет ни одного правила.
+   Фон намеренно почти непрозрачный: под панелью бывает плотный текст формы,
+   и он не должен читаться сквозь уведомления. */
+@utility glass {
+    background-color: rgba(255, 255, 255, 0.97);
+    border: 1px solid var(--color-slate-200);
+    backdrop-filter: blur(14px) saturate(140%);
+    -webkit-backdrop-filter: blur(14px) saturate(140%);
+
+    @media (prefers-color-scheme: dark) {
+        background-color: rgba(30, 41, 59, 0.97);
+        border-color: var(--color-slate-700);
+    }
+}
+
 @utility no-scrollbar {
     -ms-overflow-style: none;
     scrollbar-width: none;
