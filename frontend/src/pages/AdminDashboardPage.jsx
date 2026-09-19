@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useToast } from '../components/Toast';
 import { IconBell, IconLightning, IconJustice, IconOnline, IconPayout, IconAdmin, IconChart, IconCheck, IconLock, IconRefresh, IconStar, IconTasks, IconUsers, IconWallet } from '../components/icons.jsx';
+import { taskCategoryLabel } from '../utils/taskCategories';
+import { transactionTypeLabel } from '../utils/transactionTypes';
 
 export default function AdminDashboardPage({ user, token }) {
   const { addToast } = useToast();
@@ -148,7 +150,7 @@ export default function AdminDashboardPage({ user, token }) {
           {entries.map(([key, value]) => (
             <div key={key}>
               <div className="flex justify-between text-sm mb-1">
-                <span className="text-slate-600 dark:text-slate-300 capitalize">{key.replace('_', ' ')}</span>
+                <span className="text-slate-600 dark:text-slate-300">{taskCategoryLabel(key)}</span>
                 <span className="font-bold text-slate-900 dark:text-white">{value}</span>
               </div>
               <div className="h-2 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
@@ -364,7 +366,7 @@ export default function AdminDashboardPage({ user, token }) {
               <div key={tr.id} className="flex justify-between items-center text-sm border-b border-slate-100 dark:border-slate-700 pb-2">
                 <div>
                   <p className="font-bold text-slate-900 dark:text-white">{tr.amount?.toLocaleString()} ₽</p>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 capitalize">{tr.type.replace('_', ' ')}</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">{transactionTypeLabel(tr.type)}</p>
                 </div>
                 <span className="text-xs text-slate-400">{new Date(tr.created_at).toLocaleDateString('ru-RU')}</span>
               </div>
