@@ -14,7 +14,7 @@
   align-items: center;
   gap: 8px;
   padding: 12px 24px;
-  background: rgba(255, 255, 255, 0.95);
+  background: var(--color-surface);
   border: none;
   border-radius: 12px;
   font-weight: 600;
@@ -32,17 +32,17 @@
 .page-header h1 {
   font-size: 1.75rem;
   font-weight: 900;
-  background: rgba(255, 255, 255, 0.98);
+  background: var(--color-surface);
   padding: 30px;
   border-radius: 20px;
   margin: 0;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
-  color: #0f172a;
+  color: var(--color-ink);
 }
 
 /* Форма */
 .product-form {
-  background: rgba(255, 255, 255, 0.98);
+  background: var(--color-surface);
   padding: 40px;
   border-radius: 24px;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
@@ -61,15 +61,15 @@
   font-size: 1.6rem;
   font-weight: 800;
   margin-bottom: 24px;
-  color: #2d3748;
+  color: var(--color-ink);
   padding-bottom: 12px;
-  border-bottom: 3px solid #4f46e5;
+  border-bottom: 3px solid var(--color-accent);
   display: inline-block;
 }
 
 .section-description {
   font-size: 1rem;
-  color: #718096;
+  color: var(--color-muted);
   margin-bottom: 20px;
   line-height: 1.6;
 }
@@ -83,12 +83,12 @@
   display: block;
   font-weight: 700;
   margin-bottom: 10px;
-  color: #2d3748;
+  color: var(--color-ink);
   font-size: 1rem;
 }
 
 .required {
-  color: #ef4444;
+  color: var(--color-danger);
   font-weight: 700;
 }
 
@@ -97,27 +97,27 @@
 .form-group select {
   width: 100%;
   padding: 16px 20px;
-  border: 2px solid #e2e8f0;
+  border: 2px solid var(--color-border);
   border-radius: 12px;
   font-size: 1rem;
   font-family: inherit;
   transition: all 0.3s ease;
-  background: #f8fafc;
+  background: var(--color-surface-2);
 }
 
 .form-group input:focus,
 .form-group textarea:focus,
 .form-group select:focus {
   outline: none;
-  border-color: #4f46e5;
-  background: white;
+  border-color: var(--color-accent);
+  background: var(--color-surface);
   box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.15);
 }
 
 .form-group input.error,
 .form-group textarea.error,
 .form-group select.error {
-  border-color: #ef4444;
+  border-color: var(--color-danger);
 }
 
 .form-group textarea {
@@ -128,13 +128,13 @@
 .char-count {
   text-align: right;
   font-size: 0.85rem;
-  color: #a0aec0;
+  color: var(--color-muted);
   margin-top: 6px;
 }
 
 /* Ошибки */
 .error-message {
-  color: #ef4444;
+  color: var(--color-danger);
   font-size: 0.9rem;
   margin-top: 6px;
   font-weight: 600;
@@ -159,8 +159,8 @@
   align-items: center;
   gap: 12px;
   padding: 16px 20px;
-  background: #f8fafc;
-  border: 2px solid #e2e8f0;
+  background: var(--color-surface-2);
+  border: 2px solid var(--color-border);
   border-radius: 12px;
   cursor: pointer;
   transition: all 0.3s ease;
@@ -168,14 +168,14 @@
 }
 
 .radio-label:hover {
-  border-color: #4f46e5;
-  background: white;
+  border-color: var(--color-accent);
+  background: var(--color-surface);
 }
 
 .radio-label input[type="radio"] {
   width: 22px;
   height: 22px;
-  accent-color: #4f46e5;
+  accent-color: var(--color-accent);
 }
 
 .radio-label input[type="radio"]:checked {
@@ -188,7 +188,7 @@
   gap: 16px;
   margin-top: 40px;
   padding-top: 32px;
-  border-top: 2px solid #f0f0f0;
+  border-top: 2px solid var(--color-border);
 }
 
 .form-actions .btn {
@@ -203,7 +203,7 @@
 }
 
 .form-actions .btn-primary {
-  background: #4f46e5;
+  background: var(--color-accent);
   color: white;
   box-shadow: 0 8px 24px rgba(102, 126, 234, 0.4);
 }
@@ -214,15 +214,15 @@
 }
 
 .form-actions .btn-secondary {
-  background: #f8fafc;
-  color: #495057;
-  border: 2px solid #e2e8f0;
+  background: var(--color-surface-2);
+  color: var(--color-muted);
+  border: 2px solid var(--color-border);
 }
 
 .form-actions .btn-secondary:hover {
-  background: white;
-  border-color: #4f46e5;
-  color: #4f46e5;
+  background: var(--color-surface);
+  border-color: var(--color-accent);
+  color: var(--color-accent-bright);
 }
 
 .form-actions .btn:disabled {
@@ -230,11 +230,40 @@
   cursor: not-allowed;
 }
 
+/* Памятка «Как работает продажа». Класс стоял в разметке с самого начала,
+   но правила для него не было ни одного: блок шёл голым текстом сразу после
+   формы, без карточки и отступов. Сделал по конвенции вложенных панелей
+   (.seller-section / .delivery-section на странице товара). */
+.info-block {
+  margin-top: 24px;
+  padding: 24px 28px;
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-border);
+  border-radius: 16px;
+  color: var(--color-ink);
+}
+
+.info-block h3 {
+  font-size: 1.1rem;
+  font-weight: 700;
+  margin-bottom: 12px;
+}
+
+.info-block ul {
+  margin: 0;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  color: var(--color-muted);
+  line-height: 1.5;
+}
+
 /* Требуется авторизация */
 .auth-required {
   text-align: center;
   padding: 80px 40px;
-  background: rgba(255, 255, 255, 0.98);
+  background: var(--color-surface);
   border-radius: 24px;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
 }
@@ -242,18 +271,18 @@
 .auth-required h2 {
   font-size: 2rem;
   margin-bottom: 16px;
-  color: #2d3748;
+  color: var(--color-ink);
 }
 
 .auth-required p {
   font-size: 1.1rem;
-  color: #718096;
+  color: var(--color-muted);
   margin-bottom: 28px;
 }
 
 .auth-required .btn-primary {
   padding: 16px 40px;
-  background: #4f46e5;
+  background: var(--color-accent);
   color: white;
   border: none;
   border-radius: 14px;

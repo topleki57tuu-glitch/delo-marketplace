@@ -108,14 +108,26 @@ export default function CreateProductPage() {
     }
   };
 
-  if (!user) {
+  // Проверка была только на «вошёл ли» — роль не проверялась. Покупатель
+  // видел полную форму, заполнял её и получал 403 «Размещать товары могут
+  // только специалисты» уже на отправке. Блок .auth-required для этого и
+  // существовал, но до него дело не доходило.
+  if (!user || user.role !== 'specialist') {
+    const isLoggedIn = !!user;
     return (
       <div className="create-product-page">
         <div className="auth-required">
-          <h2>Требуется авторизация</h2>
-          <p>Войдите в систему, чтобы продавать товары</p>
-          <button className="btn btn-primary" onClick={() => navigate('/login')}>
-            Войти
+          <h2>{isLoggedIn ? 'Только для специалистов' : 'Требуется авторизация'}</h2>
+          <p>
+            {isLoggedIn
+              ? 'Размещать товары могут только специалисты. Роль переключается в профиле — бесплатно и в любой момент.'
+              : 'Войдите в систему, чтобы продавать товары'}
+          </p>
+          <button
+            className="btn btn-primary"
+            onClick={() => navigate(isLoggedIn ? '/profile' : '/login')}
+          >
+            {isLoggedIn ? 'Перейти в профиль' : 'Войти'}
           </button>
         </div>
       </div>

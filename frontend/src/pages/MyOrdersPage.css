@@ -19,7 +19,7 @@
 .btn-back {
   background: none;
   border: none;
-  color: #007bff;
+  color: var(--color-accent-bright);
   font-size: 1rem;
   cursor: pointer;
   padding: 8px 16px;
@@ -43,7 +43,7 @@
   display: flex;
   gap: 8px;
   margin-bottom: 24px;
-  border-bottom: 2px solid #e0e0e0;
+  border-bottom: 2px solid var(--color-border);
 }
 
 .tab {
@@ -54,19 +54,19 @@
   cursor: pointer;
   font-size: 1.05rem;
   font-weight: 600;
-  color: #666;
+  color: var(--color-muted);
   transition: all 0.2s;
   margin-bottom: -2px;
 }
 
 .tab:hover {
-  color: #007bff;
-  background: #f8fafc;
+  color: var(--color-accent-bright);
+  background: var(--color-surface-2);
 }
 
 .tab.active {
-  color: #007bff;
-  border-bottom-color: #007bff;
+  color: var(--color-accent-bright);
+  border-bottom-color: var(--color-accent);
 }
 
 /* Список заказов */
@@ -77,8 +77,8 @@
 }
 
 .order-card {
-  background: white;
-  border: 1px solid #e0e0e0;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
   border-radius: 12px;
   padding: 20px;
   transition: box-shadow 0.2s;
@@ -94,18 +94,18 @@
   align-items: flex-start;
   margin-bottom: 16px;
   padding-bottom: 16px;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid var(--color-border);
 }
 
 .order-info h3 {
   font-size: 1.2rem;
   margin: 0 0 8px 0;
   cursor: pointer;
-  color: #333;
+  color: var(--color-ink);
 }
 
 .order-info h3:hover {
-  color: #007bff;
+  color: var(--color-accent-bright);
   text-decoration: underline;
 }
 
@@ -113,7 +113,7 @@
   display: flex;
   gap: 16px;
   font-size: 0.9rem;
-  color: #666;
+  color: var(--color-muted);
 }
 
 .order-id {
@@ -136,7 +136,7 @@
 .order-image {
   width: 120px;
   height: 120px;
-  background: #f5f5f5;
+  background: var(--color-surface-2);
   border-radius: 8px;
   overflow: hidden;
   margin-bottom: 16px;
@@ -162,34 +162,34 @@
 }
 
 .detail-row span:first-child {
-  color: #666;
+  color: var(--color-muted);
 }
 
 .detail-row span:last-child {
   font-weight: 500;
-  color: #333;
+  color: var(--color-ink);
 }
 
 .detail-row.total {
   padding-top: 10px;
-  border-top: 2px solid #e0e0e0;
+  border-top: 2px solid var(--color-border);
   margin-top: 6px;
   font-size: 1.1rem;
 }
 
 .price {
-  color: #007bff;
+  color: var(--color-accent-bright);
   font-weight: 700;
   font-size: 1.2rem;
 }
 
 .fee {
-  color: #dc3545;
+  color: var(--color-danger);
 }
 
 .tracking-number {
   font-family: 'Courier New', monospace;
-  background: #f8fafc;
+  background: var(--color-surface-2);
   padding: 4px 8px;
   border-radius: 4px;
 }
@@ -200,7 +200,7 @@
   gap: 12px;
   margin-top: 16px;
   padding-top: 16px;
-  border-top: 1px solid #f0f0f0;
+  border-top: 1px solid var(--color-border);
 }
 
 .ship-form {
@@ -212,14 +212,14 @@
 .ship-form input {
   flex: 1;
   padding: 10px 16px;
-  border: 2px solid #e0e0e0;
+  border: 2px solid var(--color-border);
   border-radius: 8px;
   font-size: 1rem;
 }
 
 .ship-form input:focus {
   outline: none;
-  border-color: #007bff;
+  border-color: var(--color-accent);
 }
 
 /* Состояния */
@@ -227,7 +227,7 @@
 .no-orders {
   text-align: center;
   padding: 60px 20px;
-  color: #666;
+  color: var(--color-muted);
 }
 
 .no-orders p {
