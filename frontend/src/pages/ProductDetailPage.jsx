@@ -22,7 +22,7 @@ export default function ProductDetailPage() {
   }, [id]);
 
   if (loading || !currentProduct) {
-    return <div className="loading">Загрузка...</div>;
+    return <div className="loading-detail">Загрузка...</div>;
   }
 
   const product = currentProduct;
@@ -76,92 +76,96 @@ export default function ProductDetailPage() {
 
   return (
     <div className="product-detail-page">
-      <button className="btn-back" onClick={() => navigate('/products')}>
+      <button className="back-button" onClick={() => navigate('/products')}>
         ← Назад к товарам
       </button>
 
       <div className="product-detail-container">
-        {/* Галерея */}
-        <div className="product-gallery">
-          {images.length > 0 ? (
-            <div className="gallery-main">
-              <img src={images[0]} alt={product.title} />
-            </div>
-          ) : (
-            <div className="gallery-main no-image">
-              <span><IconBox /></span>
-            </div>
-          )}
-
-          {images.length > 1 && (
-            <div className="gallery-thumbs">
-              {images.map((img, idx) => (
-                <div key={idx} className="thumb">
-                  <img src={img} alt={`${product.title} ${idx + 1}`} />
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Информация */}
-        <div className="product-details">
-          <div className="product-header">
-            <h1>{product.title}</h1>
-            <div className="product-condition-badge">
-              {product.condition === 'new' ? '🆕 Новое' : <><IconRecycle /> Б/У</>}
-            </div>
-          </div>
-
-          <div className="product-price-block">
-            <div className="price">{formatPrice(product.price)}</div>
-            {product.stock > 0 ? (
-              <div className="stock">В наличии: {product.stock} шт.</div>
+        {/* Сетка в две колонки. Класс есть в ProductDetailPage.css, но в
+            разметке его не было — галерея и карточка товара шли друг под
+            другом одной колонкой, а правая половина контейнера пустовала. */}
+        <div className="product-detail-content">
+          {/* Галерея */}
+          <div className="product-gallery">
+            {images.length > 0 ? (
+              <div className="main-image">
+                <img src={images[0]} alt={product.title} />
+              </div>
             ) : (
-              <div className="stock out-of-stock">Нет в наличии</div>
-            )}
-          </div>
-
-          {/* Продавец */}
-          <div className="seller-info">
-            <h3>Продавец</h3>
-            <div className="seller-card">
-              <div className="seller-avatar">
-                {product.seller_avatar ? (
-                  <img src={product.seller_avatar} alt={product.seller_name} />
-                ) : (
-                  <div className="avatar-placeholder"><IconUser /></div>
-                )}
+              <div className="main-image no-image-large">
+                <span><IconBox /></span>
               </div>
-              <div className="seller-details">
-                <div className="seller-name">
-                  {product.seller_verified && <span className="verified"><IconCheck /></span>}
-                  {product.seller_name}
-                </div>
-                {product.seller_rating && (
-                  <div className="seller-rating">
-                    <IconStar /> {product.seller_rating} ({product.seller_reviews_count} отзывов)
+            )}
+
+            {images.length > 1 && (
+              <div className="image-thumbnails">
+                {images.map((img, idx) => (
+                  <div key={idx} className="thumbnail">
+                    <img src={img} alt={`${product.title} ${idx + 1}`} />
                   </div>
-                )}
+                ))}
               </div>
-            </div>
-          </div>
-
-          {/* Доставка */}
-          <div className="delivery-info">
-            <h3>Доставка</h3>
-            <div className="delivery-options">
-              {(product.delivery_options === 'both' || product.delivery_options === 'pickup') && (
-                <div className="delivery-option"><IconPin /> Самовывоз</div>
-              )}
-              {(product.delivery_options === 'both' || product.delivery_options === 'delivery') && (
-                <div className="delivery-option"><IconDelivery /> Доставка</div>
-              )}
-            </div>
-            {product.city && (
-              <div className="location"><IconPin /> {product.city}</div>
             )}
           </div>
+
+          {/* Информация */}
+          <div className="product-info-section">
+            <div className="product-header">
+              <h1 className="product-detail-title">{product.title}</h1>
+              <div className={product.condition === 'new' ? 'badge badge-new' : 'badge badge-used'}>
+                {product.condition === 'new' ? '🆕 Новое' : <><IconRecycle /> Б/У</>}
+              </div>
+            </div>
+
+            <div className="product-price-section">
+              <div className="product-detail-price">{formatPrice(product.price)}</div>
+              {product.stock > 0 ? (
+                <div className="stock-info">В наличии: {product.stock} шт.</div>
+              ) : (
+                <div className="stock-info out-of-stock">Нет в наличии</div>
+              )}
+            </div>
+
+            {/* Продавец */}
+            <div className="seller-section">
+              <h3>Продавец</h3>
+              <div className="seller-info">
+                <div className="seller-avatar">
+                  {product.seller_avatar ? (
+                    <img src={product.seller_avatar} alt={product.seller_name} />
+                  ) : (
+                    <div className="avatar-placeholder"><IconUser /></div>
+                  )}
+                </div>
+                <div className="seller-details">
+                  <div className="seller-name">
+                    {product.seller_verified && <span className="seller-verified-badge"><IconCheck /></span>}
+                    {product.seller_name}
+                  </div>
+                  {product.seller_rating && (
+                    <div className="seller-rating">
+                      <IconStar /> {product.seller_rating} ({product.seller_reviews_count} отзывов)
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Доставка */}
+            <div className="delivery-section">
+              <h4>Доставка</h4>
+              <div className="delivery-options">
+                {(product.delivery_options === 'both' || product.delivery_options === 'pickup') && (
+                  <div className="delivery-badge"><IconPin /> Самовывоз</div>
+                )}
+                {(product.delivery_options === 'both' || product.delivery_options === 'delivery') && (
+                  <div className="delivery-badge"><IconDelivery /> Доставка</div>
+                )}
+              </div>
+              {product.city && (
+                <div className="location"><IconPin /> {product.city}</div>
+              )}
+            </div>
 
           {/* Кнопки действий */}
           <div className="actions">
@@ -278,13 +282,14 @@ export default function ProductDetailPage() {
               </button>
             </div>
           )}
+          </div>
         </div>
       </div>
 
       {/* Описание */}
-      <div className="product-description-section">
-        <h2>Описание</h2>
-        <p>{product.description}</p>
+      <div className="description-section">
+        <h3>Описание</h3>
+        <p className="product-detail-description">{product.description}</p>
       </div>
     </div>
   );

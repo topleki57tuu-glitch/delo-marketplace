@@ -37,6 +37,12 @@
     --color-accent-bright: #6366f1; /* hover акцентных кнопок и активные ссылки */
     --color-success: #10b981;
     --color-danger: #ef4444;
+    /* Статус «в работе». Токена не было, а ChatsDrawer использует сразу три
+       производных — bg-warning/10, text-warning, border-warning/30. Ни одно
+       не генерировалось: плашка «В работе» оставалась без фона, без рамки и
+       с унаследованным цветом, тогда как соседняя «Завершён» (success)
+       выглядела как задумано. */
+    --color-warning: #f59e0b;
     --color-accent-glow: rgba(79, 70, 229, 0.35);
 
     --radius-card: 1rem;
@@ -146,6 +152,7 @@
             --color-accent-bright: #818cf8;  /* indigo-400: в темноте «ярче» = светлее */
             --color-success: #34d399;
             --color-danger: #f87171;
+            --color-warning: #fbbf24;        /* amber-400 — на тёмном фоне */
             --color-accent-glow: rgba(99, 102, 241, 0.45);
         }
     }
