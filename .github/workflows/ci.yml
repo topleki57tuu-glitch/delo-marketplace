@@ -122,6 +122,18 @@ jobs:
           cat /tmp/uvicorn.log
           exit 1
 
+      # Проверка примеров кода в документации. Поднятый сервер ей не нужен:
+      # она только разбирает блоки ```python и убеждается, что имена,
+      # импортируемые из app.*, существуют. Ловит класс, который уже случался:
+      # FAQ учил get_password_hash и колонке password, CONTRIBUTING —
+      # get_current_user и схеме TaskPublic, которых в проекте нет.
+      #
+      # Скрипт содержит самопроверку: если детектор перестанет ловить заведомо
+      # битый пример, он вернёт код 3 и упадёт. Иначе проверка может печатать
+      # «0 битых» просто потому, что пакет app не загрузился.
+      - name: Check documentation code samples
+        run: python tests/check_docs_code_samples.py
+
       - name: Run test suites
         run: |
           set -e

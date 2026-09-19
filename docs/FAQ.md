@@ -236,46 +236,84 @@ fetch('/api/tasks/', {
 
 ### ❓ Как сбросить пароль пользователя вручную?
 
-**Через SQL**:
+**Штатный путь — скрипт.** Он не требует SMTP, проверяет пароль по политике и
+гасит выданные refresh-токены (иначе украденная сессия живёт свои 7 дней и
+пароль ей не помеха):
+
+```bash
+cd backend
+python set_password.py user@example.com                    # сгенерирует стойкий и напечатает
+python set_password.py user@example.com --password 'НовыйПароль1'   # свой
+```
+
+Пароль, заданный через `--password`, попадает в историю команд оболочки. Для
+админского аккаунта лучше запускать без флага.
+
+**Через SQL** — если нужно вставить хеш руками:
+
 ```bash
 # 1. Сгенерируйте хеш нового пароля
-python -c "from passlib.hash import bcrypt; print(bcrypt.hash('newpassword123'))"
+python -c "import bcrypt; print(bcrypt.hashpw(b'newpassword123', bcrypt.gensalt()).decode())"
 
 # 2. Обновите в БД
 psql delo_marketplace
-UPDATE users SET password = '$2b$12$...' WHERE email = 'user@example.com';
+UPDATE users SET hashed_password = '$2b$12$...' WHERE email = 'user@example.com';
 ```
+
+Колонка называется `hashed_password`, а не `password`; таблица — `users`.
+Хеширование — напрямую `bcrypt`, библиотеки `passlib` в зависимостях нет.
 
 **Через Python**:
 ```python
 from app.core.database import SessionLocal
 from app.models import User
-from app.core.security import get_password_hash
+from app.core.security import hash_password
 
 db = SessionLocal()
 user = db.query(User).filter(User.email == "user@example.com").first()
-user.password = get_password_hash("newpassword123")
+user.hashed_password = hash_password("newpassword123")
 db.commit()
 ```
+
+Смена пароля из-под логина — `POST /users/me/password` (нужен текущий пароль),
+в интерфейсе — профиль → «Безопасность».
 
 ---
 
 ### ❓ Rate limit: `Too many requests`
 
-**Причина**: Превышен лимит 10 запросов/мин с одного IP.
+**Причина**: сработал один из лимитов. Окна у них разные, поэтому важно
+понимать, какой именно:
 
-**Решение 1** (для dev):
-```python
-# В backend/app/core/config.py временно отключите
-RATE_LIMIT_ENABLED = False
+| Что | Лимит | Ключ |
+|-----|-------|------|
+| `POST /login` | 10 попыток за 5 минут | IP |
+| `POST /login`, неудачные попытки | 8 за 15 минут | **аккаунт** (не важно, с каких адресов) |
+| `POST /auth/forgot-password` | 5 запросов за час | IP |
+| Остальные эндпоинты | 60 запросов за минуту | IP |
+
+Лимит по аккаунту отдельно от лимита по IP: без него перебор одного аккаунта с
+пула адресов получал бы свежие 10 попыток на каждый новый адрес. Он считает
+только неудачные попытки и обнуляется при успешном входе, так что владелец,
+опечатавшийся восемь раз, просто войдёт правильным паролем.
+
+**Решение (dev)** — выключить лимиты переменной окружения, а не правкой кода:
+
+```bash
+RATE_LIMIT_ENABLED=0 python -m uvicorn main:app
 ```
 
-**Решение 2** (для prod с load balancer):
-```python
-# В app/core/rate_limit.py проверьте X-Forwarded-For
-# Убедитесь, что load balancer в TRUSTED_PROXIES
-TRUSTED_PROXIES = ["10.0.0.0/8", "172.16.0.0/12"]
-```
+или в `backend/.env`: `RATE_LIMIT_ENABLED=0`. Правка `app/core/config.py` ничего
+не даст: значение читается из окружения. **В production лимиты включаются сами**
+(`RATE_LIMIT_ENABLED = IS_PRODUCTION`, если переменная не задана), и CI это
+проверяет.
+
+**Если лимит срабатывает на всех сразу** — приложение, скорее всего, видит всех
+клиентов как один адрес. `X-Forwarded-For` принимается только когда запрос
+пришёл с приватного адреса, то есть от вашего же прокси (см. `client_ip` в
+`app/core/security.py`). Проверьте, что прокси доставляет заголовок и что
+приложение видит приватный адрес прокси. Настройки `TRUSTED_PROXIES` в проекте
+нет — доверие к заголовку определяется этим правилом, а не списком подсетей.
 
 ---
 
@@ -657,23 +695,51 @@ class UserPublic(BaseModel):
 ```python
 # 1. Создайте роутер (или используйте существующий)
 # backend/app/api/my_feature.py
-from fastapi import APIRouter, Depends
-from app.core.security import get_current_user
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+from app.core.database import get_db
+from app.core.csrf import verify_csrf
+from app.core.security import oauth2_scheme, decode_token
+from app.models import User
 
-router = APIRouter(prefix="/my-feature", tags=["My Feature"])
+router = APIRouter(tags=["My Feature"])
 
-@router.get("/")
-def my_endpoint(current_user = Depends(get_current_user)):
-    return {"message": "Hello from my feature"}
+@router.get("/my-feature")
+def my_endpoint(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+    # decode_token сам поднимает 401 на битом или просроченном токене
+    payload = decode_token(token)
+    user = db.query(User).filter(User.id == int(payload["sub"])).first()
+    if not user:
+        raise HTTPException(404, "Пользователь не найден")
+    return {"message": f"Привет, {user.email}"}
+
+@router.post("/my-feature")
+def create_thing(
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db),
+    _csrf: None = Depends(verify_csrf),   # обязательна на всех изменяющих методах
+):
+    ...
 
 # 2. Подключите в main.py
 from app.api.my_feature import router as my_feature_router
 
 app.include_router(my_feature_router)
-
-# 3. Тестируйте
-curl http://localhost:8000/my-feature/
 ```
+
+```bash
+# 3. Тестируйте
+curl http://localhost:8000/my-feature/ -H "Authorization: Bearer <token>"
+```
+
+Авторизация в проекте устроена так: `oauth2_scheme` достаёт токен из заголовка,
+`decode_token` его проверяет и сам отдаёт 401, а пользователя вы читаете из БД по
+`payload["sub"]`. Функции `get_current_user` в проекте **нет** — не ищите её.
+
+На каждом POST/PUT/PATCH/DELETE нужен `Depends(verify_csrf)`: в production
+проверка включена всегда, и без зависимости маршрут либо получит 403, либо
+(если CSRF отключён в dev) тихо окажется незащищённым. `tests/test_csrf_coverage.py`
+перечисляет изменяющие маршруты и падает, если зависимость забыта.
 
 ---
 

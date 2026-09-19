@@ -264,50 +264,67 @@ flake8 backend/app/ --max-line-length=120
 
 **Пример хорошего кода**:
 ```python
-from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
+from app.core.csrf import verify_csrf
 from app.core.database import get_db
-from app.core.security import get_current_user
-from app.models import User, Task
-from app.schemas import TaskCreate, TaskPublic
+from app.core.security import decode_token, oauth2_scheme, rate_limit
+from app.models import Task, TaskStatus, User, UserRole
+from app.schemas import TaskCreate
 
 router = APIRouter(prefix="/tasks", tags=["Tasks"])
 
 
-@router.post("/", response_model=TaskPublic, status_code=status.HTTP_201_CREATED)
+@router.post("/", status_code=status.HTTP_201_CREATED)
 def create_task(
-    task_data: TaskCreate,
-    current_user: User = Depends(get_current_user),
+    task: TaskCreate,
+    request: Request,
+    token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db),
-) -> Task:
-    """
-    Создать новое задание.
-    
-    Только для заказчиков (role='customer').
-    """
-    if current_user.role != "customer":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Только заказчики могут создавать задания"
-        )
-    
-    task = Task(
-        customer_id=current_user.id,
-        title=task_data.title,
-        description=task_data.description,
-        budget=task_data.budget,
-        category=task_data.category,
-        status="open"
+    _csrf: None = Depends(verify_csrf),  # обязательна на всех изменяющих методах
+):
+    """Создать новое задание. Только для заказчиков."""
+    # Спам-защита: 10 заданий за 5 минут на адрес.
+    rate_limit(request, "create_task", limit=10, window_sec=300)
+
+    # decode_token сам поднимает 401 на битом или просроченном токене.
+    payload = decode_token(token)
+
+    # Роль читаем из БД, а не из токена. В JWT роль остаётся прежней до 7 дней
+    # после переключения, поэтому проверка по токену пропустила бы бывшего
+    # специалиста создавать задания как заказчик.
+    user = db.query(User).filter(User.id == int(payload["sub"])).first()
+    if not user or user.role != UserRole.customer:
+        raise HTTPException(403, "Создавать задания могут только заказчики")
+
+    new_task = Task(
+        title=task.title,
+        description=task.description,
+        budget=task.budget,
+        category=task.category,
+        customer_id=user.id,
+        status=TaskStatus.open,
     )
-    
-    db.add(task)
+    db.add(new_task)
     db.commit()
-    db.refresh(task)
-    
-    return task
+    db.refresh(new_task)
+
+    return {"message": "Задание создано", "task_id": new_task.id}
 ```
+
+Обратите внимание на два места, где пример легко сделать небезопасным:
+
+* **`Depends(verify_csrf)`** нужен на каждом POST/PUT/PATCH/DELETE. В production
+  проверка включена всегда, и без зависимости маршрут получит 403.
+  `tests/test_csrf_coverage.py` перечисляет изменяющие маршруты и падает, если
+  зависимость забыта.
+* **Роль — из БД, а не из `payload`.** Токен живёт 7 дней и всё это время несёт
+  роль, с которой был выдан.
+
+Функции `get_current_user` в проекте нет: авторизация собирается из
+`oauth2_scheme` + `decode_token` + чтения пользователя из БД. Схемы `TaskPublic`
+тоже нет — выходная схема называется `TaskOut` (см. `app/schemas/__init__.py`).
 
 **Требования**:
 - ✅ Type hints для всех функций
