@@ -2,39 +2,18 @@
 Async email tasks using Celery.
 
 Отправка email в фоне для избежания блокировки HTTP запросов.
+
+ВНИМАНИЕ: ни одну из этих задач сейчас никто не ставит в очередь. Письмо о
+сбросе пароля `POST /auth/forgot-password` отправляет синхронно, через
+`app.core.email.send_email_sync`, потому что фоновой отправке нужен живой
+брокер, а запрос на сброс пароля не должен падать от недоступного Redis.
+Задачи оставлены как готовый путь для рассылок (`send_bulk_emails`) и
+уведомлений; перед использованием их нужно подключить в вызывающем коде.
 """
 import os
-import smtplib
-from email.mime.text import MIMEText
 from app.core.celery_app import celery_app
+from app.core.email import EmailNotConfigured, send_email_sync
 from app.core.logging import logger
-
-
-def send_email_sync(to: str, subject: str, body: str):
-    """
-    Синхронная отправка email (используется в Celery task).
-
-    Raises:
-        Exception: если SMTP не настроен или отправка не удалась
-    """
-    host = os.environ.get("SMTP_HOST")
-    user = os.environ.get("SMTP_USER")
-    password = os.environ.get("SMTP_PASS")
-
-    if not host or not user or not password:
-        raise Exception("SMTP not configured")
-
-    msg = MIMEText(body, "plain", "utf-8")
-    msg["Subject"] = subject
-    msg["From"] = os.environ.get("SMTP_FROM", user)
-    msg["To"] = to
-
-    port = int(os.environ.get("SMTP_PORT", "587"))
-
-    with smtplib.SMTP(host, port, timeout=20) as server:
-        server.starttls()
-        server.login(user, password)
-        server.send_message(msg)
 
 
 @celery_app.task(
@@ -53,7 +32,7 @@ def send_email_task(self, to: str, subject: str, body: str):
         body: Текст письма (plain text)
 
     Returns:
-        dict: {"status": "sent", "to": email} или {"status": "failed"}
+        dict: {"status": "sent", "to": email} или {"status": "not_configured"}
 
     Usage:
         # Из кода FastAPI:
@@ -64,6 +43,14 @@ def send_email_task(self, to: str, subject: str, body: str):
         send_email_sync(to, subject, body)
         logger.info(f"Email sent to {to}: {subject}")
         return {"status": "sent", "to": to, "subject": subject}
+
+    except EmailNotConfigured as exc:
+        # Ретраить нечего: переменной окружения от повторной попытки не
+        # появится. Раньше этот случай уходил в общий `except` и задача
+        # трижды ждала минуту, а потом падала — вместо того чтобы сразу
+        # сказать, что SMTP не настроен.
+        logger.error(f"SMTP not configured, письмо не отправлено ({to}): {exc}")
+        return {"status": "not_configured", "to": to, "subject": subject}
 
     except Exception as exc:
         logger.error(f"Failed to send email to {to}: {exc}")

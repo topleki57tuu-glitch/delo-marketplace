@@ -341,8 +341,8 @@ def complete_task(task_id: int, token: str = Depends(oauth2_scheme), db: Session
         executor = db.query(User).filter(User.id == task.executor_id).first()
         if executor:
             # Монетизация: 0% комиссия для действующей подписки PRO, иначе 5%.
-            # Считаем по is_pro_active (флаг И срок), а не по колонке: снять
-            # флаг должна была celery-задача, которой никто не запускает.
+            # Считаем по is_pro_active (флаг И срок), а не по колонке: флаг
+            # снимает задача по расписанию, то есть с задержкой до суток.
             is_pro = bool(executor.is_pro_active)
             fee_percent = 0 if is_pro else 5
             fee = round(budget * fee_percent / 100)

@@ -4,6 +4,45 @@
 #
 # Запуск:  bash scripts/vps_deploy.sh   (создаст .env и поднимет всё сам)
 
+# Общее окружение backend, worker и beat — один блок, а не три копии.
+#
+# Копии здесь были бы не стилистической придиркой: именно так и получилось,
+# что воркера нет ни в одном контуре. Переменные для backend кто-то дописывал
+# (YOOMONEY_*, ADMIN_EMAILS), воркера при этом не добавлял, а 11 задач Celery —
+# включая уборку файлов и снятие истёкших PRO — не выполнялись никем.
+# Один блок означает, что новая переменная появляется сразу у всех трёх.
+x-backend-env: &backend-env
+  DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-marketplace}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-marketplace_db}
+  # Без реального SECRET_KEY backend в production не стартует (см. app/core/config.py)
+  SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY in .env (see .env.example)}
+  ENV: production
+  FRONTEND_URL: ${FRONTEND_URL}
+  CORS_ORIGINS: ${CORS_ORIGINS}
+  # Без явного списка модераторов их нет вовсе: раньше дефолтом был
+  # admin@delo.ru, а почта при регистрации не подтверждается — права
+  # модератора получал любой, кто первым занял этот адрес.
+  ADMIN_EMAILS: ${ADMIN_EMAILS:?Set ADMIN_EMAILS in .env (comma-separated)}
+  TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+  # Счётчики лимитов в общем Redis, иначе они живут в памяти каждого воркера
+  REDIS_URL: redis://redis:6379/0
+  SMTP_HOST: ${SMTP_HOST:-}
+  SMTP_PORT: ${SMTP_PORT:-587}
+  SMTP_USER: ${SMTP_USER:-}
+  SMTP_PASS: ${SMTP_PASS:-}
+  SMTP_FROM: ${SMTP_FROM:-}
+  YOOKASSA_SHOP_ID: ${YOOKASSA_SHOP_ID:-}
+  YOOKASSA_SECRET_KEY: ${YOOKASSA_SECRET_KEY:-}
+  # ЮMoney — провайдер по умолчанию в POST /payments/create. Без этих
+  # переменных он отвечал «не настроен», и на своём VPS работала только
+  # ЮKassa. NOTIFICATION_SECRET обязателен для проверки подписи вебхука.
+  YOOMONEY_ACCESS_TOKEN: ${YOOMONEY_ACCESS_TOKEN:-}
+  YOOMONEY_CLIENT_ID: ${YOOMONEY_CLIENT_ID:-}
+  YOOMONEY_REDIRECT_URI: ${YOOMONEY_REDIRECT_URI:-}
+  YOOMONEY_NOTIFICATION_SECRET: ${YOOMONEY_NOTIFICATION_SECRET:-}
+  # Куда возвращать пользователя после оплаты. Без переменной возврат
+  # уходил на пустой путь и платёж не подтверждался автоматически.
+  YOOMONEY_RETURN_PATH: ${YOOMONEY_RETURN_PATH:-/profile}
+
 services:
   caddy:
     image: caddy:2-alpine
@@ -55,38 +94,60 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-marketplace}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-marketplace_db}
-      # Без реального SECRET_KEY backend в production не стартует (см. app/core/config.py)
-      SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY in .env (see .env.example)}
-      ENV: production
-      FRONTEND_URL: ${FRONTEND_URL}
-      CORS_ORIGINS: ${CORS_ORIGINS}
-      # Без явного списка модераторов их нет вовсе: раньше дефолтом был
-      # admin@delo.ru, а почта при регистрации не подтверждается — права
-      # модератора получал любой, кто первым занял этот адрес.
-      ADMIN_EMAILS: ${ADMIN_EMAILS:?Set ADMIN_EMAILS in .env (comma-separated)}
-      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
-      # Счётчики лимитов в общем Redis, иначе они живут в памяти каждого воркера
-      REDIS_URL: redis://redis:6379/0
-      SMTP_HOST: ${SMTP_HOST:-}
-      SMTP_PORT: ${SMTP_PORT:-587}
-      SMTP_USER: ${SMTP_USER:-}
-      SMTP_PASS: ${SMTP_PASS:-}
-      SMTP_FROM: ${SMTP_FROM:-}
-      YOOKASSA_SHOP_ID: ${YOOKASSA_SHOP_ID:-}
-      YOOKASSA_SECRET_KEY: ${YOOKASSA_SECRET_KEY:-}
-      # ЮMoney — провайдер по умолчанию в POST /payments/create. Без этих
-      # переменных он отвечал «не настроен», и на своём VPS работала только
-      # ЮKassa. NOTIFICATION_SECRET обязателен для проверки подписи вебхука.
-      YOOMONEY_ACCESS_TOKEN: ${YOOMONEY_ACCESS_TOKEN:-}
-      YOOMONEY_CLIENT_ID: ${YOOMONEY_CLIENT_ID:-}
-      YOOMONEY_REDIRECT_URI: ${YOOMONEY_REDIRECT_URI:-}
-      YOOMONEY_NOTIFICATION_SECRET: ${YOOMONEY_NOTIFICATION_SECRET:-}
-      # Куда возвращать пользователя после оплаты. Без переменной возврат
-      # уходил на пустой путь и платёж не подтверждался автоматически.
-      YOOMONEY_RETURN_PATH: ${YOOMONEY_RETURN_PATH:-/profile}
+      <<: *backend-env
     volumes:
       - backend_uploads:/app/uploads
+
+  # Воркер Celery. Без него не выполняется ни одна из задач app/tasks/*:
+  # ни уборка уведомлений и истёкших токенов, ни снятие флагов PRO. Раньше его
+  # не было ни здесь, ни в render.yaml, ни в ecosystem.config.cjs, и подсистема
+  # из 11 задач существовала только на бумаге.
+  #
+  # Образ тот же, что у backend: задачам нужны те же модели и та же база.
+  # `--concurrency` не задаём — Celery выберет по числу ядер; для этого
+  # профиля нагрузки больше и не нужно.
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: marketplace_worker
+    restart: unless-stopped
+    # Воркеру нужен брокер, а брокер — это Redis. Postgres тоже нужен:
+    # задачи ходят в базу напрямую.
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    environment:
+      <<: *backend-env
+    command: celery -A app.core.celery_app worker --loglevel=info
+
+  # Планировщик. Воркер исполняет задачи, но НЕ решает, когда их запускать:
+  # за расписание отвечает beat, и это отдельный процесс. Без него воркер
+  # простоял бы вечно с пустой очередью — то есть «поднять воркер» без beat
+  # не решает задачу, а только создаёт видимость.
+  beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: marketplace_beat
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    environment:
+      <<: *backend-env
+    # Расписание beat по умолчанию хранит в файле `celerybeat-schedule` рядом
+    # с рабочим каталогом. В контейнере это /app — если том не примонтировать,
+    # файл исчезнет при пересоздании и расписание начнётся заново. Для наших
+    # crontab-задач это безвредно, но том убирает вопрос целиком. Путь задаём
+    # явно, иначе том окажется примонтирован, а beat будет писать мимо него.
+    command: celery -A app.core.celery_app beat --loglevel=info --schedule=/app/beat-schedule/celerybeat-schedule
+    volumes:
+      - beat_schedule:/app/beat-schedule
 
   frontend:
     build:
@@ -116,3 +177,4 @@ volumes:
   backend_uploads:
   caddy_data:
   caddy_config:
+  beat_schedule:

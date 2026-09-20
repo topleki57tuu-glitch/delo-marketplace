@@ -1,3 +1,4 @@
+import logging
 import os
 import secrets
 from datetime import datetime, timedelta, timezone
@@ -13,6 +14,7 @@ from app.core.security import (
     check_account_login_allowed, record_login_failure, clear_login_failures,
 )
 from app.core.csrf import verify_csrf
+from app.core.email import EmailNotConfigured, send_email_sync
 from app.models import User, PasswordResetToken, RefreshToken, UserRole
 from app.schemas import (
     UserCreate, ForgotPasswordRequest, ResetPasswordRequest
@@ -20,23 +22,7 @@ from app.schemas import (
 
 router = APIRouter(tags=["Authentication"])
 
-def send_email(to: str, subject: str, body: str):
-    import smtplib
-    from email.mime.text import MIMEText
-    host = os.environ.get("SMTP_HOST")
-    user = os.environ.get("SMTP_USER")
-    password = os.environ.get("SMTP_PASS")
-    if not host or not user or not password:
-        raise HTTPException(503, "Почтовый сервис не настроен. Обратитесь к администратору.")
-    msg = MIMEText(body, "plain", "utf-8")
-    msg["Subject"] = subject
-    msg["From"] = os.environ.get("SMTP_FROM", user)
-    msg["To"] = to
-    port = int(os.environ.get("SMTP_PORT", "587"))
-    with smtplib.SMTP(host, port, timeout=20) as server:
-        server.starttls()
-        server.login(user, password)
-        server.send_message(msg)
+logger = logging.getLogger(__name__)
 
 @router.post("/register/")
 def register(user: UserCreate, request: Request, db: Session = Depends(get_db), _csrf: None = Depends(verify_csrf)):
@@ -169,15 +155,23 @@ def forgot_password(req: ForgotPasswordRequest, request: Request, db: Session = 
         frontend_url = os.environ.get("FRONTEND_URL", "http://localhost:5173")
         link = f"{frontend_url}/reset?token={token}"
         try:
-            send_email(
+            send_email_sync(
                 req.email,
                 "ДЕЛО — сброс пароля",
                 f"Здравствуйте!\n\nКто-то запросил сброс пароля на маркетплейсе ДЕЛО.\n"
                 f"Ссылка действительна 1 час:\n\n{link}\n\n"
                 f"Если вы не запрашивали сброс — просто проигнорируйте это письмо."
             )
-        except Exception:
-            # В development без SMTP возвращаем ссылку в ответе, чтобы флоу можно было проверить.
+        except EmailNotConfigured:
+            # Штатный случай на стенде: SMTP не задан. В development возвращаем
+            # ссылку в ответе, чтобы флоу можно было проверить.
+            if not settings.IS_PRODUCTION:
+                dev_reset_link = link
+        except Exception as exc:
+            # SMTP задан, но письмо не ушло. Раньше это молча проглатывалось:
+            # в продакшене пользователь не получал ссылку, а в логе не было
+            # ни строки. Теперь сбой видно.
+            logger.warning("Письмо о сбросе пароля не отправлено: %s", exc)
             if not settings.IS_PRODUCTION:
                 dev_reset_link = link
 

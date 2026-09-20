@@ -99,6 +99,34 @@ cd backend
 celery -A app.core.celery_app beat --loglevel=info
 ```
 
+### Production: где воркер и beat уже объявлены
+
+Гайд ниже описывает запуск руками (systemd, три терминала). Это рабочий путь,
+но не единственный и не основной: воркер и beat объявлены в самих контурах
+развёртывания, и на них ничего дополнительно поднимать не нужно.
+
+| Контур | Файл | Сервисы |
+|---|---|---|
+| VPS на Docker | `docker-compose.prod.yml` | `worker`, `beat` (плюс `redis` и `postgres`) |
+| Render | `render.yaml` | `marketplace-worker`, `marketplace-beat` (`type: worker`) |
+| VPS без Docker | этот документ, раздел про systemd | `celery-worker`, `celery-beat` |
+
+История, которую стоит знать. Раньше воркера не было **ни в одном** из этих
+контуров: 11 задач существовали, импортировались и не выполнялись никем. При
+этом код в трёх местах (`app/api/admin.py`, `app/api/responses.py`,
+`app/api/tasks.py`) уже опирался на этот факт — права PRO считались по дате,
+а не по флагу, именно потому, что снять флаг было некому. Теперь воркер есть,
+но проверка по дате осталась: между истечением срока и ближайшим запуском
+задачи проходит до суток.
+
+**Переменные `CELERY_BROKER_URL` и `CELERY_RESULT_BACKEND` задавать не
+обязательно.** Номер базы выводится из `REDIS_URL` подстановкой (`/1` для
+брокера, `/2` для результатов), причём именно заменой номера, а не
+дописыванием: `redis://redis:6379/0` плюс `/1` давало `.../0/1`, kombu читал
+это как имя базы и падал с `ValueError: invalid literal for int(): '0/1'`
+при первой же отправке задачи. Явные значения, как в примере `.env` выше,
+по-прежнему уважаются и нужны только для внешнего брокера.
+
 ### Production (systemd services)
 
 **1. Celery Worker Service:**
@@ -180,31 +208,67 @@ sudo journalctl -u celery-beat -f
 
 ## 💻 Использование в коде
 
-### Отправка email асинхронно
+### Отправка email: фон и синхронный вызов
 
-**До (синхронно - блокирует запрос):**
+**Как было (своя копия SMTP-клиента прямо в роутере):**
 ```python
 # app/api/auth.py
-from app.api.auth import send_email
+def send_email(to, subject, body):
+    # ... 20 строк на smtplib
+    pass
 
 @router.post("/auth/forgot-password")
 def forgot_password(req: ForgotPasswordRequest, db: Session = Depends(get_db)):
     # ...
-    send_email(user.email, "Сброс пароля", body)  # ❌ Блокирует 2-5 сек
+    send_email(user.email, "Сброс пароля", body)  # ❌ блокирует запрос на 2-5 сек
     return {"message": "Email отправлен"}
 ```
 
-**После (асинхронно - мгновенный ответ):**
+Таких копий было три: эта, `send_email_sync` в `app/tasks/email.py` и
+`send_email_task` там же. Различались они только типом исключения при
+незаданном SMTP — `HTTPException(503)` здесь и `Exception` там. Копии в этом
+проекте уже расходились молча (`user_online`, `hasattr(x, "value")` в 23
+местах), поэтому транспорт вынесен в один модуль — `app/core/email.py`.
+
+**Как сейчас:**
 ```python
 # app/api/auth.py
-from app.tasks.email import send_password_reset_email
+from app.core.email import EmailNotConfigured, send_email_sync
 
 @router.post("/auth/forgot-password")
 def forgot_password(req: ForgotPasswordRequest, db: Session = Depends(get_db)):
-    # ...
-    send_password_reset_email.delay(user.email, token)  # ✅ Фон
-    return {"message": "Email отправляется"}
+    try:
+        send_email_sync(user.email, "Сброс пароля", body)
+    except EmailNotConfigured:
+        # SMTP не задан — на стенде отдаём ссылку в ответе
+        ...
+    return {"message": "Если аккаунт существует, письмо со ссылкой отправлено"}
 ```
+
+**Сброс пароля остаётся синхронным намеренно, и это не недоделка.** Отправка
+через `.delay()` требует живого брокера, то есть недоступный Redis означал бы
+недоступный сброс пароля. Запрос на сброс — редкое действие, которое делает
+сам пользователь, и 2 секунды на нём приемлемы; отказ из-за чужого сервиса —
+нет. Плюс ответ намеренно одинаковый для существующего и несуществующего
+адреса (защита от перебора), поэтому `except` здесь есть всегда.
+
+### Отправка в фон: когда это действительно нужно
+
+Рассылки и уведомления — другое дело: там запрос инициирует не тот, кто ждёт
+письмо, и цена ошибки другая.
+
+```python
+from app.tasks.email import send_email_task
+
+# Из кода FastAPI:
+send_email_task.delay("user@example.com", "Тема", "Текст")
+```
+
+**Сейчас ни одна задача из `app/tasks/email.py` в очередь не ставится.**
+`send_bulk_emails` и `send_notification_email` — готовый путь для рассылок,
+но перед использованием их нужно подключить в вызывающем коде. Это написано и
+в докстроке самого модуля, чтобы «задача есть» не читалось как «задача
+работает».
 
 ### Отправка уведомлений
 
@@ -338,11 +402,13 @@ celery -A app.core.celery_app worker --loglevel=info
 **Проверка SMTP:**
 ```python
 # Test script
-from app.tasks.email import send_email_sync
+from app.core.email import EmailNotConfigured, send_email_sync
 
 try:
     send_email_sync("test@example.com", "Test", "Test body")
     print("Email sent!")
+except EmailNotConfigured as e:
+    print(f"SMTP не настроен: {e}")
 except Exception as e:
     print(f"Error: {e}")
 ```
@@ -435,7 +501,11 @@ celery -A app.core.celery_app worker --concurrency=2
 ```python
 # app/core/celery_app.py
 celery_app.conf.task_routes = {
-    'app.tasks.email.send_email_task': {'queue': 'high_priority'},
+    # Имя задачи — то, что записано в `name=` декоратора, а не имя функции.
+    # Функция называется send_email_task, а задача — send_email: ключ ниже
+    # раньше был 'app.tasks.email.send_email_task', и правило не срабатывало
+    # бы вообще (celery просто не находит такую задачу).
+    'app.tasks.email.send_email': {'queue': 'high_priority'},
     'app.tasks.cleanup.*': {'queue': 'low_priority'},
 }
 ```

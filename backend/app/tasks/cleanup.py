@@ -6,7 +6,7 @@ Cleanup and maintenance tasks.
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 from app.core.celery_app import celery_app
-from app.core.database import SessionLocal
+from app.core.database import SessionLocal, engine
 from app.core.logging import logger
 from app.models import Notification, PasswordResetToken, RefreshToken, User
 
@@ -28,8 +28,14 @@ def cleanup_old_notifications(days_old: int = 30):
     try:
         cutoff_date = datetime.utcnow() - timedelta(days=days_old)
 
+        # Колонка называется `is_read`. Здесь стояло `Notification.read`,
+        # и задача падала с `AttributeError` на каждом запуске: обращение
+        # к несуществующему атрибуту происходит при построении запроса,
+        # ещё до базы. Так как воркер не поднимался нигде, падение никто
+        # не видел — но починить его надо было ДО того, как поднимать воркер,
+        # иначе он начал бы с ежедневной ошибки в логе и нуля удалений.
         deleted = db.query(Notification).filter(
-            Notification.read == True,
+            Notification.is_read == True,  # noqa: E712
             Notification.created_at < cutoff_date
         ).delete()
 
@@ -174,31 +180,39 @@ def check_expired_pro_subscriptions():
 
 @celery_app.task(name='app.tasks.cleanup.vacuum_database')
 def vacuum_database():
-    """
-    Выполняет VACUUM для SQLite (дефрагментация и освобождение места).
-
-    Для PostgreSQL используйте VACUUM ANALYZE вместо этой задачи.
+    """Дефрагментирует базу данных SQLite.
 
     Returns:
-        dict: {"status": "completed"}
+        dict: {"status": "completed"} либо {"status": "skipped", "reason": ...}
 
     ВНИМАНИЕ: Может занять несколько минут для больших БД.
     """
-    db: Session = SessionLocal()
-    try:
-        # VACUUM нельзя выполнить внутри транзакции
-        db.connection().connection.isolation_level = None
-        db.execute("VACUUM")
-        db.connection().connection.isolation_level = ""
+    from sqlalchemy import text
 
-        logger.info("Database VACUUM completed")
-        return {"status": "completed"}
+    if engine.dialect.name != "sqlite":
+        # На PostgreSQL VACUUM внутри транзакции запрещён, а обслуживанием
+        # занимается autovacuum — запускать это вручную не нужно и вредно
+        # (блокировка на минуты). Раньше задача пыталась выполниться на любой
+        # СУБД, но до этого дело не доходило: она падала и на SQLite.
+        logger.info("vacuum_database: пропуск для %s (autovacuum)", engine.dialect.name)
+        return {"status": "skipped", "reason": f"{engine.dialect.name}: autovacuum"}
 
-    except Exception as e:
-        logger.error(f"Failed to VACUUM database: {e}")
-        raise
-    finally:
-        db.close()
+    # VACUUM нельзя выполнить внутри транзакции, поэтому берём соединение
+    # в режиме AUTOCOMMIT.
+    #
+    # Раньше здесь стояло `db.execute("VACUUM")` и ручная правка
+    # `isolation_level` у сырого соединения. В SQLAlchemy 2.0 голая строка —
+    # не исполняемое выражение, и задача падала с
+    #
+    #   ObjectNotExecutableError: Not an executable object: 'VACUUM'
+    #
+    # (подкласс `ArgumentError`; на SQLAlchemy 2.0.46 класс именно такой).
+    # То есть не работала ни разу за всё время существования.
+    with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+        conn.execute(text("VACUUM"))
+
+    logger.info("Database VACUUM completed")
+    return {"status": "completed"}
 
 
 @celery_app.task(name='app.tasks.cleanup.cleanup_orphaned_files')

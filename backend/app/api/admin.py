@@ -57,8 +57,9 @@ def platform_stats(token: str = Depends(oauth2_scheme), db: Session = Depends(ge
         "customers": db.query(User).filter(User.role == UserRole.customer).count(),
         "specialists": db.query(User).filter(User.role == UserRole.specialist).count(),
         # Действующие подписки (флаг И неистёкший срок), а не число когда-либо
-        # оформленных: celery-задача, которая снимала бы флаг, не запускается
-        # нигде, поэтому по колонке счётчик только рос бы и никогда не падал.
+        # оформленных: флаг снимает задача по расписанию, а идёт она раз в
+        # сутки — между истечением срока и её запуском в колонке всё ещё `True`.
+        # По одной колонке счётчик показывал бы истёкшие подписки как активные.
         "pro": db.query(User).filter(
             User.is_pro == True,  # noqa: E712
             User.pro_until != None,  # noqa: E711

@@ -36,8 +36,8 @@ def create_response(task_id: int, response: ResponseCreate, token: str = Depends
 
     # Монетизация: PRO — безлимит, иначе списываем 1 отклик.
     # Права считаем по is_pro_active, а не по колонке is_pro: флаг снимает
-    # celery-задача, которой в этом проекте никто не запускает, поэтому
-    # истёкшая подписка иначе оставалась бы действующей навсегда.
+    # задача по расписанию (раз в сутки), поэтому между истечением срока и её
+    # запуском истёкшая подписка иначе оставалась бы действующей.
     is_pro = specialist.is_pro_active
     if not is_pro:
         if (specialist.response_credits or 0) <= 0:

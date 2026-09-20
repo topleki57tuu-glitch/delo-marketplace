@@ -67,6 +67,105 @@ services:
           name: marketplace-redis
           property: connectionString
 
+  # ---------------- CELERY WORKER ----------------
+  # Без него не выполняется ни одна задача из app/tasks/*: ни уборка
+  # уведомлений и истёкших токенов, ни снятие флагов PRO. Раньше воркера
+  # не было ни здесь, ни в docker-compose.prod.yml, ни в ecosystem.config.cjs.
+  #
+  # type: worker, а не web: у процесса нет HTTP-порта, Render не должен его
+  # опрашивать.
+  #
+  # ВНИМАНИЕ по плану: background worker недоступен на бесплатном плане Render.
+  # Если план бесплатный — этот сервис не поднимется, и задачи не будут
+  # выполняться; тогда либо платный план, либо VPS-контур
+  # (docker-compose.prod.yml, там воркер и beat уже описаны).
+  #
+  # Окружение продублировано из backend намеренно: envVarGroups здесь
+  # не подходит — в группе нельзя ни `sync: false`, ни ссылку на сервис или
+  # базу, а у нас и то и другое (ADMIN_EMAILS, DATABASE_URL, REDIS_URL).
+  # Расхождение списков ловит тест tests/security/check_celery_tasks.py:
+  # он сверяет наборы переменных у backend, worker и beat.
+  - type: worker
+    name: marketplace-worker
+    runtime: python
+    buildCommand: cd backend && pip install -r requirements.txt
+    startCommand: cd backend && celery -A app.core.celery_app worker --loglevel=info
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.13.12
+      - key: ENV
+        value: production
+      - key: SECRET_KEY
+        generateValue: true
+      - key: CORS_ORIGINS
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
+      - key: ADMIN_EMAILS
+        sync: false
+      - key: DATABASE_URL
+        fromDatabase:
+          name: marketplace-postgres
+          property: connectionString
+      - key: YOOMONEY_ACCESS_TOKEN
+        sync: false
+      - key: YOOMONEY_CLIENT_ID
+        sync: false
+      - key: YOOMONEY_REDIRECT_URI
+        sync: false
+      - key: YOOMONEY_NOTIFICATION_SECRET
+        sync: false
+      - key: YOOMONEY_RETURN_PATH
+        value: /profile
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: marketplace-redis
+          property: connectionString
+
+  # ---------------- CELERY BEAT (расписание) ----------------
+  # Воркер исполняет задачи, но не решает, когда их запускать: за расписание
+  # отвечает beat, и это отдельный процесс. Без него воркер простоял бы вечно
+  # с пустой очередью — то есть «поднять воркер» без beat не решает задачу,
+  # а только создаёт видимость.
+  - type: worker
+    name: marketplace-beat
+    runtime: python
+    buildCommand: cd backend && pip install -r requirements.txt
+    startCommand: cd backend && celery -A app.core.celery_app beat --loglevel=info
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.13.12
+      - key: ENV
+        value: production
+      - key: SECRET_KEY
+        generateValue: true
+      - key: CORS_ORIGINS
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
+      - key: ADMIN_EMAILS
+        sync: false
+      - key: DATABASE_URL
+        fromDatabase:
+          name: marketplace-postgres
+          property: connectionString
+      - key: YOOMONEY_ACCESS_TOKEN
+        sync: false
+      - key: YOOMONEY_CLIENT_ID
+        sync: false
+      - key: YOOMONEY_REDIRECT_URI
+        sync: false
+      - key: YOOMONEY_NOTIFICATION_SECRET
+        sync: false
+      - key: YOOMONEY_RETURN_PATH
+        value: /profile
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: marketplace-redis
+          property: connectionString
+
   # ---------------- FRONTEND SPA ----------------
   - type: web
     name: marketplace-frontend

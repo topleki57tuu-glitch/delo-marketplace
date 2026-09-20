@@ -1,5 +1,5 @@
 /**
- * PM2 — локальный запуск «ДЕЛО» без Docker (два процесса: API и Vite).
+ * PM2 — локальный запуск «ДЕЛО» без Docker (API, Vite, Celery worker и beat).
  *
  * Секреты здесь намеренно НЕ хранятся. Раньше в этом файле лежали
  * `SECRET_KEY: 'marketplace_dev_secret_key'` и `ADMIN_EMAILS: 'admin@delo.ru'`:
@@ -11,6 +11,11 @@
  * `.env` (см. `.env.example`) — config.py сам подхватит файл через dotenv.
  * Без SECRET_KEY backend в development сгенерирует случайный ключ, а без
  * ADMIN_EMAILS модераторов не будет ни одного.
+ *
+ * Про worker и beat: они добавлены сюда, потому что иначе подсистема задач
+ * снова оказалась бы «есть в коде, нет в контуре» — именно так она и жила до
+ * этого. Обоим нужен Redis: без него процессы поднимутся, но будут ждать
+ * брокера и переподключаться, задачи выполняться не будут.
  */
 module.exports = {
   apps: [
@@ -40,6 +45,35 @@ module.exports = {
         PORT: 3000
       },
       watch: false,
+      instances: 1,
+      exec_mode: 'fork'
+    },
+    {
+      // Воркер Celery. Без него задачи из app/tasks/* не выполняет никто:
+      // ни уборка уведомлений и истёкших токенов, ни снятие флагов PRO.
+      name: 'celery-worker',
+      script: 'celery',
+      args: '-A app.core.celery_app worker --loglevel=info',
+      cwd: '/home/user/webapp/backend',
+      interpreter: 'none',
+      watch: false,
+      // Celery сам управляет параллелизмом (--concurrency), поэтому второй
+      // экземпляр процесса не нужен: два воркера под одним PM2 дрались бы
+      // за одни и те же задачи.
+      instances: 1,
+      exec_mode: 'fork'
+    },
+    {
+      // Планировщик. Воркер исполняет задачи, но не решает, когда их
+      // запускать — за расписание отвечает beat, и это отдельный процесс.
+      name: 'celery-beat',
+      script: 'celery',
+      args: '-A app.core.celery_app beat --loglevel=info --schedule=/home/user/webapp/backend/beat-schedule/celerybeat-schedule',
+      cwd: '/home/user/webapp/backend',
+      interpreter: 'none',
+      watch: false,
+      // Два beat с одним файлом расписания — это дубли задач по расписанию.
+      // Ровно один процесс, и это не настройка «на всякий случай».
       instances: 1,
       exec_mode: 'fork'
     }
