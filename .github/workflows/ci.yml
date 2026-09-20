@@ -88,10 +88,22 @@ jobs:
         with:
           python-version: "3.13"
           cache: pip
-          cache-dependency-path: backend/requirements.txt
+          # Оба файла, а не только requirements.txt: кэш setup-python ключуется
+          # по перечисленным путям, и без второй строки правка dev-зависимостей
+          # не сбросит кэш — вернётся старое окружение без httpx.
+          cache-dependency-path: |
+            backend/requirements.txt
+            backend/requirements-dev.txt
 
+      # Именно requirements-dev.txt: наборы «Run self-contained regression
+      # suites» поднимают приложение через fastapi.testclient, а тот требует
+      # httpx. Без него первый же набор (repro_payment_cycle) падал на импорте
+      # с ModuleNotFoundError, и вся вторая группа — восемь регрессов на деньги
+      # и удаление данных — не выполнялась ни разу.
+      # В образ httpx не попадает: backend/Dockerfile ставит только
+      # requirements.txt.
       - name: Install dependencies
-        run: pip install -r backend/requirements.txt
+        run: pip install -r backend/requirements-dev.txt
 
       - name: Apply migrations to a clean database
         working-directory: backend

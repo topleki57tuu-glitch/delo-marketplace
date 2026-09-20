@@ -1,0 +1,26 @@
+# Зависимости, нужные только для прогона тестов. В образ не попадают:
+# backend/Dockerfile ставит исключительно requirements.txt.
+#
+# httpx здесь не «на всякий случай»: его требует starlette.testclient, то есть
+# любой `from fastapi.testclient import TestClient`. Восемь наборов из tests/
+# построены именно на TestClient — они поднимают приложение в процессе и
+# работают с собственной временной SQLite-базой:
+#
+#   repro_payment_cycle, repro_mobile_avatar,
+#   security/{repro_upload_reject, check_pro_expiry,
+#             repro_yookassa_unpaid_credit, repro_verification_document_access,
+#             check_pending_payment_recovery, check_online_status}
+#
+# Без httpx первый же из них падает ещё на импорте:
+#
+#   ModuleNotFoundError: No module named 'httpx'
+#   RuntimeError: The starlette.testclient module requires the httpx package
+#
+# Локально дефект не воспроизводится, если httpx уже стоит в venv (а он туда
+# попадает легко: pip install httpx руками, чужой venv, другой проект). Поэтому
+# и важно, чтобы он был объявлен, а не «у меня работает».
+#
+# Ставится так: pip install -r backend/requirements-dev.txt
+# В CI — шагом «Install dependencies» в джобе backend.
+-r requirements.txt
+httpx==0.28.1
