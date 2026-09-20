@@ -2,6 +2,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.core.database import get_db
+from app.core.enums import enum_value
 from app.core.security import oauth2_scheme, decode_token, is_admin
 from app.core.money import credit_balance
 from app.core.csrf import verify_csrf
@@ -147,7 +148,7 @@ def get_task_dispute(task_id: int, token: str = Depends(oauth2_scheme), db: Sess
         "opened_by": dispute.opened_by,
         "opened_by_name": (opener.name or opener.email) if opener else None,
         "reason": dispute.reason,
-        "status": dispute.status.value if hasattr(dispute.status, "value") else str(dispute.status),
+        "status": enum_value(dispute.status),
         "resolution_comment": dispute.resolution_comment,
         "created_at": dispute.created_at,
         "resolved_at": dispute.resolved_at,

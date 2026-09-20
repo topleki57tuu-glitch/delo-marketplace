@@ -3,6 +3,7 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from app.core.database import get_db
+from app.core.enums import enum_value
 from app.core.csrf import verify_csrf
 from app.core.file_cleanup import file_id_from_url
 from app.core.security import (
@@ -45,7 +46,7 @@ def _request_out(r: VerificationRequest, *, reveal_number: bool) -> dict:
         # его не откроют — получат 403. Подпись нужна обоим, а выдаём мы её
         # только тем, кто уже прошёл проверку прав выше.
         "file_url": file_url_with_token(r.file_url),
-        "status": r.status.value if hasattr(r.status, "value") else str(r.status),
+        "status": enum_value(r.status),
         "rejection_reason": r.rejection_reason,
         # Даты приводим к строке здесь, а не полагаемся на сериализатор:
         # схема объявляет их как str, и без .isoformat() FastAPI падал на

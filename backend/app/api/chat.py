@@ -5,6 +5,7 @@ from typing import Optional, List, Dict
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, status
 from sqlalchemy.orm import Session
 from app.core.database import get_db, SessionLocal
+from app.core.enums import enum_value
 from app.core.csrf import verify_csrf
 from app.core.security import oauth2_scheme, decode_token, file_url_with_token
 from app.core.logging import log_security_event
@@ -77,7 +78,7 @@ def get_user_chats(token: str = Depends(oauth2_scheme), db: Session = Depends(ge
         dialogs.append({
             "task_id": t.id,
             "task_title": t.title,
-            "task_status": t.status.value if hasattr(t.status, "value") else str(t.status),
+            "task_status": enum_value(t.status),
             "task_budget": t.budget,
             "other_user_id": other_user_id,
             "other_user_name": (other_user.name or other_user.email) if other_user else "Собеседник",

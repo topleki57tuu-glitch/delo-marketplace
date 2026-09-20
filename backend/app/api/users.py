@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from app.core.database import get_db
+from app.core.enums import enum_value
 from app.core.csrf import verify_csrf
 from app.core.logging import log_security_event
 from app.core.presence import user_online
@@ -110,7 +111,7 @@ def get_profile(token: str = Depends(oauth2_scheme), db: Session = Depends(get_d
     return {
         "id": user.id,
         "email": user.email,
-        "role": user.role.value if hasattr(user.role, "value") else str(user.role),
+        "role": enum_value(user.role),
         "name": user.name,
         "bio": user.bio,
         "balance": user.balance,
@@ -333,7 +334,7 @@ def get_my_transactions(token: str = Depends(oauth2_scheme), db: Session = Depen
             "id": t.id,
             "amount": t.amount,
             "fee": t.fee or 0,
-            "type": t.type.value if hasattr(t.type, "value") else str(t.type),
+            "type": enum_value(t.type),
             "task_id": t.task_id,
             "task_title": tasks.get(t.task_id),
             "created_at": t.created_at,
@@ -375,7 +376,7 @@ def export_my_transactions_csv(token: str = Depends(oauth2_scheme), db: Session 
             return str(value)[:19].replace("T", " ")
 
     for t in txs:
-        ttype = t.type.value if hasattr(t.type, "value") else str(t.type)
+        ttype = enum_value(t.type)
         writer.writerow([
             t.id,
             _fmt_dt(t.created_at),
@@ -416,7 +417,7 @@ def get_public_profile(user_id: int, db: Session = Depends(get_db)):
 
     return {
         "id": user.id,
-        "role": user.role.value if hasattr(user.role, "value") else str(user.role),
+        "role": enum_value(user.role),
         "name": user.name,
         "bio": user.bio,
         "rating": rating,

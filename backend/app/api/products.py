@@ -370,7 +370,7 @@ def get_my_orders(
             "delivery_method": o.delivery_method,
             "delivery_address": o.delivery_address,
             "tracking_number": o.tracking_number,
-            "status": o.status.value if hasattr(o.status, "value") else str(o.status),
+            "status": enum_value(o.status),
             "platform_fee": o.platform_fee,
             "created_at": o.created_at.isoformat() if o.created_at else None,
             "counterparty_name": counterparty.name or counterparty.email,
@@ -417,7 +417,7 @@ def get_order_detail(
         "delivery_method": order.delivery_method,
         "delivery_address": order.delivery_address,
         "tracking_number": order.tracking_number,
-        "status": order.status.value if hasattr(order.status, "value") else str(order.status),
+        "status": enum_value(order.status),
         "platform_fee": order.platform_fee,
         "created_at": order.created_at.isoformat() if order.created_at else None
     }
@@ -741,7 +741,7 @@ def get_order_dispute(
         "opened_by": dispute.opened_by,
         "opened_by_name": (opener.name or opener.email) if opener else None,
         "reason": dispute.reason,
-        "status": dispute.status.value if hasattr(dispute.status, "value") else str(dispute.status),
+        "status": enum_value(dispute.status),
         "resolution_comment": dispute.resolution_comment,
         "created_at": dispute.created_at,
         "resolved_at": dispute.resolved_at,

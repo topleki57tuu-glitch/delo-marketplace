@@ -16,6 +16,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.enums import enum_value
 from app.core.csrf import verify_csrf
 from app.core.money import claim, credit_balance, debit_balance
 from app.core.security import (
@@ -51,7 +52,7 @@ def _serialize(w: WithdrawalRequest, *, reveal_requisites: bool) -> dict:
         "amount": w.amount,
         "method": w.method,
         "requisites": requisites if reveal_requisites else mask_requisites(requisites),
-        "status": w.status.value if hasattr(w.status, "value") else str(w.status),
+        "status": enum_value(w.status),
         "comment": w.comment,
         "created_at": w.created_at,
         "resolved_at": w.resolved_at,

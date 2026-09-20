@@ -6,6 +6,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.config import settings
+from app.core.enums import enum_value
 from app.core.security import (
     hash_password, verify_password, create_access_token, create_refresh_token,
     verify_refresh_token, rate_limit, oauth2_scheme,
@@ -75,7 +76,7 @@ def login(request: Request, form: OAuth2PasswordRequestForm = Depends(), db: Ses
     # Создаём access токен (15 минут) и refresh токен (7 дней)
     access_token = create_access_token({
         "sub": str(user.id),
-        "role": user.role.value if hasattr(user.role, "value") else str(user.role)
+        "role": enum_value(user.role)
     })
     refresh_token, jti = create_refresh_token(user.id)
 
@@ -93,7 +94,7 @@ def login(request: Request, form: OAuth2PasswordRequestForm = Depends(), db: Ses
         "access_token": access_token,
         "refresh_token": refresh_token,
         "token_type": "bearer",
-        "role": user.role.value if hasattr(user.role, "value") else str(user.role)
+        "role": enum_value(user.role)
     }
 
 
@@ -119,7 +120,7 @@ def refresh_access_token(refresh_token: str, db: Session = Depends(get_db)):
     # Создаём новый access токен
     access_token = create_access_token({
         "sub": str(user.id),
-        "role": user.role.value if hasattr(user.role, "value") else str(user.role)
+        "role": enum_value(user.role)
     })
 
     return {

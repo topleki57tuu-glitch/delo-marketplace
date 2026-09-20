@@ -2,9 +2,10 @@ import json
 from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi.encoders import jsonable_encoder
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session
 from sqlalchemy import func
 from app.core.database import get_db
+from app.core.enums import enum_value
 from app.core.security import oauth2_scheme, decode_token
 from app.core.money import credit_balance
 from app.core.csrf import verify_csrf
@@ -166,8 +167,17 @@ def get_my_tasks(
     ВАЖНО: этот маршрут объявлен ДО `/{task_id}`, иначе FastAPI попытался бы
     разобрать «my» как целочисленный id и вернул бы 422.
 
-    Оптимизация: использует joinedload для предзагрузки связанных данных
-    и подзапрос для подсчета откликов, избегая N+1 проблемы.
+    Оптимизация: контрагентов подтягиваем одним запросом по собранным заранее
+    id, а отклики считаем подзапросом — обе части без N+1.
+
+    Раньше здесь стоял `joinedload(Task.customer/executor)`, но связанных
+    объектов у `Task` нет вовсе: в модели объявлены только `customer_id` и
+    `executor_id`, ни одного `relationship()`. Обращение к несуществующему
+    атрибуту падало с `AttributeError: type object 'Task' has no attribute
+    'executor'` на построении запроса, то есть ДО обращения к базе, — и роут
+    отвечал 500 на любой запрос, независимо от данных. Ни один набор его не
+    вызывал, поэтому дефект дожил до аудита: страница «Мои задания»
+    (MyTasksPage.jsx:49, tasksStore.js:70) была нерабочей целиком.
     """
     payload = decode_token_or_401(token)
     user_id = int(payload.get("sub"))
@@ -182,18 +192,20 @@ def get_my_tasks(
         .subquery()
     )
 
-    # Основной запрос с joinedload для customer/executor
+    # Основной запрос: счётчик откликов приезжает подзапросом, отдельного
+    # запроса на каждый заказ не нужно.
     query = (
         db.query(Task)
         .outerjoin(responses_subq, Task.id == responses_subq.c.task_id)
         .add_columns(func.coalesce(responses_subq.c.count, 0).label('responses_count'))
     )
 
-    # Предзагрузка связанных пользователей
+    # Связанных объектов у Task нет — только customer_id и executor_id, —
+    # поэтому фильтруем по колонке, а контрагента подтягиваем ниже.
     if role == "customer":
-        query = query.filter(Task.customer_id == user_id).options(joinedload(Task.executor))
+        query = query.filter(Task.customer_id == user_id)
     else:
-        query = query.filter(Task.executor_id == user_id).options(joinedload(Task.customer))
+        query = query.filter(Task.executor_id == user_id)
 
     if status_filter == "active":
         query = query.filter(Task.status.in_(
@@ -209,17 +221,29 @@ def get_my_tasks(
 
     results = query.order_by(Task.id.desc()).all()
 
+    # Контрагент для каждой строки: заказчик видит исполнителя и наоборот.
+    # Один запрос на весь список, а не по запросу на строку.
+    counterparty_ids = {
+        (t.executor_id if role == "customer" else t.customer_id) for t, _ in results
+    }
+    counterparty_ids.discard(None)
+    counterparties = (
+        {u.id: u for u in db.query(User).filter(User.id.in_(counterparty_ids)).all()}
+        if counterparty_ids else {}
+    )
+
     result = []
     for t, responses_count in results:
-        # Используем уже загруженные данные (без дополнительных запросов)
-        counterparty = t.executor if role == "customer" else t.customer
+        counterparty = counterparties.get(
+            t.executor_id if role == "customer" else t.customer_id
+        )
         result.append({
             "id": t.id,
             "title": t.title,
             "description": t.description,
             "budget": t.budget,
-            "category": t.category.value if hasattr(t.category, "value") else str(t.category),
-            "status": t.status.value if hasattr(t.status, "value") else str(t.status),
+            "category": enum_value(t.category),
+            "status": enum_value(t.status),
             "city": t.city,
             "is_remote": t.is_remote,
             "deadline": t.deadline,
@@ -246,12 +270,12 @@ def get_task_detail(task_id: int, db: Session = Depends(get_db)):
         "title": task.title,
         "description": task.description,
         "budget": task.budget,
-        "category": task.category.value if hasattr(task.category, "value") else str(task.category),
+        "category": enum_value(task.category),
         "customer_id": task.customer_id,
         "customer_name": customer.name if customer else None,
         "customer_avatar": customer.avatar if customer else None,
         "executor_id": task.executor_id,
-        "status": task.status.value if hasattr(task.status, "value") else str(task.status),
+        "status": enum_value(task.status),
         "has_open_dispute": db.query(Dispute).filter(
             Dispute.task_id == task_id, Dispute.status == DisputeStatus.open
         ).first() is not None,
