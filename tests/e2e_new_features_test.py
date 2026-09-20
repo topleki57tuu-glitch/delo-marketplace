@@ -12,10 +12,17 @@ E2E-тест новых фич маркетплейса «ДЕЛО»:
     python3 tests/e2e_new_features_test.py
 
 Примечание: для проверок арбитража нужен аккаунт администратора из seed_demo.py.
-Пароль задаётся переменной окружения DEMO_PASSWORD (раньше был захардкожен
-как insecure-дефолт), а email — через ADMIN_EMAILS. При запуске seed в том же
-окружении тест подхватит их сам; без DEMO_PASSWORD проверки арбитража
-пропускаются (SKIP), а не падают.
+Пароль админа — ОТДЕЛЬНЫЙ от демо-пароля: seed_demo.py берёт его из
+ADMIN_PASSWORD либо генерирует и пишет в backend/demo_password.txt строкой
+`admin_password = ...`. Здесь он резолвится общим хелпером admin_password().
+
+Раньше набор входил админом под DEMO_PASSWORD. Это работало, пока пароль был
+общим; после того как админу выдали отдельный (коммит f48b2bd), вход перестал
+проходить, и набор вёл себя двумя разными способами в зависимости от
+окружения: в CI (DEMO_PASSWORD задан) падал с «Арбитр admin@delo.ru доступен
+(seed)» и останавливал всю джобу, а локально (переменная не задана) молча
+пропускал весь блок арбитража и заканчивался зелёным, ничего не проверив.
+Поэтому теперь отсутствие пароля — ошибка, а не SKIP.
 """
 import os
 import json
@@ -25,7 +32,7 @@ import time
 import requests
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from _helpers import Session  # noqa: E402
+from _helpers import Session, admin_password  # noqa: E402
 
 BASE = os.environ.get("DELO_BASE", "http://localhost:8000")
 TS = int(time.time())
@@ -188,22 +195,31 @@ def main():
     check("Отмена заказчиком при чужом споре -> 403", r.status_code == 403)
 
     # Арбитраж.
-    # Учётка админа создаётся seed_demo.py. Пароль больше не хардкодится в
-    # seed (был demo123), а берётся из DEMO_PASSWORD или генерируется —
-    # поэтому здесь читаем те же переменные окружения.
+    # Учётка админа создаётся seed_demo.py, и пароль у неё ОТДЕЛЬНЫЙ от
+    # демо-пароля (ADMIN_PASSWORD либо сгенерированный — см. шапку набора).
+    # Поэтому читаем не DEMO_PASSWORD, а admin_password().
     admin_email = os.environ.get("ADMIN_EMAILS", "admin@delo.ru").split(",")[0].strip()
-    admin_pwd = os.environ.get("DEMO_PASSWORD", "")
+    # required=False: отсутствие пароля разбираем сами, чтобы сообщение
+    # объясняло причину, а не выглядело как падение резолвера.
+    admin_pwd = admin_password(required=False)
     admin_tok = None
     if admin_pwd:
         try:
             admin_tok = login(admin_email, admin_pwd)
         except RuntimeError:
             admin_tok = None
-    else:
-        print("  SKIP Арбитр: DEMO_PASSWORD не задан (seed не запускался)")
 
-    if admin_pwd:
-        check(f"Арбитр {admin_email} доступен (seed)", bool(admin_tok))
+    # Никакого SKIP: без пароля админа блок арбитража не проверяется, а набор
+    # при этом заканчивался зелёным — то есть «0 ошибок» означало «0 проверок».
+    # Локальный прогон без DEMO_PASSWORD ровно так и выглядел.
+    check(
+        f"Арбитр {admin_email} доступен (seed)",
+        bool(admin_tok),
+        "" if admin_tok else (
+            "пароль админа не найден или не подошёл: задай ADMIN_PASSWORD "
+            "или запусти seed_demo.py, создающий backend/demo_password.txt"
+        ),
+    )
 
     if admin_tok:
         r = S.get(f"/admin/disputes", headers=auth(cust_tok), timeout=15)

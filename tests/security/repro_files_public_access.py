@@ -22,12 +22,15 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from _helpers import Session  # noqa: E402
+from _helpers import Session, demo_password  # noqa: E402
 
 import requests  # noqa: E402
 
 BASE = os.environ.get("DELO_BASE", "http://127.0.0.1:8000")
-PASSWORD = os.environ.get("DEMO_PASSWORD", "AuditPass_2026x")
+# Пароль резолвится общим хелпером (DEMO_PASSWORD или backend/demo_password.txt).
+# Раньше здесь стоял фолбэк-литерал «AuditPass_2026x» из сессии аудита: вне CI
+# набор падал на входе с 401, и симптом выглядел как дефект авторизации.
+PASSWORD = demo_password()
 
 # Минимальный валидный JPEG (1x1) — важен только magic bytes.
 JPEG = bytes.fromhex(

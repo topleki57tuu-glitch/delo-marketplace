@@ -13,10 +13,80 @@
 проходят и, что важнее, реально проверяют защиту.
 """
 import os
+import re
 
 import requests
 
 _CSRF_HEADER = "X-CSRF-Token"
+
+# ---------------------------------------------------------------------------
+# Демо-пароли: один резолвер на все наборы.
+#
+# Пароли больше не хранятся в репозитории. `seed_demo.py` берёт их из
+# окружения либо генерирует и складывает в `backend/demo_password.txt`
+# (файл в .gitignore). Причём паролей ДВА и они разные:
+#
+#   password       — все демо-аккаунты (DEMO_PASSWORD);
+#   admin_password — отдельно для admin@delo.ru (ADMIN_PASSWORD).
+#
+# Разделять их начали намеренно: у админа очередь споров, заявки на вывод с
+# реквизитами и доступ к чужим данным, поэтому общий демо-пароль на нём
+# означал бы, что модератором становится любой, кому известен демо-пароль.
+#
+# Почему это общая функция, а не `os.environ.get(...)` в каждом наборе.
+# Раньше два набора брали пароль так:
+#
+#     PASSWORD = os.environ.get("DEMO_PASSWORD", "AuditPass_2026x")
+#
+# Значение по умолчанию — пароль из сессии аудита, которого в проекте давно
+# нет. В CI это не всплывало: джоба задаёт DEMO_PASSWORD, и до фолбэка дело
+# не доходило. Но любой прогон вне CI (а это и есть штатный способ запускать
+# наборы — см. HOW_TO_RUN.md) падал на входе с «login failed: 401 Неверный
+# email или пароль», то есть симптом указывал на авторизацию, а не на то,
+# что набор не нашёл пароль.
+#
+# Третий набор — e2e_new_features_test — читал DEMO_PASSWORD для входа
+# АДМИНОМ. После того как у админа появился отдельный пароль, вход перестал
+# проходить, а набор в этом случае молча пропускал весь блок арбитража и
+# заканчивался зелёным. Здесь и то, и другое закрыто: резолвер общий, а
+# отсутствие пароля — ошибка, а не тихий SKIP.
+# ---------------------------------------------------------------------------
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+PASSWORD_FILE = os.path.join(_ROOT, "backend", "demo_password.txt")
+
+
+def read_password_file(key: str) -> "str | None":
+    """Значение строки `<key> = ...` из backend/demo_password.txt."""
+    if not os.path.exists(PASSWORD_FILE):
+        return None
+    with open(PASSWORD_FILE, encoding="utf-8") as fh:
+        match = re.search(rf"^{re.escape(key)}\s*=\s*(\S+)", fh.read(), re.MULTILINE)
+    return match.group(1) if match else None
+
+
+def _resolve(env_var: str, file_key: str, *, required: bool, who: str):
+    value = os.environ.get(env_var) or read_password_file(file_key)
+    if not value and required:
+        raise SystemExit(
+            f"{env_var} не задан и в {PASSWORD_FILE} нет строки '{file_key} = ...'.\n"
+            f"Пароль {who} известен только тому, кто сеял базу: запусти\n"
+            f"  python backend/seed_demo.py\n"
+            f"или задай {env_var} в окружении — тем же значением, с которым\n"
+            f"поднят backend (иначе вход вернёт 401, и это будет не дефект кода)."
+        )
+    return value
+
+
+def demo_password(required: bool = True):
+    """Пароль демо-аккаунтов (anna@delo.ru и остальных, кроме админа)."""
+    return _resolve("DEMO_PASSWORD", "password", required=required, who="демо-аккаунтов")
+
+
+def admin_password(required: bool = True):
+    """Пароль админа. Отдельный от демо-пароля — см. блок выше."""
+    return _resolve(
+        "ADMIN_PASSWORD", "admin_password", required=required, who="админа"
+    )
 
 
 class Session:
