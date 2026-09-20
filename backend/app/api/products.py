@@ -9,6 +9,7 @@ from app.core.money import credit_balance, debit_balance
 from app.core.csrf import verify_csrf
 from app.core.logging import logger, log_escrow_operation
 from app.core.cache import cache
+from app.core.enums import enum_value
 from app.models import (
     Product, Order, User, ProductCategory, ProductCondition, OrderStatus,
     Transaction, TransactionType, Notification, Dispute, DisputeStatus, UserRole
@@ -42,8 +43,8 @@ def _serialize_product(p: Product, seller: Optional[User] = None) -> dict:
         "seller_id": p.seller_id,
         "title": p.title,
         "description": p.description,
-        "category": p.category.value if hasattr(p.category, "value") else str(p.category),
-        "condition": p.condition.value if hasattr(p.condition, "value") else str(p.condition),
+        "category": enum_value(p.category),
+        "condition": enum_value(p.condition),
         "price": p.price,
         "stock": p.stock,
         "images": p.images,
@@ -803,8 +804,8 @@ def get_product_detail(product_id: int, db: Session = Depends(get_db)):
         "seller_id": product.seller_id,
         "title": product.title,
         "description": product.description,
-        "category": product.category.value if hasattr(product.category, "value") else str(product.category),
-        "condition": product.condition.value if hasattr(product.condition, "value") else str(product.condition),
+        "category": enum_value(product.category),
+        "condition": enum_value(product.condition),
         "price": product.price,
         "stock": product.stock,
         "images": product.images,
