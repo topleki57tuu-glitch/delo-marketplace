@@ -1,6 +1,7 @@
 import json
 from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, status, Request
+from fastapi.encoders import jsonable_encoder
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func
 from app.core.database import get_db
@@ -134,9 +135,16 @@ def get_tasks(
     result = query.all()
 
     # Сохраняем в кеш если это кешируемый запрос
+    #
+    # jsonable_encoder обязателен: `result` — это ORM-объекты Task, а не словари.
+    # `json.dumps(..., default=str)` превращал каждый из них в `str(obj)`, то есть
+    # в строку вида "<app.models.Task object at 0x...>". Первый запрос (промах
+    # кэша) отдавал нормальный список, а все последующие в течение 60 секунд
+    # (попадание) — список таких строк. В products.py тот же код работает
+    # случайно: там результат заранее собран словарями через _serialize_product.
     if is_cacheable and cache.enabled:
         try:
-            cache.set(cache_key, json.dumps(result, default=str), ttl_seconds=60)
+            cache.set(cache_key, json.dumps(jsonable_encoder(result)), ttl_seconds=60)
             logger.debug(f"Cache SET: {cache_key}")
         except (TypeError, ValueError) as e:
             logger.warning(f"Cache serialization error: {e}")
