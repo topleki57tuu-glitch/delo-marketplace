@@ -239,10 +239,17 @@ class YooMoneyClient:
                 )
 
             if operation is not None:
+                # `None`, а не `0.0`, когда суммы в операции нет. Разница
+                # существенная: по этой сумме ограничивается зачисление
+                # (см. `credit_amount` в app/api/payments.py), и «провайдер
+                # не сообщил» должно означать «сверять не с чем», а не
+                # «уплачено ноль». Раньше здесь стоял `float(... or 0)`,
+                # и эти два случая были неразличимы.
+                raw_amount = operation.get("amount")
                 return {
                     "status": "success",
                     "paid": True,
-                    "amount": float(operation.get("amount", 0)),
+                    "amount": float(raw_amount) if raw_amount is not None else None,
                     "datetime": operation.get("datetime"),
                     "operation_id": operation.get("operation_id"),
                     "sender": operation.get("sender")

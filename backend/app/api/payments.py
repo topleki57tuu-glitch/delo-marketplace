@@ -110,6 +110,42 @@ def _verify_local_record(
     return record
 
 
+def credit_amount(requested: int, paid) -> int:
+    """Сколько зачислить: не больше запрошенного И не больше уплаченного.
+
+    Почему не `record.amount` напрямую. Сумма, которую мы запросили, живёт в
+    `confirmation_url`, а тот возвращается в браузер плательщика. Параметры
+    формы ЮMoney (`receiver`, `sum`, `label`) едут туда же — значит, `sum`
+    правится в адресной строке до открытия формы, и человек может оплатить
+    100 ₽ по счёту на 100 000 ₽. Метка и подпись при этом останутся
+    подлинными: подпись подтверждает, что уведомление от ЮMoney, но ничего не
+    говорит о том, совпадает ли уплаченное с запрошенным.
+
+    Раньше все три пути зачисления (вебхук, `POST /payments/confirm`,
+    `POST /payments/confirm-pending`) брали `record.amount`, а расхождение
+    только писали в лог — «зачисляем ровно запрошенное». То есть оплата
+    меньшей суммы зачислялась как полная, и это была не теоретическая дыра:
+    для этого хватало подправить одно число в адресе формы, без всякой
+    подделки подписи.
+
+    Берём минимум, а не «уплаченное», по двум причинам: зачислить больше
+    запрошенного нельзя (это подарок из ниоткуда), а зачислить меньше
+    уплаченного — значит удержать чужие деньги. Минимум не нарушает ни то,
+    ни другое.
+
+    Если провайдер сумму не сообщил, считаем доказанной запрошенную: сверять
+    не с чем, а отказывать в зачислении живому платежу нельзя. Разбор мусора
+    вместо суммы идёт туда же — как «не сообщил», а не как ноль.
+    """
+    if paid is None:
+        return requested
+    try:
+        paid_amount = int(float(paid))
+    except (TypeError, ValueError):
+        return requested
+    return max(0, min(paid_amount, requested))
+
+
 MONETIZATION_PACKAGES = {
     "resp_10": {"type": "responses", "title": "10 откликов", "credits": 10, "price": 190},
     "resp_50": {"type": "responses", "title": "50 откликов", "credits": 50, "price": 790},
@@ -337,7 +373,16 @@ def confirm_payment(
     if record.credited_at is not None:
         return {"status": "succeeded", "credited": False, "message": "Уже зачислено"}
 
-    amount = record.amount
+    # Сумма — минимум из запрошенной и уплаченной (см. credit_amount).
+    # `status_result["amount"]` — то, что провайдер сообщил об операции.
+    paid_amount = status_result.get("amount")
+    amount = credit_amount(record.amount, paid_amount)
+    if amount != record.amount:
+        logger.warning(
+            f"Платёж {payment_id}: уплачено {paid_amount}, запрошено "
+            f"{record.amount} — зачисляем {amount}"
+        )
+
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(404, "Пользователь не найден")
@@ -418,14 +463,13 @@ async def yoomoney_webhook(request: Request, db: Session = Depends(get_db)):
     except (TypeError, ValueError):
         raise HTTPException(400, "Invalid amount")
 
-    if notified_amount != record.amount:
-        logger.warning(
-            f"ЮMoney amount mismatch for {label}: notified={notified_amount}, "
-            f"expected={record.amount} — crediting expected amount"
-        )
-
     user_id = record.user_id
-    amount = record.amount
+    amount = credit_amount(record.amount, notified_amount)
+    if amount != record.amount:
+        logger.warning(
+            f"ЮMoney: по {label} уплачено {notified_amount}, запрошено "
+            f"{record.amount} — зачисляем {amount}"
+        )
 
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
@@ -536,7 +580,13 @@ def confirm_pending_payments(
         if not claimed:
             continue
 
-        amount = record.amount
+        amount = credit_amount(record.amount, status_result.get("amount"))
+        if amount != record.amount:
+            logger.warning(
+                f"confirm-pending: по {record.payment_id} уплачено "
+                f"{status_result.get('amount')}, запрошено {record.amount} — "
+                f"зачисляем {amount}"
+            )
         record.status = PaymentStatus.paid
         credit_balance(db, user_id, amount)
         db.add(Transaction(user_id=user_id, amount=amount, type=TransactionType.deposit))

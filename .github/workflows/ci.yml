@@ -215,7 +215,8 @@ jobs:
             security/check_enum_null_serialization \
             security/check_private_attachment_access \
             security/check_withdrawal_review \
-            security/check_celery_tasks
+            security/check_celery_tasks \
+            security/check_payment_amount_credit
           do
             echo "::group::$suite"
             python "tests/${suite}.py"
