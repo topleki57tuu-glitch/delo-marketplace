@@ -1,5 +1,6 @@
 import asyncio
 import json
+import re
 import time
 from typing import Optional, List, Dict
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, status
@@ -9,7 +10,7 @@ from app.core.enums import enum_value
 from app.core.csrf import verify_csrf
 from app.core.security import oauth2_scheme, decode_token, file_url_with_token
 from app.core.logging import log_security_event
-from app.models import Message, Task, User, Notification, TaskStatus
+from app.models import Message, StoredFile, Task, User, Notification, TaskStatus
 from app.schemas import MessageCreate
 from app.services.websocket_manager import manager
 
@@ -49,6 +50,95 @@ def ws_rate_limit_check(user_id: int) -> bool:
 
 def decode_token_or_401(token: str) -> dict:
     return decode_token(token)
+
+
+# ---------------------------------------------------------------------------
+# Вложения: что можно прикрепить и кому можно показать
+#
+# `file_url` в сообщении — это ссылка `/files/<id>`, а не содержимое файла.
+# Хранится она как есть, а подпись (`?token=...`) выдаётся при отдаче, потому
+# что браузер не прикладывает заголовок Authorization к запросу картинки из
+# `<img>`.
+#
+# Проблема была в том, что подпись считается от ОДНОГО ЛИШЬ id файла:
+#
+#     def sign_file_token(file_id):   # app/core/security.py:233
+#         return "f1" + hmac(SECRET_KEY, f"file:{file_id}")
+#
+# Ни пользователя, ни сделки, ни срока в ней нет, а `file_url` приходит от
+# клиента. Значит участник любой сделки мог назвать id чужого приватного
+# вложения, получить на него валидную подпись и прочитать файл — при том что
+# доступ к самой переписке, где этот файл лежит, ему закрыт (403).
+#
+# Поэтому проверок две:
+#   1. при отправке — прикрепить можно только СВОЙ файл;
+#   2. при отдаче — подпись выдаётся только на файл, который виден участникам
+#      этой сделки. Второй рубеж нужен для строк, попавших в базу до правки.
+# ---------------------------------------------------------------------------
+_ATTACHMENT_RE = re.compile(r"^/files/(\d+)")
+
+
+def _attachment_file_id(url: Optional[str]) -> Optional[int]:
+    """id файла из внутренней ссылки `/files/<id>`; None для всего остального.
+
+    Внешние http(s)-ссылки сюда не попадают: подпись к ним не добавляется,
+    и прав на файлы платформы они не дают.
+    """
+    if not url:
+        return None
+    match = _ATTACHMENT_RE.match(url)
+    return int(match.group(1)) if match else None
+
+
+def _require_own_attachment(db: Session, url: Optional[str], user_id: int) -> Optional[str]:
+    """Прикрепить можно только файл, который загрузил сам отправитель.
+
+    Возвращает каноническую ссылку `/files/<id>` (без чужого query) либо url
+    без изменений, если это внешний адрес.
+    """
+    file_id = _attachment_file_id(url)
+    if file_id is None:
+        return url
+
+    stored = db.query(StoredFile).filter(StoredFile.id == file_id).first()
+    if not stored:
+        raise HTTPException(400, "Файл не найден — загрузите его через POST /upload/image")
+    if stored.owner_id != user_id:
+        raise HTTPException(403, "Прикрепить можно только свой файл")
+    return f"/files/{stored.id}"
+
+
+def _visible_attachment_ids(db: Session, task: Task, messages) -> set:
+    """Файлы из вложений, которые положено видеть участникам этой сделки."""
+    ids = {
+        file_id
+        for file_id in (_attachment_file_id(m.file_url) for m in messages)
+        if file_id is not None
+    }
+    if not ids:
+        return set()
+
+    participants = {task.customer_id, task.executor_id} - {None}
+    visible = set()
+    for row in db.query(StoredFile).filter(StoredFile.id.in_(ids)).all():
+        # Публичный файл открыт всем: подпись ему ничего не добавляет.
+        if not row.is_private or row.owner_id in participants:
+            visible.add(row.id)
+    return visible
+
+
+def _attachment_url(url: Optional[str], visible: set) -> Optional[str]:
+    """Ссылка с подписью — только если файл виден участникам сделки.
+
+    Для невидимого файла возвращаем ссылку без подписи: `GET /files/{id}`
+    на приватный файл ответит 403, то есть доступ не появится, а сообщение
+    останется читаемым.
+    """
+    file_id = _attachment_file_id(url)
+    if file_id is None or file_id in visible:
+        return file_url_with_token(url)
+    return f"/files/{file_id}"
+
 
 @router.get("/chats")
 def get_user_chats(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
@@ -120,6 +210,11 @@ def get_messages(task_id: int, token: str = Depends(oauth2_scheme), db: Session 
     db.commit()
 
     messages = db.query(Message).filter(Message.task_id == task_id).order_by(Message.id).all()
+
+    # Файлы, которые участникам этой сделки видеть положено, — одним запросом
+    # на весь список, а не по запросу на сообщение.
+    visible = _visible_attachment_ids(db, task, messages)
+
     result = []
     for m in messages:
         sender = db.query(User).filter(User.id == m.sender_id).first()
@@ -128,10 +223,9 @@ def get_messages(task_id: int, token: str = Depends(oauth2_scheme), db: Session 
             "task_id": m.task_id,
             "sender_id": m.sender_id,
             "text": m.text,
-            # Вложения приватные: подпись выдаётся здесь, а не запрашивается
-            # клиентом, — значит, получить её может только участник сделки,
-            # до которого этот ответ вообще дошёл (проверка выше, строка ~105).
-            "file_url": file_url_with_token(m.file_url),
+            # Подпись — только на файл, который виден участникам сделки: сама
+            # по себе она считается от одного id и никаких прав не несёт.
+            "file_url": _attachment_url(m.file_url, visible),
             "file_name": m.file_name,
             "file_type": m.file_type,
             "is_read": bool(m.is_read),
@@ -190,11 +284,16 @@ async def post_message(task_id: int, message: MessageCreate, token: str = Depend
     if user_id not in (task.customer_id, task.executor_id):
         raise HTTPException(403, "Нет доступа")
 
+    # Прикрепить можно только свой файл. Без этой проверки `file_url` —
+    # обычный параметр запроса, и участник сделки мог назвать в нём id чужого
+    # приватного вложения, чтобы получить на него валидную подпись.
+    file_url = _require_own_attachment(db, message.file_url, user_id)
+
     new_message = Message(
         task_id=task_id,
         sender_id=user_id,
         text=message.text,
-        file_url=message.file_url,
+        file_url=file_url,
         file_name=message.file_name,
         file_type=message.file_type,
         is_read=False
@@ -227,9 +326,11 @@ async def post_message(task_id: int, message: MessageCreate, token: str = Depend
         "task_id": task_id,
         "sender_id": user_id,
         "text": message.text,
-        # Та же подпись, что и в GET /messages: рассылка уходит только
-        # участникам сделки, значит подписанная ссылка не утечёт наружу.
-        "file_url": file_url_with_token(message.file_url),
+        # Та же проверка, что и в GET /messages: подпись выдаётся только на
+        # файл, видимый участникам этой сделки.
+        "file_url": _attachment_url(
+            message.file_url, _visible_attachment_ids(db, task, [new_message])
+        ),
         "file_name": message.file_name,
         "file_type": message.file_type,
         "is_read": False,

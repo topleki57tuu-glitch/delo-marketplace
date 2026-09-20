@@ -212,7 +212,8 @@ jobs:
             security/check_goods_order_escrow \
             security/check_tasks_list_cache \
             security/check_online_status \
-            security/check_enum_null_serialization
+            security/check_enum_null_serialization \
+            security/check_private_attachment_access
           do
             echo "::group::$suite"
             python "tests/${suite}.py"
