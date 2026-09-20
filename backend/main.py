@@ -212,8 +212,18 @@ async def track_last_seen(request: Request, call_next):
             if last is None or (now - last).total_seconds() > 60:
                 db = SessionLocal()
                 try:
-                    # FIX: Передаём datetime объект вместо строки для совместимости с Column(DateTime)
-                    db.query(User).filter(User.id == uid).update({"last_seen": now})
+                    # naive UTC, а не aware: колонка объявлена как
+                    # Column(DateTime) без timezone=True, то есть naive. Раньше
+                    # сюда писался datetime.now(timezone.utc), и значение
+                    # совпадало с UTC только потому, что смещение у него
+                    # нулевое. Стоило кому-то заменить это на datetime.now()
+                    # (местное время, +03:00) — и last_seen уехал бы на три
+                    # часа, а вместе с ним признак «онлайн»: все считались бы
+                    # активными ещё три часа после ухода. Пишем ровно то, с чем
+                    # сравнивает app/core/presence.py.
+                    db.query(User).filter(User.id == uid).update(
+                        {"last_seen": now.replace(tzinfo=None)}
+                    )
                     db.commit()
                 finally:
                     db.close()

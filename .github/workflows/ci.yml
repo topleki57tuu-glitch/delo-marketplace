@@ -179,7 +179,8 @@ jobs:
             security/repro_yookassa_unpaid_credit \
             security/check_file_cleanup \
             security/repro_verification_document_access \
-            security/check_pending_payment_recovery
+            security/check_pending_payment_recovery \
+            security/check_online_status
           do
             echo "::group::$suite"
             python "tests/${suite}.py"

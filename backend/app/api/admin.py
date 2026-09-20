@@ -21,6 +21,7 @@ import sqlalchemy as sa
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.presence import ONLINE_WINDOW_SECONDS
 from app.core.security import oauth2_scheme, decode_token, is_admin
 from app.models import (
     User, UserRole, Task, TaskStatus, Transaction, TransactionType,
@@ -45,7 +46,10 @@ def platform_stats(token: str = Depends(oauth2_scheme), db: Session = Depends(ge
 
     now = datetime.utcnow()
     week_ago = now - timedelta(days=7)
-    online_since = now - timedelta(seconds=120)
+    # Окно берём из общего модуля: если оно разъедется с тем, что считает
+    # app/core/presence.py, счётчик в админке и бейджи «Онлайн» в интерфейсе
+    # начнут показывать разное по одним и тем же данным.
+    online_since = now - timedelta(seconds=ONLINE_WINDOW_SECONDS)
 
     # ------------------------------------------------------------- пользователи
     users = {

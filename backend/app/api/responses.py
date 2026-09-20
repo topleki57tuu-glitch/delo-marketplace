@@ -3,6 +3,11 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.csrf import verify_csrf
+# Признак «онлайн» — одна реализация на проект (app/core/presence.py).
+# Здесь была своя копия, и она вызывала datetime.fromisoformat() по объекту
+# datetime: TypeError на каждом вызове, проглоченный `except Exception`,
+# то есть `specialist_online` в списке откликов всегда был false.
+from app.core.presence import user_online
 from app.core.security import oauth2_scheme, decode_token
 from app.models import Response, Task, User, Review, TaskStatus, UserRole, Notification
 from app.schemas import ResponseCreate
@@ -11,15 +16,6 @@ router = APIRouter(tags=["Responses"])
 
 def decode_token_or_401(token: str) -> dict:
     return decode_token(token)
-
-def user_online(user: User) -> bool:
-    from datetime import datetime
-    if not user or not user.last_seen:
-        return False
-    try:
-        return (datetime.utcnow() - datetime.fromisoformat(user.last_seen)).total_seconds() < 120
-    except Exception:
-        return False
 
 @router.post("/tasks/{task_id}/responses")
 def create_response(task_id: int, response: ResponseCreate, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db), _csrf: None = Depends(verify_csrf)):

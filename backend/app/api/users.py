@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.csrf import verify_csrf
 from app.core.logging import log_security_event
+from app.core.presence import user_online
 from app.core.security import (
     oauth2_scheme, decode_token, is_admin, hash_password, verify_password, client_ip,
 )
@@ -79,20 +80,6 @@ def _sanitize_portfolio(raw: str) -> str:
             raise HTTPException(400, "Элементы портфолио должны быть ссылками или объектами")
 
     return json.dumps(cleaned, ensure_ascii=False)
-
-def user_online(user: User) -> bool:
-    if not user.last_seen:
-        return False
-    try:
-        # FIX: user.last_seen теперь datetime объект, не строка
-        if isinstance(user.last_seen, str):
-            # Обратная совместимость для старых записей
-            last_seen_dt = datetime.fromisoformat(user.last_seen)
-        else:
-            last_seen_dt = user.last_seen
-        return (datetime.now(timezone.utc) - last_seen_dt).total_seconds() < 120
-    except Exception:
-        return False
 
 @router.get("/users/me")
 def get_profile(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
