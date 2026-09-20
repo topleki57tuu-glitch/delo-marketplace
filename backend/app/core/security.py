@@ -3,12 +3,19 @@ import os
 import time
 import secrets
 from datetime import datetime, timedelta, timezone
-from typing import Optional, Dict, List
+from typing import TYPE_CHECKING, Optional, Dict, List
 from jose import JWTError, jwt
 from fastapi import HTTPException, Request, Depends, status
 from fastapi.security import OAuth2PasswordBearer
 from app.core.config import settings
 from app.core.logging import log_security_event
+
+if TYPE_CHECKING:
+    # Только ради аннотации возврата `_fernet`. Импорт внутри самой функции
+    # остаётся ленивым намеренно: cryptography не должна грузиться вместе
+    # с модулем. Без этого блока `ruff --select F821` видит `"Fernet"` в
+    # аннотации как неопределённое имя.
+    from cryptography.fernet import Fernet
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
 

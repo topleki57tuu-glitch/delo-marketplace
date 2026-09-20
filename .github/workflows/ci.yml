@@ -105,6 +105,23 @@ jobs:
       - name: Install dependencies
         run: pip install -r backend/requirements-dev.txt
 
+      # Статическая проверка неопределённых имён (ruff F821).
+      #
+      # Зачем отдельный шаг. Дефект этого класса уже случился прямо в аудите:
+      # в восьми роутерах выражение `x.value if hasattr(x, "value") else str(x)`
+      # заменяли на общий хелпер `enum_value`, и в двух файлах правку импорта
+      # затёрло при редактировании. `compileall` такое пропускает — имя не
+      # разрешается при компиляции, — а наборы не ловят: `NameError` вылезает
+      # только на конкретном запросе, а `/wallet/transactions` до этого не
+      # вызывал ни один тест.
+      #
+      # Только F821, а не весь набор правил: цель не переформатировать проект,
+      # а не пускать в main код, падающий на несуществующем имени. Версия
+      # зафиксирована в requirements-dev.txt, чтобы новые правила не сломали CI
+      # молча при обновлении.
+      - name: Lint undefined names
+        run: python -m ruff check backend tests --select F821
+
       - name: Apply migrations to a clean database
         working-directory: backend
         run: alembic upgrade head
@@ -194,7 +211,8 @@ jobs:
             security/check_pending_payment_recovery \
             security/check_goods_order_escrow \
             security/check_tasks_list_cache \
-            security/check_online_status
+            security/check_online_status \
+            security/check_enum_null_serialization
           do
             echo "::group::$suite"
             python "tests/${suite}.py"
