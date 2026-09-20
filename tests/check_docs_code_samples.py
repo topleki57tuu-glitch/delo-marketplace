@@ -56,13 +56,44 @@ CODE_BLOCK = re.compile(r"```python\n(.*?)```", re.S)
 SELF_TEST_SAMPLE = "from app.core.security import get_password_hash\n"
 
 
+def _module_on_disk(module: str) -> bool:
+    """Есть ли модуль в backend/, независимо от того, импортируется ли он.
+
+    Различать эти два случая обязательно. `ModuleNotFoundError` приходит и
+    тогда, когда модуля нет вовсе (рецепт предлагает его создать — это норма),
+    и тогда, когда модуль есть, но не грузится из-за отсутствующей зависимости.
+    Второй случай раньше молча попадал в категорию «предлагается создать», и
+    проверка не смотрела на блок вообще.
+
+    Так и было с `app.tasks.email` и `app.tasks.cleanup`: они лежат в
+    репозитории, но импортируют `celery`, которого нет в requirements.txt.
+    Шесть блоков `docs/CELERY_REDIS_SETUP.md` из-за этого не проверялись —
+    при том что именно они учат импортировать имена из этих модулей. Переименуй
+    кто-нибудь `send_password_reset_email` — проверка продолжила бы печатать
+    «битых ссылок 0».
+    """
+    base = BACKEND / "app"
+    parts = module.split(".")[1:]  # без ведущего "app"
+    if not parts:
+        return False
+    return (
+        base.joinpath(*parts).with_suffix(".py").exists()
+        or (base.joinpath(*parts) / "__init__.py").exists()
+    )
+
+
 def scan(code: str):
-    """Разбирает один блок. Возвращает (битые ссылки, модули на создание, синтаксис)."""
-    broken, to_create, syntax = [], [], []
+    """Разбирает один блок.
+
+    Возвращает (битые ссылки, модули на создание, синтаксис, неудавшиеся импорты).
+    Последний список — модули, которые существуют, но не загрузились: их
+    содержимое не проверено, и это повод не доверять результату целиком.
+    """
+    broken, to_create, syntax, unloadable = [], [], [], []
     try:
         tree = ast.parse(code)
     except SyntaxError as exc:
-        return broken, to_create, [(exc.msg, exc.lineno)]
+        return broken, to_create, [(exc.msg, exc.lineno)], unloadable
 
     for node in ast.walk(tree):
         if not isinstance(node, ast.ImportFrom):
@@ -71,17 +102,20 @@ def scan(code: str):
             continue
         try:
             module = __import__(node.module, fromlist=["*"])
-        except ModuleNotFoundError:
-            to_create.append(node.module)
+        except ModuleNotFoundError as exc:
+            if _module_on_disk(node.module):
+                unloadable.append((node.module, str(exc)))
+            else:
+                to_create.append(node.module)
             continue
         for alias in node.names:
             if not hasattr(module, alias.name):
                 broken.append((node.module, alias.name))
-    return broken, to_create, syntax
+    return broken, to_create, syntax, unloadable
 
 
 def self_test() -> bool:
-    broken, _, _ = scan(SELF_TEST_SAMPLE)
+    broken, _, _, _ = scan(SELF_TEST_SAMPLE)
     return any(name == "get_password_hash" for _, name in broken)
 
 
@@ -130,32 +164,55 @@ def main() -> int:
 
     total_broken = 0
     total_create = 0
+    total_unloadable = []
     for path in DOCS:
         if not path.exists():
             print(f"нет файла: {path}")
             continue
         text = path.read_text(encoding="utf-8")
         blocks = CODE_BLOCK.findall(text)
-        broken, to_create, syntax = [], [], []
+        broken, to_create, syntax, unloadable = [], [], [], []
         for number, code in enumerate(blocks, 1):
-            b, c, s = scan(code)
+            b, c, s, u = scan(code)
             broken.extend((number,) + row for row in b)
             to_create.extend((number, module) for module in c)
             syntax.extend((number,) + row for row in s)
+            unloadable.extend((number,) + row for row in u)
 
         print(f"{path.relative_to(ROOT)}: блоков {len(blocks)}, битых ссылок {len(broken)}")
         for number, module, name in broken:
             print(f"  БЛОК {number}: {module} не содержит {name}")
         for number, module in to_create:
             print(f"  (блок {number}: {module} — модуль предлагается создать)")
+        for number, module, exc in unloadable:
+            print(f"  (блок {number}: {module} есть, но не импортируется — {exc})")
         for number, msg, line in syntax:
             print(f"  (блок {number}, строка {line}: {msg} — блок смешивает Python и shell)")
         total_broken += len(broken)
         total_create += len(to_create)
+        total_unloadable.extend((str(path.relative_to(ROOT)),) + row for row in unloadable)
 
     print()
     print(f"модулей «на создание»: {total_create} "
           f"(если это все импорты подряд — проверка опять не работает)")
+
+    # Блоки, чей модуль не загрузился, не проверены вообще. Печатать при этом
+    # «битых ссылок 0» — тот самый ноль, полученный по неверной причине,
+    # ради которого в скрипте и появилась самопроверка. Отдельный код выхода,
+    # чтобы «не смог проверить» никогда не читалось как «всё чисто».
+    if total_unloadable:
+        print()
+        print("НЕ ПРОВЕРЕНО: эти модули лежат в репозитории, но не импортируются,")
+        print("поэтому имена из них сверить не с чем:")
+        for doc, number, module, exc in total_unloadable:
+            print(f"  {doc}, блок {number}: {module} — {exc}")
+        print("Обычно это отсутствующая зависимость. Установи её и повтори:")
+        print("  pip install -r backend/requirements.txt")
+        print("Если модуль намеренно необязательный (например, требует celery,")
+        print("которого нет в requirements), вынеси логику в модуль без этой")
+        print("зависимости — тогда он станет проверяемым.")
+        return 2
+
     if total_broken:
         print(f"ИТОГ: битых ссылок {total_broken}. "
               f"Документация учит именам, которых нет в коде.")

@@ -14,5 +14,16 @@ requests==2.32.5
 psycopg2-binary==2.9.11
 bcrypt==5.0.0
 redis==8.1.0
+# Celery: его импортируют app/core/celery_app.py и все app/tasks/*. Без него
+# эти модули не загружаются вообще (`ModuleNotFoundError: No module named
+# 'celery'`), а значит их нельзя ни запустить, ни проверить: шесть блоков
+# docs/CELERY_REDIS_SETUP.md, которые учат импортировать имена из app.tasks,
+# были из-за этого вне проверки tests/check_docs_code_samples.py — та
+# складывала их в категорию «рецепт предлагает создать файл».
+#
+# Сам по себе celery приложению в рантайме не нужен: ни main.py, ни api/*
+# его не импортируют. Но образ у бэкенда один и на API, и на воркер
+# (см. docs/CELERY_REDIS_SETUP.md), поэтому зависимость живёт здесь.
+celery==5.5.3
 alembic==1.20.0
 sentry-sdk[fastapi]==2.15.0
