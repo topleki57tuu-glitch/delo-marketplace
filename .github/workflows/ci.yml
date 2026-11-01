@@ -650,6 +650,16 @@ jobs:
       - name: Check that every className has a CSS rule
         run: npm run check:css
 
+      # Конфиг nginx фронтенда иначе впервые проверяется на проде, при
+      # сборке образа, — опечатка роняет сайт целиком. Образ тот же, что в
+      # frontend/Dockerfile. backend подставлен в /etc/hosts: nginx -t
+      # резолвит upstream из proxy_pass.
+      - name: Check nginx config syntax
+        run: |
+          docker run --rm --add-host backend:127.0.0.1 \
+            -v "$PWD/nginx.conf:/etc/nginx/conf.d/default.conf:ro" \
+            nginx:alpine nginx -t
+
   # ---------------------------------------------------------------------------
   # Форма смены пароля — через настоящий браузер, а не через API.
   #
