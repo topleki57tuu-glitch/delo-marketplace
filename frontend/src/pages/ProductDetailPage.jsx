@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useProductsStore } from '../store/productsStore';
+import { useDocumentTitle } from '../components/RouteMeta.jsx';
 import { useAuthStore } from '../store/authStore';
 import './ProductDetailPage.css';
 import { IconRecycle, IconBox, IconCheck, IconDelivery, IconEdit, IconPin, IconPurchases, IconStar, IconUser } from '../components/icons.jsx';
@@ -10,6 +11,7 @@ export default function ProductDetailPage() {
   const navigate = useNavigate();
   const { currentProduct, loading, fetchProduct, createOrder } = useProductsStore();
   const { user, token } = useAuthStore();
+  useDocumentTitle(currentProduct && String(currentProduct.id) === String(id) ? currentProduct.title : null);
 
   const [deliveryMethod, setDeliveryMethod] = useState('pickup');
   const [deliveryAddress, setDeliveryAddress] = useState('');

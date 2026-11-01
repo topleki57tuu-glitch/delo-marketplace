@@ -69,6 +69,15 @@ class User(Base):
     # Времени регистрации не было — без него не посчитать рост пользователей
     created_at = Column(DateTime, default=datetime.utcnow)
 
+    # Согласия по 152-ФЗ: когда пользователь принял пользовательское соглашение
+    # и дал согласие на обработку персональных данных, и какую редакцию
+    # документов (app/core/legal.py) он при этом видел. NULL — согласия нет:
+    # так у аккаунтов, созданных до появления документов. Им фронтенд
+    # показывает окно с документами при следующем входе.
+    terms_accepted_at = Column(DateTime, nullable=True)
+    pd_consent_at = Column(DateTime, nullable=True)
+    legal_version = Column(String, nullable=True)
+
     @property
     def is_pro_active(self) -> bool:
         """Действует ли PRO прямо сейчас — по дате, а не по флагу.

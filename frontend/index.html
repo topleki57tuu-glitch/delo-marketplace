@@ -10,16 +10,14 @@
     <link rel="manifest" href="/manifest.webmanifest" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-    <!-- Шрифты темы. Раньше здесь были только preconnect, а сама таблица
-         стилей не подключалась: Manrope и Unbounded из @theme никогда не
-         загружались, и приложение рисовалось системным фолбэком. -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link
-      href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Unbounded:wght@600;700;800&display=swap"
-      rel="stylesheet"
-    >
-    <link rel="dns-prefetch" href="https://fonts.gstatic.com">
+    <!-- Шрифты темы раздаются с нашего сервера (@font-face в src/index.css),
+         без Google Fonts. Предзагружаем то, что нужно любой странице сразу:
+         кириллицу и латиницу (цифры, пробелы) основного шрифта и кириллицу
+         заголовочного. crossorigin обязателен: шрифты грузятся в режиме CORS,
+         и без него предзагрузка не совпадёт с запросом из CSS. -->
+    <link rel="preload" href="/fonts/manrope-cyrillic.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="/fonts/manrope-latin.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="/fonts/unbounded-cyrillic.woff2" as="font" type="font/woff2" crossorigin>
 
     <!-- Theme color для мобильных браузеров -->
     <meta name="theme-color" content="#4f46e5" />

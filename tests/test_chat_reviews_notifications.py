@@ -29,10 +29,10 @@ def run():
     s_email = f"chat.spec.{TS}@test.ru"
     pwd = "password123"
 
-    r_c = s.post("/register/", json={"email": c_email, "password": pwd, "name": "Тест Заказчик"})
+    r_c = s.post("/register/", json={"email": c_email, "password": pwd, "name": "Тест Заказчик", "accept_terms": True, "pd_consent": True})
     # Роль при регистрации больше не принимается от клиента — регистрируем
     # как заказчика и повышаем до исполнителя через switch-role.
-    r_s = s.post("/register/", json={"email": s_email, "password": pwd, "name": "Тест Исполнитель"})
+    r_s = s.post("/register/", json={"email": s_email, "password": pwd, "name": "Тест Исполнитель", "accept_terms": True, "pd_consent": True})
     assert r_c.status_code == 200, r_c.text
     assert r_s.status_code == 200, r_s.text
 

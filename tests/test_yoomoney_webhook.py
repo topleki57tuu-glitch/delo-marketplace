@@ -179,7 +179,7 @@ def main():
     ts = int(time.time())
     email = f"webhook.test.{ts}@delo-test.ru"
     password = "WebhookTest1"
-    reg = s.post("/register/", json={"email": email, "password": password, "name": "Webhook Test"})
+    reg = s.post("/register/", json={"email": email, "password": password, "name": "Webhook Test", "accept_terms": True, "pd_consent": True})
     if reg.status_code != 200:
         print(f"Не удалось зарегистрировать тестового пользователя: {reg.status_code} {reg.text[:200]}")
         return 1

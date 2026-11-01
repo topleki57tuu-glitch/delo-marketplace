@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { TaskMap } from '../components/TaskMap';
 import CityInput from '../components/CityInput';
-import { IconCatBeauty, IconCatBusiness, IconCatCleaning, IconCatDelivery, IconCatDesign, IconCatDevelopment, IconCatEvents, IconCatOther, IconCatPhotoVideo, IconCatRepairs, IconCatTutoring, IconCatWriting, IconLightning, IconMap, IconMessages, IconPin, IconSearch } from '../components/icons.jsx';
+import { IconCatBeauty, IconCatBusiness, IconCatCleaning, IconCatDelivery, IconCatDesign, IconCatDevelopment, IconCatEvents, IconCatOther, IconCatPhotoVideo, IconCatRepairs, IconCatTutoring, IconCatWriting, IconFilter, IconLightning, IconMap, IconMessages, IconPin, IconSearch } from '../components/icons.jsx';
 
 const CATEGORIES = [
   { id: 'all', label: 'Все категории', icon: <IconLightning /> },
@@ -35,6 +35,12 @@ export default function TasksPage({
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCity, setSelectedCity] = useState(null);
   const [isRemoteOnly, setIsRemoteOnly] = useState(false);
+  // На телефоне город, «удалённо» и сброс прячутся за кнопкой «Фильтры»:
+  // раскрытая панель с 13 категориями в несколько строк занимала больше
+  // экрана, и первое задание оказывалось ниже сгиба. Скрытие — классами,
+  // а не условным рендером: с sm и шире всё видно как раньше.
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const activeFilters = (selectedCity ? 1 : 0) + (isRemoteOnly ? 1 : 0);
   // Вид «карта» храним в URL (?view=map), чтобы на него можно было
   // вести ссылкой из нижней навигации и чтобы работала кнопка «назад».
   const showMap = searchParams.get('view') === 'map';
@@ -116,19 +122,39 @@ export default function TasksPage({
       <div className="bg-white dark:bg-slate-800 p-4 rounded-2xl border border-slate-200 dark:border-slate-700/60 shadow-sm mb-6 space-y-4">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           {/* Search Input */}
-          <div className="relative">
-            <input
-              type="text"
-              placeholder="Поиск по названию или описанию..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            />
-            <span className="absolute left-3 top-3 text-slate-400"><IconSearch /></span>
+          <div className="flex gap-2">
+            <div className="relative flex-1 min-w-0">
+              <input
+                type="text"
+                placeholder="Поиск по названию или описанию..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-10 pr-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+              <span className="absolute left-3 top-3 text-slate-400"><IconSearch /></span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setFiltersOpen((v) => !v)}
+              aria-expanded={filtersOpen}
+              aria-controls="tasks-extra-filters"
+              className={`sm:hidden shrink-0 inline-flex items-center gap-1.5 px-3.5 rounded-xl border text-sm font-semibold transition-colors ${
+                filtersOpen || activeFilters
+                  ? 'border-indigo-500 text-indigo-600 bg-indigo-50 dark:bg-indigo-500/15 dark:text-indigo-300'
+                  : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
+              }`}
+            >
+              <IconFilter /> Фильтры
+              {activeFilters > 0 && (
+                <span className="min-w-5 h-5 px-1 rounded-full bg-indigo-600 text-white text-[11px] leading-5 text-center">
+                  {activeFilters}
+                </span>
+              )}
+            </button>
           </div>
 
           {/* City Input */}
-          <div>
+          <div id="tasks-extra-filters" className={filtersOpen ? '' : 'hidden sm:block'}>
             <CityInput
               selectedCity={selectedCity}
               onSelectCity={(city) => setSelectedCity(city)}
@@ -137,7 +163,7 @@ export default function TasksPage({
           </div>
 
           {/* Remote Checkbox */}
-          <div className="flex items-center px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl">
+          <div className={`${filtersOpen ? 'flex' : 'hidden'} sm:flex items-center px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl`}>
             <label className="flex items-center gap-2 cursor-pointer text-sm select-none">
               <input
                 type="checkbox"
@@ -150,7 +176,7 @@ export default function TasksPage({
           </div>
 
           {/* Clear Filters */}
-          <div className="flex items-center">
+          <div className={`${filtersOpen ? 'flex' : 'hidden'} sm:flex items-center`}>
             <button
               onClick={() => {
                 setSearchQuery('');
@@ -168,7 +194,9 @@ export default function TasksPage({
         {/* Categories Chips */}
         {/* Категории: раньше это была одна прокручиваемая строка, и на широком
             экране хвост списка просто обрезался. Переносим по строкам. */}
-        <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-slate-100 dark:border-slate-700/50">
+        {/* На телефоне — одна прокручиваемая строка: перенос по строкам
+            давал пять-шесть рядов чипов над списком. */}
+        <div className="flex flex-nowrap sm:flex-wrap items-center gap-2 pt-3 border-t border-slate-100 dark:border-slate-700/50 overflow-x-auto sm:overflow-visible no-scrollbar -mx-4 px-4 sm:mx-0 sm:px-0">
           {CATEGORIES.map((cat) => {
             const active = selectedCategory === cat.id;
             return (

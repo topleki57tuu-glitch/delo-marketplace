@@ -2,6 +2,8 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import Logo from './Logo.jsx';
 import { IconAdmin, IconCheck, IconLock } from './icons.jsx';
+import { COMPANY, hasRequisites, registrationLabel } from '../constants/company.js';
+import { LEGAL_DOCS, legalHref } from '../constants/legal.js';
 
 // Только существующие разделы: мёртвые ссылки («Блог», «Вакансии») делают
 // продукт похожим на шаблон сильнее, чем их отсутствие.
@@ -36,8 +38,9 @@ const COLUMNS = [
   {
     title: 'Помощь',
     links: [
+      { to: '/help', label: 'Центр помощи' },
       { to: '/#how', label: 'Как это работает' },
-      { to: '/#faq', label: 'Вопросы и ответы' },
+      { to: '/help#money', label: 'Оплата и споры' },
     ],
   },
 ];
@@ -54,7 +57,7 @@ export default function SiteFooter() {
             </Link>
             <p className="mt-4 text-sm leading-relaxed">
               Сервис безопасных сделок: заказывайте услуги у проверенных специалистов и
-              покупайте товары, а деньги остаются на эскроу-счёте до подтверждения результата.
+              покупайте товары, а оплата резервируется до подтверждения результата.
             </p>
             <ul className="mt-5 space-y-2 text-sm">
               <li className="flex items-center gap-2"><IconLock className="text-emerald-400" /> Оплата через эскроу</li>
@@ -82,9 +85,28 @@ export default function SiteFooter() {
         </div>
       </div>
       <div className="border-t border-white/10">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
-          <span>© {year} ДЕЛО. Все права защищены.</span>
-          <span className="text-slate-500">Платежи принимаются через ЮMoney</span>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5 space-y-3 text-xs">
+          <nav aria-label="Документы" className="flex flex-wrap justify-center sm:justify-start gap-x-5 gap-y-2">
+            {LEGAL_DOCS.map((d) => (
+              <Link key={d.slug} to={legalHref(d.slug)} className="hover:text-white transition-colors">
+                {d.title}
+              </Link>
+            ))}
+          </nav>
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-2 text-center sm:text-left">
+            <span>
+              © {year} ДЕЛО.{' '}
+              {/* Реквизиты оператора — только когда они заполнены в
+                  constants/company.js: пустая строка «ИНН » хуже, чем ничего. */}
+              {hasRequisites() && (
+                <span className="text-slate-500">
+                  {COMPANY.legalName}, ИНН {COMPANY.inn}
+                  {COMPANY.ogrn && `, ${registrationLabel()} ${COMPANY.ogrn}`}
+                </span>
+              )}
+            </span>
+            <span className="text-slate-500">Платежи принимаются через ЮMoney</span>
+          </div>
         </div>
       </div>
     </footer>

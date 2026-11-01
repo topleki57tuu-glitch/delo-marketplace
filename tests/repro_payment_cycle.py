@@ -68,6 +68,7 @@ def register_and_login(client, tag, password="PayCycle1"):
     email = f"pay.cycle.{tag}.{ts}@delo-test.ru"
     reg = client.post("/register/", json={
         "email": email, "password": password, "name": f"Pay {tag}",
+        "accept_terms": True, "pd_consent": True,
     })
     assert reg.status_code in (200, 201), f"register -> {reg.status_code} {reg.text[:200]}"
     # Логин — OAuth2PasswordRequestForm: form-data, поле username, не JSON.

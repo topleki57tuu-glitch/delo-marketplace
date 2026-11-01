@@ -50,6 +50,7 @@ def main():
     email = "mobile-repro@delo.ru"
     reg = client.post("/register/", json={
         "email": email, "password": "TestPass123!", "name": "Mobile Test",
+        "accept_terms": True, "pd_consent": True,
     })
     if reg.status_code not in (200, 201, 400):
         print(f"register -> {reg.status_code} {reg.text[:200]}")

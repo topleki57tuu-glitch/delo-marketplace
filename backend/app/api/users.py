@@ -1,7 +1,7 @@
 import csv
 import io
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
@@ -13,9 +13,11 @@ from app.core.logging import log_security_event
 from app.core.presence import user_online
 from app.core.security import (
     oauth2_scheme, decode_token, is_admin, hash_password, verify_password, client_ip,
+    create_access_token, create_refresh_token, REFRESH_TOKEN_EXPIRE_DAYS,
 )
 from app.models import User, Review, Task, Transaction, UserRole, TaskStatus, RefreshToken
-from app.schemas import ProfileUpdate, PasswordChangeRequest
+from app.core.legal import CONSENT_REQUIRED_MESSAGE, LEGAL_VERSION
+from app.schemas import ProfileUpdate, PasswordChangeRequest, LegalConsentRequest
 
 router = APIRouter(tags=["Users"])
 
@@ -135,8 +137,47 @@ def get_profile(token: str = Depends(oauth2_scheme), db: Session = Depends(get_d
         "response_credits": user.response_credits,
         "completed_tasks": completed_tasks,
         "online": user_online(user),
-        "last_seen": user.last_seen
+        "last_seen": user.last_seen,
+        # Какую редакцию документов пользователь принял и какая действует
+        # сейчас. Не совпадают — фронтенд просит принять документы заново.
+        "legal_version": user.legal_version,
+        "legal_version_required": LEGAL_VERSION,
     }
+
+
+@router.post("/users/me/legal-consent")
+def accept_legal_documents(
+    req: LegalConsentRequest,
+    request: Request,
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db),
+    _csrf: None = Depends(verify_csrf),
+):
+    """Согласие уже зарегистрированного пользователя.
+
+    Нужно аккаунтам, созданным до появления документов, и всем, кто принимал
+    прошлую редакцию. Регистрация записывает то же самое сразу.
+    """
+    payload = decode_token_or_401(token)
+    user = db.query(User).filter(User.id == int(payload.get("sub"))).first()
+    if not user:
+        raise HTTPException(404, "Пользователь не найден")
+    if not (req.accept_terms and req.pd_consent):
+        raise HTTPException(400, CONSENT_REQUIRED_MESSAGE)
+
+    now = datetime.utcnow()
+    user.terms_accepted_at = now
+    user.pd_consent_at = now
+    user.legal_version = LEGAL_VERSION
+    db.commit()
+    # След в журнале с IP — дополнительное подтверждение к записи в базе.
+    log_security_event(
+        "legal_consent_accepted",
+        user_id=user.id,
+        ip=client_ip(request),
+        details=f"legal_version={LEGAL_VERSION}",
+    )
+    return {"message": "Спасибо! Документы приняты", "legal_version": LEGAL_VERSION}
 
 @router.put("/users/me")
 def update_profile(profile: ProfileUpdate, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db), _csrf: None = Depends(verify_csrf)):
@@ -232,15 +273,30 @@ def change_password(
         details=f"отозвано refresh-токенов: {revoked}",
     )
 
+    # Устройство, на котором пароль сменили, из аккаунта не выкидываем:
+    # пользователь только что подтвердил текущий пароль. Новая пара токенов
+    # выдаётся уже после отзыва прежних — остальные устройства выйдут, а это
+    # продолжит работать. Раньше гасился и собственный refresh-токен, и через
+    # 15 минут после смены пароля сессия обрывалась и здесь.
+    refresh_token, jti = create_refresh_token(user.id)
+    db.add(RefreshToken(
+        user_id=user.id,
+        token=jti,
+        expires_at=datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS),
+    ))
+    db.commit()
+    access_token = create_access_token({"sub": str(user.id), "role": enum_value(user.role)})
+
     return {
         "message": "Пароль изменён",
         "revoked_sessions": revoked,
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "token_type": "bearer",
     }
 
 @router.post("/users/me/switch-role")
 def switch_role(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db), _csrf: None = Depends(verify_csrf)):
-    from app.core.security import create_access_token
-
     payload = decode_token_or_401(token)
     user = db.query(User).filter(User.id == int(payload.get("sub"))).first()
     if not user:

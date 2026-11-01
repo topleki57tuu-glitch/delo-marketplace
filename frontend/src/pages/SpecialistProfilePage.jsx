@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useToast } from '../components/Toast';
+import { useDocumentTitle } from '../components/RouteMeta.jsx';
 import { IconCheck, IconPin, IconSearch, IconStar } from '../components/icons.jsx';
 
 export default function SpecialistProfilePage({ user, onOpenAuth }) {
@@ -10,6 +11,7 @@ export default function SpecialistProfilePage({ user, onOpenAuth }) {
   const [profile, setProfile] = useState(null);
   const [reviews, setReviews] = useState([]);
   const [loading, setLoading] = useState(true);
+  useDocumentTitle(profile && String(profile.id) === String(specialistId) ? profile.name || 'Специалист' : null);
 
   useEffect(() => {
     const fetchProfileData = async () => {

@@ -579,7 +579,8 @@ NEW_PASSWORD = "New_Passw0rd!2026"
 
 r = client.post(
     "/register/",
-    json={"email": RESET_EMAIL, "password": OLD_PASSWORD, "name": "Сброс"},
+    json={"email": RESET_EMAIL, "password": OLD_PASSWORD, "name": "Сброс",
+          "accept_terms": True, "pd_consent": True},
 )
 check(
     "аккаунт для проверки сброса создан",

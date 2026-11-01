@@ -8,7 +8,12 @@ import { BottomNav } from './components/BottomNav';
 import { ChatsDrawer } from './components/ChatsDrawer';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { useModal } from './utils/a11y';
+import { apiErrorMessage } from './utils/apiError';
+import { SESSION_EXPIRED_EVENT } from './utils/session';
 import { Avatar } from './components/Avatar';
+import ConsentGate from './components/ConsentGate.jsx';
+import RouteMeta from './components/RouteMeta.jsx';
+import { LegalConsentFields } from './components/LegalConsentFields.jsx';
 
 // Eager load только критичные страницы
 import HomePage from './pages/HomePage';
@@ -36,6 +41,8 @@ const MyOrdersPage = lazy(() => import('./pages/MyOrdersPage'));
 const MyProductsPage = lazy(() => import('./pages/MyProductsPage'));
 const EditProductPage = lazy(() => import('./pages/EditProductPage'));
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage'));
+const HelpPage = lazy(() => import('./pages/HelpPage'));
+const LegalPage = lazy(() => import('./pages/LegalPage'));
 
 const API_URL = import.meta.env.VITE_API_URL || '';
 
@@ -231,6 +238,8 @@ function AuthModal({ isOpen, mode, onClose, onLoginSuccess }) {
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [role, setRole] = useState('customer');
+  const [acceptTerms, setAcceptTerms] = useState(false);
+  const [pdConsent, setPdConsent] = useState(false);
   const [loading, setLoading] = useState(false);
 
   // Accessibility: modal management
@@ -244,6 +253,10 @@ function AuthModal({ isOpen, mode, onClose, onLoginSuccess }) {
     setIsLogin(mode === 'login');
     setForgotMode(false);
     setForgotLink(null);
+    // Согласие даётся каждый раз заново: отметки, оставшиеся от прошлого
+    // открытия окна, согласием не считаются.
+    setAcceptTerms(false);
+    setPdConsent(false);
   }, [mode, isOpen]);
 
   if (!isOpen) return null;
@@ -286,20 +299,28 @@ function AuthModal({ isOpen, mode, onClose, onLoginSuccess }) {
         });
 
         const data = await res.json();
-        if (!res.ok) throw new Error(data.detail || 'Неверный логин или пароль');
+        if (!res.ok) throw new Error(apiErrorMessage(data, 'Неверный логин или пароль'));
 
         addToast('Успешный вход в систему!', 'success');
-        onLoginSuccess(data.access_token, data.role);
+        onLoginSuccess(data.access_token, data.role, data.refresh_token);
         onClose();
       } else {
+        // Роль сервер при регистрации не принимает: аккаунт создаётся
+        // заказчиком, а исполнителем становится через switch-role ниже.
         const res = await fetch('/register/', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, password, role, name: name.trim() || null }),
+          body: JSON.stringify({
+            email,
+            password,
+            name: name.trim() || null,
+            accept_terms: acceptTerms,
+            pd_consent: pdConsent,
+          }),
         });
 
         const data = await res.json();
-        if (!res.ok) throw new Error(data.detail || 'Ошибка регистрации');
+        if (!res.ok) throw new Error(apiErrorMessage(data, 'Ошибка регистрации'));
 
         addToast('Регистрация успешна! Выполняется вход...', 'success');
         // Auto-login
@@ -313,7 +334,29 @@ function AuthModal({ isOpen, mode, onClose, onLoginSuccess }) {
         });
         const loginData = await loginRes.json();
         if (loginRes.ok) {
-          onLoginSuccess(loginData.access_token, loginData.role);
+          let accessToken = loginData.access_token;
+          let userRole = loginData.role;
+          // Выбор «Я Исполнитель» раньше молча терялся: сервер создаёт
+          // заказчика, а форма роль никуда не передавала. Переключаем сразу
+          // после входа — тем же запросом, что и кнопка в профиле.
+          if (role === 'specialist' && userRole !== 'specialist') {
+            try {
+              const sw = await fetch('/users/me/switch-role', {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${accessToken}` },
+              });
+              const swData = await sw.json().catch(() => ({}));
+              if (sw.ok && swData.token) {
+                accessToken = swData.token;
+                userRole = swData.role;
+              } else {
+                addToast('Аккаунт создан как заказчик — роль исполнителя можно включить в профиле', 'info');
+              }
+            } catch {
+              addToast('Аккаунт создан как заказчик — роль исполнителя можно включить в профиле', 'info');
+            }
+          }
+          onLoginSuccess(accessToken, userRole, loginData.refresh_token);
         }
         onClose();
       }
@@ -405,6 +448,7 @@ function AuthModal({ isOpen, mode, onClose, onLoginSuccess }) {
                   <button
                     type="button"
                     onClick={() => setRole('customer')}
+                    aria-pressed={role === 'customer'}
                     className={`py-2.5 rounded-xl text-xs font-bold transition-all ${
                       role === 'customer'
                         ? 'bg-indigo-600 text-white shadow-sm'
@@ -416,6 +460,7 @@ function AuthModal({ isOpen, mode, onClose, onLoginSuccess }) {
                   <button
                     type="button"
                     onClick={() => setRole('specialist')}
+                    aria-pressed={role === 'specialist'}
                     className={`py-2.5 rounded-xl text-xs font-bold transition-all ${
                       role === 'specialist'
                         ? 'bg-indigo-600 text-white shadow-sm'
@@ -460,6 +505,15 @@ function AuthModal({ isOpen, mode, onClose, onLoginSuccess }) {
               required
             />
           </div>
+
+          {!isLogin && (
+            <LegalConsentFields
+              terms={acceptTerms}
+              pd={pdConsent}
+              onTermsChange={setAcceptTerms}
+              onPdChange={setPdConsent}
+            />
+          )}
 
           <button
             type="submit"
@@ -511,23 +565,24 @@ export default function App() {
   // Drawer chat state
   const [drawerChatTaskId, setDrawerChatTaskId] = useState(null);
 
+  // Профиль опрашивается каждые 5 секунд, поэтому без логов в консоль:
+  // раньше здесь печатался весь профиль — email, телефон, баланс — по три
+  // строки на каждый опрос. 401 сюда не доходит: просроченный токен
+  // продлевает обёртка над fetch (utils/session.js).
   const fetchUserProfile = async () => {
-    if (!token) return;
+    const current = useAuthStore.getState().token;
+    if (!current) return;
     try {
-      console.log('[fetchUserProfile] Загружаем профиль...');
       const res = await fetch('/users/me', {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: { Authorization: `Bearer ${current}` },
       });
       if (res.ok) {
         const data = await res.json();
-        console.log('[fetchUserProfile] Профиль получен:', data);
-        console.log('[fetchUserProfile] Avatar URL:', data.avatar);
-        updateUser(data);
-      } else {
-        console.error('[fetchUserProfile] Ошибка:', res.status);
+        // Пока шёл запрос, пользователь мог выйти — не возвращаем профиль.
+        if (useAuthStore.getState().token) updateUser(data);
       }
-    } catch (err) {
-      console.error('[fetchUserProfile] Exception:', err);
+    } catch {
+      // Сеть пропала — следующий опрос попробует снова.
     }
   };
 
@@ -557,10 +612,22 @@ export default function App() {
     setAuthModalOpen(true);
   };
 
-  const handleLoginSuccess = (newToken, newRole) => {
-    login(newToken, newRole);
+  const handleLoginSuccess = (newToken, newRole, refreshToken) => {
+    login(newToken, newRole, refreshToken);
     fetchUserProfile();
   };
+
+  // Сессия закончилась (refresh-токен истёк или отозван) — store уже очищен
+  // в utils/session.js, здесь только объясняем и предлагаем войти.
+  useEffect(() => {
+    const onExpired = () => {
+      addToast('Сессия закончилась — войдите снова', 'info');
+      setAuthModalMode('login');
+      setAuthModalOpen(true);
+    };
+    window.addEventListener(SESSION_EXPIRED_EVENT, onExpired);
+    return () => window.removeEventListener(SESSION_EXPIRED_EVENT, onExpired);
+  }, []);
 
   // Loading fallback для lazy loaded страниц
   const PageLoader = () => (
@@ -576,6 +643,7 @@ export default function App() {
     <ErrorBoundary>
       <BrowserRouter>
         <ScrollManager />
+        <RouteMeta />
         <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-slate-900 font-sans antialiased text-slate-800 dark:text-slate-100">
           {/* Skip link для keyboard navigation */}
           <a
@@ -708,6 +776,8 @@ export default function App() {
                   element={<MyTasksPage onOpenAuth={handleOpenAuth} />}
                 />
                 <Route path="/reset" element={<ResetPasswordPage />} />
+                <Route path="/help" element={<HelpPage />} />
+                <Route path="/legal/:doc" element={<LegalPage />} />
                 <Route
                   path="/chats"
                   element={
@@ -744,6 +814,9 @@ export default function App() {
           onClose={() => setAuthModalOpen(false)}
           onLoginSuccess={handleLoginSuccess}
         />
+
+        {/* Документы для тех, кто ещё не принял действующую редакцию */}
+        <ConsentGate />
 
         {/* Chats Drawer */}
         {drawerChatTaskId && (

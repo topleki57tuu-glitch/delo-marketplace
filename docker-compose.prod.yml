@@ -4,6 +4,17 @@
 #
 # Запуск:  bash scripts/vps_deploy.sh   (создаст .env и поднимет всё сам)
 
+# Ротация журналов контейнеров. Без неё Docker пишет json-логи бессрочно:
+# диск VPS заполняется, а в журналах копятся IP-адреса пользователей
+# (журнал безопасности, uvicorn). Политика обработки персональных данных
+# обещает, что старые записи удаляются автоматически, — это обещание держится
+# здесь: до 5 файлов по 20 МБ на контейнер, старые затираются новыми.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "20m"
+    max-file: "5"
+
 # Общее окружение backend, worker и beat — один блок, а не три копии.
 #
 # Копии здесь были бы не стилистической придиркой: именно так и получилось,
@@ -48,6 +59,7 @@ services:
     image: caddy:2-alpine
     container_name: marketplace_caddy
     restart: unless-stopped
+    logging: *default-logging
     ports:
       - "80:80"
       - "443:443"
@@ -64,6 +76,7 @@ services:
     image: postgres:15-alpine
     container_name: marketplace_postgres
     restart: unless-stopped
+    logging: *default-logging
     # Порт наружу не публикуем — БД доступна только внутри сети compose
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-marketplace}
@@ -81,6 +94,7 @@ services:
     image: redis:7-alpine
     container_name: marketplace_redis
     restart: unless-stopped
+    logging: *default-logging
     volumes:
       - redis_data:/data
 
@@ -90,6 +104,7 @@ services:
       dockerfile: Dockerfile
     container_name: marketplace_backend
     restart: unless-stopped
+    logging: *default-logging
     depends_on:
       postgres:
         condition: service_healthy
@@ -112,6 +127,7 @@ services:
       dockerfile: Dockerfile
     container_name: marketplace_worker
     restart: unless-stopped
+    logging: *default-logging
     # Воркеру нужен брокер, а брокер — это Redis. Postgres тоже нужен:
     # задачи ходят в базу напрямую.
     depends_on:
@@ -133,6 +149,7 @@ services:
       dockerfile: Dockerfile
     container_name: marketplace_beat
     restart: unless-stopped
+    logging: *default-logging
     depends_on:
       postgres:
         condition: service_healthy
@@ -155,6 +172,7 @@ services:
       dockerfile: Dockerfile
     container_name: marketplace_frontend
     restart: unless-stopped
+    logging: *default-logging
     depends_on:
       - backend
 
@@ -164,6 +182,7 @@ services:
       dockerfile: Dockerfile
     container_name: marketplace_bot
     restart: unless-stopped
+    logging: *default-logging
     depends_on:
       - backend
     environment:

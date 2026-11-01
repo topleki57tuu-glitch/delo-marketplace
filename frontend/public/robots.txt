@@ -1,0 +1,21 @@
+# Поисковым роботам — только публичные разделы. Личные страницы
+# (профиль, заказы, сообщения, споры) без входа пусты и в поиске не нужны.
+User-agent: *
+Disallow: /profile
+Disallow: /my-tasks
+Disallow: /my-orders
+Disallow: /my-products
+Disallow: /chats
+Disallow: /disputes
+Disallow: /admin
+Disallow: /create-task
+Disallow: /create-product
+Disallow: /reset
+Disallow: /products/*/edit
+# API и служебные пути
+Disallow: /uploads/
+Disallow: /files/
+Disallow: /docs
+Disallow: /openapi.json
+
+Sitemap: https://xn--d1acsm.online/sitemap.xml
