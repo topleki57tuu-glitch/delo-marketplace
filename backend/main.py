@@ -51,8 +51,12 @@ if settings.SENTRY_DSN:
             FastApiIntegration(),
             SqlalchemyIntegration(),
         ],
-        # Включаем отправку PII (user_id) для контекста ошибок
-        send_default_pii=True,
+        # Персональные данные в Sentry не отправляем: с send_default_pii=True
+        # туда уходят IP, cookies, заголовки (включая Authorization) и тела
+        # запросов — паспортные данные, реквизиты, переписка. Это передача ПДн
+        # третьему лицу (152-ФЗ), а для разбора ошибок хватает user_id, который
+        # можно передать явно через sentry_sdk.set_user({"id": ...}).
+        send_default_pii=False,
     )
     logger.info(f"Sentry initialized | environment={settings.SENTRY_ENVIRONMENT} | sample_rate={settings.SENTRY_TRACES_SAMPLE_RATE}")
 
@@ -95,10 +99,18 @@ if os.environ.get("SEED_DEMO", "").lower() in ("1", "true", "yes"):
         except Exception as _exc:
             logger.error(f"Failed to seed demo data: {_exc}")
 
+# Документация API (/docs, /redoc, /openapi.json) в продакшене выключена:
+# она раскрывает полную карту эндпоинтов, включая админские. Включить явно —
+# ENABLE_API_DOCS=1.
+_API_DOCS_ENABLED = (not settings.IS_PRODUCTION) or os.environ.get("ENABLE_API_DOCS", "").strip() in ("1", "true", "yes")
+
 app = FastAPI(
     title="Marketplace Platform API",
     description="API для платформы поиска специалистов и заказчиков «ДЕЛО»",
-    version="2.0.0"
+    version="2.0.0",
+    docs_url="/docs" if _API_DOCS_ENABLED else None,
+    redoc_url="/redoc" if _API_DOCS_ENABLED else None,
+    openapi_url="/openapi.json" if _API_DOCS_ENABLED else None,
 )
 
 # CORS middleware - только явно разрешённые источники (см. app/core/config.py).
@@ -206,6 +218,8 @@ async def track_last_seen(request: Request, call_next):
     if auth.startswith("Bearer "):
         try:
             payload = jwt.decode(auth[7:], settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+            if payload.get("type") != "access":
+                return response
             uid = int(payload.get("sub"))
             now = datetime.now(timezone.utc)
             last = _seen_cache.get(uid)
@@ -289,7 +303,8 @@ def health_db():
             content={
                 "status": "error",
                 "database": "disconnected",
-                "error": str(e)
+                # Текст исключения наружу не отдаём: в нём бывают хост, имя
+                # базы и пользователя. Подробности — в логе выше.
             }
         )
 
@@ -327,6 +342,7 @@ _FRONTEND_DIST = os.environ.get("DIST_DIR") or next(
     str(Path(__file__).parent.parent / "frontend" / "dist"),
 )
 _frontend_index = Path(_FRONTEND_DIST, "index.html")
+_FRONTEND_DIST_RESOLVED = Path(_FRONTEND_DIST).resolve()
 
 if _frontend_index.exists():
     from fastapi.responses import FileResponse
@@ -343,7 +359,13 @@ if _frontend_index.exists():
     def spa_fallback(full_path: str):
         # Реальный файл из сборки (manifest, favicon и т.п.) отдаём как есть,
         # всё остальное — страница SPA (её маршруты обрабатывает React Router)
-        candidate = Path(_FRONTEND_DIST, full_path)
-        if candidate.is_file():
+        #
+        # Путь обязательно сводим к абсолютному и проверяем, что он внутри
+        # сборки. Раньше `Path(dist, full_path)` отдавался как есть: для
+        # `//etc/passwd` full_path абсолютный и Path отбрасывает dist целиком,
+        # а `..` выводит из каталога — то есть читался любой файл сервера,
+        # включая /proc/self/environ с SECRET_KEY и паролем базы.
+        candidate = (_FRONTEND_DIST_RESOLVED / full_path.lstrip("/")).resolve()
+        if candidate.is_relative_to(_FRONTEND_DIST_RESOLVED) and candidate.is_file():
             return FileResponse(str(candidate))
         return FileResponse(str(_frontend_index))

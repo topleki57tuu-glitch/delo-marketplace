@@ -114,3 +114,16 @@ def log_security_event(event_type: str, user_id: int = None, ip: str = None, det
             "ip": ip,
         }
     )
+
+
+def redact_url(url: str) -> str:
+    """Скрыть пароль в URL подключения (redis://:pass@host, postgres://u:pass@h).
+
+    Адреса брокера и кэша пишутся в лог при старте, а логи уходят в Docker,
+    Render и Sentry — пароль Redis лежал там открытым текстом.
+    """
+    import re
+
+    if not url:
+        return url
+    return re.sub(r"(://[^:/@]*:)[^/]*@", r"\1***@", str(url))

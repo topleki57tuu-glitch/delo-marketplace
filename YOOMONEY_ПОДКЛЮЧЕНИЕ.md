@@ -52,7 +52,7 @@ https://твой-домен/payments/callback
 ### Способ А: быстрый, через «Документы» (рекомендую)
 
 1. Открой https://yoomoney.ru/myservices/online/token
-2. Отметь права: **`account-info`**, **`operation-history`**, **`payment-p2p`**
+2. Отметь права: **`account-info`** и **`operation-history`**. Право **`payment-p2p`** НЕ выдавай: оно позволяет переводить деньги С кошелька, а для приёма оплаты через форму оно не нужно. Утёкший токен с ним — это вывод всех денег
 3. Нажми «Продолжить» → «Разрешить»
 4. Скопируй выданный токен
 
@@ -65,7 +65,7 @@ https://твой-домен/payments/callback
 1. Собери ссылку авторизации, подставив свой Client ID и Redirect URI:
 
 ```
-https://yoomoney.ru/oauth/authorize?client_id=ТВОЙ_CLIENT_ID&response_type=code&redirect_uri=https://твой-домен/payments/callback&scope=account-info%20operation-history%20payment-p2p
+https://yoomoney.ru/oauth/authorize?client_id=ТВОЙ_CLIENT_ID&response_type=code&redirect_uri=https://твой-домен/payments/callback&scope=account-info%20operation-history
 ```
 
 2. Открой её в браузере, разреши доступ. Тебя перебросит на

@@ -7,10 +7,11 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-marketplace}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-marketplace_secret}
+      # Пароль без дефолта: задайте POSTGRES_PASSWORD в .env (см. .env.example).
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Задайте POSTGRES_PASSWORD в .env}
       POSTGRES_DB: ${POSTGRES_DB:-marketplace_db}
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -24,7 +25,7 @@ services:
     container_name: marketplace_redis
     restart: unless-stopped
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     volumes:
       - redis_data:/data
 
@@ -38,7 +39,7 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-marketplace}:${POSTGRES_PASSWORD:-marketplace_secret}@postgres:5432/${POSTGRES_DB:-marketplace_db}
+      DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-marketplace}:${POSTGRES_PASSWORD:?Задайте POSTGRES_PASSWORD в .env}@postgres:5432/${POSTGRES_DB:-marketplace_db}
       # Без реального SECRET_KEY backend в production не стартует (см. app/core/config.py)
       SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY in .env (see .env.example)}
       ENV: ${ENV:-production}

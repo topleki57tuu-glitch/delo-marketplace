@@ -206,8 +206,9 @@ check("комиссия 5% посчитана", o["platform_fee"] == PRICE * 2 *
 check("заказ ссылается на транзакцию эскроу", bool(o["escrow_transaction_id"]),
       f"escrow_transaction_id={o['escrow_transaction_id']}")
 holds = [t for t in escrow_transactions() if t["type"] == "escrow_hold"]
-check("запись escrow_hold создана на сумму заказа",
-      any(t["amount"] == PRICE * 2 and t["user_id"] == ids["buyer@goods.ru"] for t in holds),
+# Заморозка — списание, поэтому со знаком минус, как у заданий (assign_task).
+check("запись escrow_hold создана на сумму заказа (со знаком минус)",
+      any(t["amount"] == -PRICE * 2 and t["user_id"] == ids["buyer@goods.ru"] for t in holds),
       f"hold={[(t['amount'], t['user_id']) for t in holds]}")
 
 # --- 2. Полный цикл до выплаты ------------------------------------------------

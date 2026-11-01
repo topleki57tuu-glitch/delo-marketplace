@@ -16,7 +16,7 @@ except ImportError:
     REDIS_AVAILABLE = False
     redis = None
 
-from app.core.logging import logger
+from app.core.logging import logger, redact_url
 
 
 class CacheClient:
@@ -37,7 +37,7 @@ class CacheClient:
             # Проверяем подключение
             self.client.ping()
             self.enabled = True
-            logger.info(f"Redis connected: {redis_url}")
+            logger.info(f"Redis connected: {redact_url(redis_url)}")
         except Exception as e:
             logger.warning(f"Redis unavailable, caching disabled: {e}")
             self.client = None

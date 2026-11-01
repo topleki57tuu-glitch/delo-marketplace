@@ -1,3 +1,4 @@
+import hashlib
 import logging
 import os
 import secrets
@@ -14,6 +15,7 @@ from app.core.security import (
     check_account_login_allowed, record_login_failure, clear_login_failures,
 )
 from app.core.csrf import verify_csrf
+from app.core.money import claim
 from app.core.email import EmailNotConfigured, send_email_sync
 from app.models import User, PasswordResetToken, RefreshToken, UserRole
 from app.schemas import (
@@ -42,6 +44,21 @@ def register(user: UserCreate, request: Request, db: Session = Depends(get_db), 
     db.refresh(new_user)
     return {"message": "Успешная регистрация", "user_id": new_user.id}
 
+# Хэш случайной строки для выравнивания времени ответа при неизвестном email.
+_DUMMY_PASSWORD_HASH = hash_password(secrets.token_urlsafe(16))
+
+
+def _reset_token_digest(token: str) -> str:
+    """Токен сброса хранится в базе только как SHA-256.
+
+    Раньше в таблице лежал сам токен: любой, кто видел дамп или реплику базы
+    (бэкап, read-only доступ аналитика), мог сбросить пароль любому, у кого
+    ссылка ещё действует. Токен — 32 байта случайности, поэтому соль и
+    медленный хэш не нужны: перебирать нечего.
+    """
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
 @router.post("/login")
 def login(request: Request, form: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     rate_limit(request, "login", limit=10, window_sec=300)
@@ -51,6 +68,11 @@ def login(request: Request, form: OAuth2PasswordRequestForm = Depends(), db: Ses
     check_account_login_allowed(request, form.username)
 
     user = db.query(User).filter(User.email == form.username).first()
+    if not user:
+        # bcrypt всё равно считаем: без этого ответ для несуществующего email
+        # приходил на ~200 мс быстрее, и по времени перебирались
+        # зарегистрированные адреса.
+        verify_password(form.password, _DUMMY_PASSWORD_HASH)
     if not user or not verify_password(form.password, user.hashed_password):
         record_login_failure(form.username)
         raise HTTPException(status_code=401, detail="Неверный email или пароль")
@@ -147,7 +169,7 @@ def forgot_password(req: ForgotPasswordRequest, request: Request, db: Session = 
         token = secrets.token_urlsafe(32)
         reset = PasswordResetToken(
             user_id=user.id,
-            token=token,
+            token=_reset_token_digest(token),
             expires_at=datetime.now(timezone.utc) + timedelta(hours=1)
         )
         db.add(reset)
@@ -188,7 +210,9 @@ def forgot_password(req: ForgotPasswordRequest, request: Request, db: Session = 
 
 @router.post("/auth/reset-password")
 def reset_password(req: ResetPasswordRequest, db: Session = Depends(get_db), _csrf: None = Depends(verify_csrf)):
-    reset = db.query(PasswordResetToken).filter(PasswordResetToken.token == req.token).first()
+    reset = db.query(PasswordResetToken).filter(
+        PasswordResetToken.token == _reset_token_digest(req.token)
+    ).first()
     if not reset or reset.used:
         raise HTTPException(400, "Ссылка недействительна или уже использована")
     # Колонка DateTime без timezone=True отдаёт naive datetime, а сравнивать
@@ -203,7 +227,29 @@ def reset_password(req: ResetPasswordRequest, db: Session = Depends(get_db), _cs
     user = db.query(User).filter(User.id == reset.user_id).first()
     if not user:
         raise HTTPException(404, "Пользователь не найден")
+    # Токен гасится условным UPDATE: два одновременных запроса с одной
+    # ссылкой иначе оба проходили проверку `used` выше.
+    if not claim(db, PasswordResetToken,
+                 [PasswordResetToken.id == reset.id, PasswordResetToken.used == False],  # noqa: E712
+                 {"used": True}):
+        db.rollback()
+        raise HTTPException(400, "Ссылка недействительна или уже использована")
     user.hashed_password = hash_password(req.new_password)
-    reset.used = True
+
+    # Сброс пароля — это обычно «меня взломали». Значит, все выданные сессии
+    # должны умереть: раньше refresh-токены переживали сброс, и угнанная
+    # сессия продолжала жить свои 7 дней с новым паролем владельца.
+    db.query(RefreshToken).filter(
+        RefreshToken.user_id == user.id,
+        RefreshToken.revoked == False,  # noqa: E712
+    ).update({
+        "revoked": True,
+        "revoked_at": datetime.now(timezone.utc),
+    }, synchronize_session=False)
+    # Остальные неиспользованные ссылки на сброс этого пользователя тоже гасим.
+    db.query(PasswordResetToken).filter(
+        PasswordResetToken.user_id == user.id,
+        PasswordResetToken.used == False,  # noqa: E712
+    ).update({"used": True}, synchronize_session=False)
     db.commit()
     return {"message": "Пароль обновлён, войдите с новым паролем"}

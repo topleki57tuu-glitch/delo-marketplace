@@ -21,7 +21,7 @@ from urllib.parse import urlsplit, urlunsplit
 
 from celery import Celery
 from celery.schedules import crontab
-from app.core.logging import logger
+from app.core.logging import logger, redact_url
 
 # Redis URL для broker и backend.
 #
@@ -144,7 +144,10 @@ celery_app.conf.update(
 celery_app.conf.task_soft_time_limit = 300  # 5 минут soft limit
 celery_app.conf.task_time_limit = 600  # 10 минут hard limit
 
-logger.info(f"Celery configured | broker={CELERY_BROKER_URL} | backend={CELERY_RESULT_BACKEND}")
+logger.info(
+    f"Celery configured | broker={redact_url(CELERY_BROKER_URL)} | "
+    f"backend={redact_url(CELERY_RESULT_BACKEND)}"
+)
 
 
 # Health check task

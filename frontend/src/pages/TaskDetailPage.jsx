@@ -113,7 +113,7 @@ export default function TaskDetailPage({ user, token, onOpenAuth, onOpenChat, on
   };
 
   const handleAssignSpecialist = async (specialistId) => {
-    if (!window.confirm('Назначить этого специалиста исполнителем? Средства (бюджет) будут заморожены через безопасную сделку.')) {
+    if (!window.confirm('Назначить этого специалиста исполнителем? Средства (бюджет) будут заморожены через безопасную сделку.\n\nПосле назначения отменить заказ в одностороннем порядке нельзя: если что-то пойдёт не так, откройте спор — арбитр решит, вернуть ли деньги.')) {
       return;
     }
 
@@ -190,9 +190,14 @@ export default function TaskDetailPage({ user, token, onOpenAuth, onOpenChat, on
 
   const handleCancelTask = async () => {
     const isMyDispute = dispute && dispute.status === 'open' && user && dispute.opened_by === user.id;
-    const confirmText = isMyDispute
-      ? 'Отозвать спор и отменить заказ? Замороженные средства вернутся заказчику.'
-      : 'Отменить заказ? Замороженные средства (эскроу) вернутся заказчику.';
+    let confirmText;
+    if (isMyDispute && isAuthor) {
+      confirmText = 'Отозвать спор? Заказ вернётся в работу, средства останутся замороженными до завершения.';
+    } else if (isMyDispute) {
+      confirmText = 'Отозвать спор и отказаться от заказа? Замороженные средства вернутся заказчику.';
+    } else {
+      confirmText = 'Отказаться от заказа? Замороженные средства (эскроу) вернутся заказчику.';
+    }
     if (!window.confirm(confirmText)) return;
 
     setCancelling(true);
@@ -202,8 +207,8 @@ export default function TaskDetailPage({ user, token, onOpenAuth, onOpenChat, on
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || 'Не удалось отменить заказ');
-      addToast(data.message || 'Заказ отменён', 'success');
+      if (!res.ok) throw new Error(data.detail || 'Не удалось выполнить действие');
+      addToast(data.message || 'Готово', 'success');
       fetchTaskDetails();
     } catch (err) {
       addToast(err.message, 'error');
@@ -417,20 +422,32 @@ export default function TaskDetailPage({ user, token, onOpenAuth, onOpenChat, on
                 </button>
               )}
 
-              {(isAuthor || isAssignedSpecialist) && (task.status === 'in_progress' || task.status === 'disputed') && (
-                (task.status !== 'disputed' || (dispute && user && dispute.opened_by === user.id)) && (
-                  <button
-                    onClick={handleCancelTask}
-                    disabled={cancelling}
-                    className="px-4 py-2.5 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 font-semibold rounded-xl text-sm transition-all"
-                  >
-                    {cancelling
-                      ? 'Отмена...'
-                      : (task.status === 'disputed' ? 'Отозвать спор и отменить заказ' : 'Отменить заказ (возврат эскроу)')}
-                  </button>
-                )
+              {/* Заказ в работе может отменить только исполнитель (отказ); заказчик — через спор.
+                  В споре — только инициатор: заказчик отзывает спор (заказ возвращается в работу),
+                  исполнитель отзывает спор и отказывается (эскроу возвращается заказчику). */}
+              {((task.status === 'in_progress' && isAssignedSpecialist) ||
+                (task.status === 'disputed' && (isAuthor || isAssignedSpecialist) &&
+                  dispute && user && dispute.opened_by === user.id)) && (
+                <button
+                  onClick={handleCancelTask}
+                  disabled={cancelling}
+                  className="px-4 py-2.5 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 font-semibold rounded-xl text-sm transition-all"
+                >
+                  {cancelling
+                    ? 'Отмена...'
+                    : task.status === 'disputed'
+                      ? (isAuthor ? 'Отозвать спор' : 'Отозвать спор и отказаться')
+                      : 'Отказаться от заказа (эскроу вернётся заказчику)'}
+                </button>
               )}
             </div>
+            {isAuthor && task.status === 'in_progress' && (
+              <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
+                Заказ в работе нельзя отменить в одностороннем порядке. Если исполнитель не справляется,
+                откройте спор — арбитр решит, вернуть ли вам замороженные средства. Исполнитель может сам
+                отказаться от заказа, тогда деньги вернутся автоматически.
+              </p>
+            )}
           </div>
         </div>
 

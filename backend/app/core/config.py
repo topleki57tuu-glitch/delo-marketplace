@@ -60,6 +60,21 @@ class Settings:
     # Относительный sqlite-путь всегда считаем от backend/, а не от CWD.
     DB_URL = _absolutize_sqlite(DB_URL)
 
+    # Продакшен на SQLite не запускаем молча. Если DATABASE_URL забыли
+    # выставить, приложение раньше тихо поднималось на локальном файле: данные
+    # пропадают при пересоздании контейнера, а `with_for_update()` на SQLite
+    # игнорируется — гонки статусов (одновременные «завершить» и «отменить»)
+    # дают и выплату, и возврат. Для демо-стенда — ALLOW_SQLITE_IN_PRODUCTION=1.
+    if (
+        IS_PRODUCTION
+        and DB_URL.startswith("sqlite")
+        and os.environ.get("ALLOW_SQLITE_IN_PRODUCTION", "").strip().lower() not in ("1", "true", "yes", "on")
+    ):
+        raise RuntimeError(
+            "DATABASE_URL не задан или указывает на SQLite: в production нужен "
+            "PostgreSQL. Для демо-стенда выставьте ALLOW_SQLITE_IN_PRODUCTION=1."
+        )
+
     if not SECRET_KEY:
         if IS_PRODUCTION:
             # В production отказываемся стартовать без секрета

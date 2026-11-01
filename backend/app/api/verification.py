@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.enums import enum_value
 from app.core.csrf import verify_csrf
+from app.core.money import claim
 from app.core.file_cleanup import file_id_from_url
 from app.core.security import (
     oauth2_scheme, decode_token, is_admin,
@@ -186,10 +187,23 @@ def review_verification_admin(
     if not user:
         raise HTTPException(404, "Пользователь не найден")
         
-    v_req.resolved_at = datetime.utcnow()
-    
+    if req.action not in ("approve", "reject"):
+        raise HTTPException(400, "Неверное действие: approve или reject")
+
+    # Рассматривается только заявка в ожидании, и ровно один раз: переход из
+    # pending — условным UPDATE. Раньше уже отклонённую заявку можно было
+    # «одобрить» повторно (или наоборот), а двойной клик двух модераторов
+    # давал два уведомления с противоположными решениями.
+    new_status = VerificationStatus.approved if req.action == "approve" else VerificationStatus.rejected
+    if not claim(db, VerificationRequest,
+                 [VerificationRequest.id == v_req.id,
+                  VerificationRequest.status == VerificationStatus.pending],
+                 {"status": new_status, "resolved_at": datetime.utcnow()}):
+        db.rollback()
+        raise HTTPException(409, "Заявка уже рассмотрена")
+    v_req.status = new_status
+
     if req.action == "approve":
-        v_req.status = VerificationStatus.approved
         user.verified = True
         db.add(Notification(
             user_id=user.id,
@@ -197,8 +211,7 @@ def review_verification_admin(
             title="Профиль успешно верифицирован! 🎉",
             text="Поздравляем! Ваш статус проверенного специалиста подтверждён. В карточке появился зелёный бейдж доверия, а рейтинг в поиске увеличен."
         ))
-    elif req.action == "reject":
-        v_req.status = VerificationStatus.rejected
+    else:
         v_req.rejection_reason = req.reason or "Документы не соответствуют требованиям"
         db.add(Notification(
             user_id=user.id,
@@ -206,8 +219,6 @@ def review_verification_admin(
             title="Верификация отклонена",
             text=f"Причина: {v_req.rejection_reason}. Вы можете исправить данные и подать заявку снова."
         ))
-    else:
-        raise HTTPException(400, "Неверное действие: approve или reject")
-        
+
     db.commit()
     return {"message": "Статус заявки обновлён", "status": v_req.status.value}

@@ -128,12 +128,15 @@ def get_user_sub(chat_id):
 def fetch_new_tasks(last_id):
     """Возвращает заказы с id больше last_id."""
     try:
+        # Только открытые и только последняя страница. Раньше бот на каждом
+        # цикле забирал весь /tasks/ — всю таблицу, включая закрытые заказы.
         req = urllib.request.Request(
-            f"{API_BASE}/tasks/",
+            f"{API_BASE}/tasks/?status_filter=open&page=1&per_page=50",
             headers={"User-Agent": "DeloTelegramBot/2.0"}
         )
         with urllib.request.urlopen(req, timeout=15) as r:
-            tasks = json.loads(r.read().decode("utf-8"))
+            data = json.loads(r.read().decode("utf-8"))
+        tasks = data.get("tasks", []) if isinstance(data, dict) else data
     except Exception as e:
         print("tasks fetch error:", e)
         return [], last_id
@@ -189,7 +192,10 @@ def notify_matching(task):
     cat_code = task.get("category", "other")
     cat = CATEGORIES.get(cat_code, cat_code)
     is_remote = task.get("is_remote", False)
-    place = "🌐 Удалённо" if is_remote else (f"📍 {task.get('city') or 'Не указан'}" + (f", {task.get('address')}" if task.get('address') else ""))
+    # Только город: точный адрес уходил в рассылку любому подписчику бота
+    # (подписаться может кто угодно), то есть адрес заказчика — чаще всего
+    # домашний — раздавался посторонним. Адрес виден на странице заказа.
+    place = "🌐 Удалённо" if is_remote else f"📍 {task.get('city') or 'Не указан'}"
     
     title = _html_escape(str(task.get("title", "")))
     cat_label = _html_escape(str(cat))
