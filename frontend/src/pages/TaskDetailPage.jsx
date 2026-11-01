@@ -199,7 +199,12 @@ export default function TaskDetailPage({ user, token, onOpenAuth, onOpenChat }) 
 
   const fetchTaskDetails = useCallback(async () => {
     try {
-      const res = await fetch(`/tasks/${taskId}`);
+      // С токеном: улицу, дом и точку на карте backend отдаёт только заказчику,
+      // назначенному исполнителю и модератору, остальным — город и район
+      // (app/api/tasks.py). Истёкший токен обёртка utils/session.js продлит
+      // сама; если сессию продлить не удалось — страница публичная, грузим без входа.
+      let res = await fetch(`/tasks/${taskId}`, token ? { headers: { Authorization: `Bearer ${token}` } } : undefined);
+      if (res.status === 401 && token) res = await fetch(`/tasks/${taskId}`);
       if (res.status === 404 || res.status === 422) {
         setTask(null);
         setStatus('not-found');
@@ -808,6 +813,11 @@ export default function TaskDetailPage({ user, token, onOpenAuth, onOpenChat }) 
                 </DetailRow>
                 <DetailRow icon={task.is_remote ? IconGlobe : IconPin} label="Где">
                   {task.is_remote ? 'Удалённая работа' : [task.city, task.address].filter(Boolean).join(', ') || 'Не указано'}
+                  {!task.is_remote && task.address_hidden && (
+                    <p className="mt-0.5 text-xs font-normal text-slate-500 dark:text-slate-400">
+                      Точный адрес увидит исполнитель после назначения
+                    </p>
+                  )}
                 </DetailRow>
                 <DetailRow icon={IconCalendar} label="Срок сдачи">
                   {task.deadline ? formatDate(task.deadline) : 'Не указан'}
