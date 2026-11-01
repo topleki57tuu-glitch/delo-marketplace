@@ -165,7 +165,8 @@ class Session:
         """
         r = self.post(
             "/register/",
-            json={"email": email, "password": password, "name": name},
+            json={"email": email, "password": password, "name": name,
+                  "accept_terms": True, "pd_consent": True},
         )
         if r.status_code == 200 and role == "specialist":
             # make_specialist выдаёт НОВЫЙ токен с ролью specialist —
