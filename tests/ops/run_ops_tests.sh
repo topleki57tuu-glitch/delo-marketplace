@@ -44,8 +44,10 @@ chmod +x "$WORK/bin/"*
 PASS=0
 FAIL=0
 SECTION=""
+FAILS="$WORK/failures.txt"
 # В GitHub Actions журнал шага открыт не всем, а аннотации видны в PR и
-# через API: непрошедшая проверка — аннотация с концом вывода скрипта.
+# через API. Их не больше 10 на шаг, поэтому все непрошедшие проверки — в
+# одной аннотации в конце: имя, раздел и (для первой в разделе) конец вывода.
 ci_annotate() {
     [ "${GITHUB_ACTIONS:-}" = "true" ] || return 0
     local level="$1" msg="$2"
@@ -56,11 +58,14 @@ ci_annotate() {
 }
 out_tail() { [ -s "$OUT" ] && tail -n "${1:-25}" "$OUT"; }
 pass() { PASS=$((PASS + 1)); echo "  ✓ $1"; }
+FAIL_SECTION=""
 fail() {
     FAIL=$((FAIL + 1))
     echo "  ✗ $1"
     if [ -s "$OUT" ]; then sed 's/^/      | /' "$OUT" | tail -n 25; fi
-    ci_annotate error "[$SECTION] $1"$'\n'"$(out_tail)"
+    echo "✗ [$SECTION] $1" >> "$FAILS"
+    [ "$FAIL_SECTION" = "$SECTION" ] || out_tail 12 | sed 's/^/    | /' >> "$FAILS"
+    FAIL_SECTION="$SECTION"
 }
 expect() {
     local desc="$1"
@@ -120,9 +125,12 @@ FAKE_PID=""
 FINISHED=0
 cleanup() {
     local rc=$?
-    if [ "$FINISHED" != 1 ]; then
-        ci_annotate error "Проверка прервана в разделе «$SECTION» (код $rc)"$'\n'"$(out_tail)"
+    if [ "$FINISHED" = 1 ]; then
+        [ "$FAIL" -eq 0 ] || sed -i "1i Итого: $PASS прошло, $FAIL не прошло" "$FAILS"
+    else
+        { echo "Проверка прервана в разделе «$SECTION» (код $rc)"; out_tail 25 | sed 's/^/    | /'; } >> "$FAILS"
     fi
+    [ ! -s "$FAILS" ] || ci_annotate error "$(head -c 60000 "$FAILS")"
     [ -n "$FAKE_PID" ] && kill "$FAKE_PID" 2> /dev/null
     for d in $(dbs_like "${DB}%" 2> /dev/null) $(dbs_like 'delo_verify_%' 2> /dev/null); do
         psql_ -d postgres -c "DROP DATABASE IF EXISTS \"$d\"" > /dev/null 2>&1
@@ -137,6 +145,21 @@ section "Подготовка"
 python3 "$REPO/tests/ops/fake_services.py" "$PORT" "$FAKE" &
 FAKE_PID=$!
 for _ in $(seq 1 50); do curl -fsS -o /dev/null "http://127.0.0.1:$PORT/health/db" 2> /dev/null && break; sleep 0.1; done
+
+# На сервере pg_dump и pg_restore работают внутри контейнера postgres, то есть
+# той же версии, что и база. Здесь так же: клиент более новой версии пишет
+# в базу то, чего старая не знает (pg_restore 17+ в базу 15 — ошибка на
+# SET transaction_timeout), более старой — не снимает копию с новой.
+PG_SERVER_MAJOR=$(($(psql_ -d postgres -tAc 'SHOW server_version_num') / 10000))
+pg_client_major() { pg_restore --version | awk '{ print $3 }' | cut -d. -f1; }
+if [ "$(pg_client_major)" != "$PG_SERVER_MAJOR" ] && [ -x "/usr/lib/postgresql/$PG_SERVER_MAJOR/bin/pg_restore" ]; then
+    export PATH="$WORK/bin:/usr/lib/postgresql/$PG_SERVER_MAJOR/bin:$PATH"
+fi
+if [ "$(pg_client_major)" != "$PG_SERVER_MAJOR" ]; then
+    echo "Клиент PostgreSQL $(pg_client_major), а сервер $PG_SERVER_MAJOR: нужен клиент той же версии," \
+        "как в контейнере (Ubuntu/Debian: postgresql-client-$PG_SERVER_MAJOR из apt.postgresql.org)." | tee "$OUT"
+    exit 1
+fi
 ci_annotate notice "$(. /etc/os-release 2> /dev/null && echo "$PRETTY_NAME"); bash $BASH_VERSION; $(psql --version); \
 сервер $(psql_ -d postgres -tAc 'SHOW server_version' 2>&1); $(pg_dump --version); $(git --version); \
 $(script --version 2>&1 | head -n 1); $(python3 --version)"
@@ -611,5 +634,4 @@ expect "второй запуск одновременно — отказ" [ "$R
 echo ""
 echo "Итого: $PASS прошло, $FAIL не прошло"
 FINISHED=1
-[ "$FAIL" -eq 0 ] || ci_annotate error "Итого: $PASS прошло, $FAIL не прошло"
 [ "$FAIL" -eq 0 ]
