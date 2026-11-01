@@ -329,8 +329,9 @@ def create_payment(
 
 @router.post("/payments/confirm")
 def confirm_payment(
+    request: Request,
     payment_id: str,
-    provider: str = "yoomoney",
+    provider: Optional[str] = None,
     confirmation_url: Optional[str] = None,
     token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db),
@@ -348,6 +349,10 @@ def confirm_payment(
     см. `_verify_local_record` — он объясняет, почему одной записи в базе для
     подтверждения недостаточно.
     """
+    # Каждый вызов — запрос к провайдеру. Без лимита эндпоинт годился для
+    # пачки параллельных подтверждений одного платежа (см. claim ниже).
+    rate_limit(request, "payments_confirm", limit=20, window_sec=300)
+
     payload = decode_token_or_401(token)
     user_id = int(payload.get("sub"))
 
@@ -355,13 +360,13 @@ def confirm_payment(
     # если подтверждается не наша запись.
     record = _verify_local_record(db, payment_id, user_id, confirmation_url)
 
-    # Выбираем провайдера
-    if provider == "yoomoney":
-        status_result = yoomoney.get_payment_status(payment_id)
-    elif provider == "yookassa":
+    # Провайдер — из НАШЕЙ записи, а не из запроса. Параметр `provider`
+    # оставлен ради совместимости со старым клиентом и ни на что не влияет:
+    # иначе платёж ЮKassa можно было бы «проверить» у ЮMoney и наоборот.
+    if record.provider == "yookassa":
         status_result = payments.get_payment_status(payment_id)
     else:
-        raise HTTPException(400, f"Неизвестный провайдер: {provider}")
+        status_result = yoomoney.get_payment_status(payment_id)
 
     if "error" in status_result:
         raise HTTPException(502, f"Ошибка проверки платежа: {status_result['error']}")
@@ -369,7 +374,8 @@ def confirm_payment(
     if not status_result.get("paid"):
         return {"status": status_result["status"], "credited": False}
 
-    # Идемпотентность: платёж мог уже быть зачислен вебхуком
+    # Быстрый ответ без UPDATE, если зачисление уже видно. Это лишь
+    # оптимизация: решает атомарный claim ниже.
     if record.credited_at is not None:
         return {"status": "succeeded", "credited": False, "message": "Уже зачислено"}
 
@@ -387,10 +393,23 @@ def confirm_payment(
     if not user:
         raise HTTPException(404, "Пользователь не найден")
 
+    # Зачисление — только если ЭТОТ запрос перевёл credited_at из NULL.
+    # Раньше проверка была обычным чтением `record.credited_at` (да ещё после
+    # сетевого запроса к провайдеру), и N одновременных подтверждений одного
+    # платежа (или confirm + вебхук, что бывает и без злого умысла: возврат с
+    # формы оплаты и уведомление приходят почти одновременно) зачисляли сумму
+    # N раз.
+    if not claim(
+        db,
+        PaymentRecord,
+        [PaymentRecord.id == record.id, PaymentRecord.credited_at.is_(None)],
+        {"credited_at": datetime.utcnow(), "status": PaymentStatus.paid},
+    ):
+        db.rollback()
+        return {"status": "succeeded", "credited": False, "message": "Уже зачислено"}
+
     credit_balance(db, user_id, amount)
     db.add(Transaction(user_id=user_id, amount=amount, type=TransactionType.deposit))
-    record.status = PaymentStatus.paid
-    record.credited_at = datetime.utcnow()
     db.commit()
     db.refresh(user)
 
@@ -455,6 +474,24 @@ async def yoomoney_webhook(request: Request, db: Session = Depends(get_db)):
         logger.info(f"ЮMoney payment {label} already credited")
         return {"status": "ok"}
 
+    # Уведомление подписано, но не каждое подписанное — это пришедшие деньги.
+    # codepro=true — платёж с протекцией (деньги ещё не у нас), unaccepted=true
+    # — перевод не зачислен на кошелёк (например, переполнен лимит), currency
+    # не 643 — не рубли. Отвечаем 200, чтобы ЮMoney не повторял, но не
+    # зачисляем: такие случаи разбираются вручную.
+    if (
+        str(notification_data.get("codepro", "false")).lower() == "true"
+        or str(notification_data.get("unaccepted", "false")).lower() == "true"
+        or str(notification_data.get("currency", "643")) != "643"
+    ):
+        logger.warning(
+            f"ЮMoney webhook {label}: не зачисляем — codepro="
+            f"{notification_data.get('codepro')!r}, unaccepted="
+            f"{notification_data.get('unaccepted')!r}, currency="
+            f"{notification_data.get('currency')!r}"
+        )
+        return {"status": "ignored"}
+
     # Сверяем сумму с той, что мы зафиксировали при создании платежа:
     # провайдер присылает её в уведомлении, и расхождение означает либо
     # подмену, либо ошибку — зачисляем ровно запрошенное.
@@ -476,10 +513,21 @@ async def yoomoney_webhook(request: Request, db: Session = Depends(get_db)):
         logger.error(f"User {user_id} not found for payment {label}")
         raise HTTPException(404, "User not found")
 
+    # Атомарный переход, как в /payments/confirm: иначе вебхук и confirm,
+    # пришедшие одновременно, оба видят credited_at = NULL и зачисляют дважды.
+    # ЮMoney к тому же повторяет уведомление, если ответ задержался.
+    if not claim(
+        db,
+        PaymentRecord,
+        [PaymentRecord.id == record.id, PaymentRecord.credited_at.is_(None)],
+        {"credited_at": datetime.utcnow(), "status": PaymentStatus.paid},
+    ):
+        db.rollback()
+        logger.info(f"ЮMoney payment {label} already credited (concurrent)")
+        return {"status": "ok"}
+
     credit_balance(db, user_id, amount)
     db.add(Transaction(user_id=user_id, amount=amount, type=TransactionType.deposit))
-    record.status = PaymentStatus.paid
-    record.credited_at = datetime.utcnow()
 
     # Отправляем уведомление пользователю
     db.add(Notification(
@@ -627,9 +675,24 @@ def assign_task(task_id: int, specialist_id: int, token: str = Depends(oauth2_sc
     if task.status != TaskStatus.open:
         raise HTTPException(400, "Назначить исполнителя можно только для открытого заказа")
 
+    # Сам себе исполнитель. Роль переключается в профиле (/users/me/switch-role),
+    # поэтому заказчик мог стать «специалистом» и назначить на свой заказ
+    # самого себя — затем завершить сделку и оставить себе отзыв (накрутка
+    # рейтинга), а с комиссией — ещё и гонять деньги по кругу.
+    if specialist_id == customer_id:
+        raise HTTPException(400, "Нельзя назначить исполнителем самого себя")
+
     spec = db.query(User).filter(User.id == specialist_id, User.role == UserRole.specialist).first()
     if not spec:
         raise HTTPException(400, "Специалист не найден")
+
+    # Заказ «забирается» условным UPDATE до списания денег. Иначе два
+    # одновременных назначения (двойной клик) оба проходили проверку статуса
+    # выше и замораживали бюджет дважды, а вернуть при отмене можно только раз.
+    if not claim(db, Task, [Task.id == task.id, Task.status == TaskStatus.open],
+                 {"status": TaskStatus.in_progress, "executor_id": specialist_id}):
+        db.rollback()
+        raise HTTPException(409, "Исполнитель уже назначен")
 
     budget = task.budget or 0
     if budget > 0:
@@ -650,8 +713,6 @@ def assign_task(task_id: int, specialist_id: int, token: str = Depends(oauth2_sc
             specialist_id=specialist_id
         )
 
-    task.executor_id = specialist_id
-    task.status = TaskStatus.in_progress
     db.commit()
 
     # Инвалидация кеша при назначении исполнителя

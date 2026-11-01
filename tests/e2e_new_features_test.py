@@ -261,7 +261,13 @@ def main():
     bal_before = balance(cust_tok)
 
     r = S.post(f"/tasks/{task2}/cancel", headers=auth(cust_tok), timeout=15)
-    check("POST /tasks/{id}/cancel (заказчик)", r.status_code == 200,
+    check("Заказчик не может отменить заказ в работе -> 403", r.status_code == 403,
+          f"code={r.status_code}")
+    check("Баланс заказчика не изменился", balance(cust_tok) == bal_before,
+          f"balance={balance(cust_tok)}")
+
+    r = S.post(f"/tasks/{task2}/cancel", headers=auth(spec_tok), timeout=15)
+    check("POST /tasks/{id}/cancel (исполнитель отказался)", r.status_code == 200,
           f"refunded={r.json().get('refunded')}")
     check("Эскроу возвращён", balance(cust_tok) == bal_before + 4000,
           f"balance={balance(cust_tok)}")
@@ -269,7 +275,7 @@ def main():
     r = S.get(f"/tasks/{task2}", timeout=15)
     check("Заказ в статусе cancelled", r.json()["status"] == "cancelled")
 
-    r = S.post(f"/tasks/{task2}/cancel", headers=auth(cust_tok), timeout=15)
+    r = S.post(f"/tasks/{task2}/cancel", headers=auth(spec_tok), timeout=15)
     check("Повторная отмена -> 400", r.status_code == 400)
 
     r = S.get(f"/wallet/transactions", headers=auth(cust_tok), timeout=15)
