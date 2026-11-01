@@ -12,6 +12,7 @@
      - дубликат email при регистрации -> 400
      - слишком короткий пароль (<6 символов) -> 422
      - некорректный email -> 422
+     - регистрация без согласия на обработку ПДн -> 400
   6. Проверка восстановления пароля (forgot-password)
 
 Работает и при выключенном, и при включённом CSRF (CSRF_ENABLED=1):
@@ -39,7 +40,7 @@ def test_auth():
     c_pass = "SecurePass123"
     r1 = s.post(
         "/register/",
-        json={"email": c_email, "password": c_pass, "name": "Иван Тестов"},
+        json={"email": c_email, "password": c_pass, "name": "Иван Тестов", "accept_terms": True, "pd_consent": True},
         headers={"X-Forwarded-For": f"198.51.100.{TS % 250}"},
     )
     assert r1.status_code == 200, f"Ошибка регистрации: {r1.status_code} {r1.text}"
@@ -70,6 +71,14 @@ def test_auth():
     assert me["is_admin"] is False, "обычный пользователь не должен быть админом"
     print("  [OK] 3. Профиль /users/me загружен: роль + is_admin с бэкенда")
 
+    # 3.1 Согласие, данное при регистрации, записано вместе с редакцией
+    #     документов: фронтенд сравнивает их и не показывает окно повторно.
+    assert me.get("legal_version_required"), "GET /users/me должен отдавать действующую редакцию документов"
+    assert me.get("legal_version") == me["legal_version_required"], (
+        f"согласие при регистрации не записано: {me.get('legal_version')!r}"
+    )
+    print("  [OK] 3.1 Согласие при регистрации записано, редакция совпадает с действующей")
+
     # 4. Регистрация -> роль всегда customer, затем повышение до specialist.
     #    Роль при регистрации больше НЕ принимается от клиента (защита от
     #    самостоятельного назначения роли исполнителя), поэтому смена роли
@@ -78,7 +87,7 @@ def test_auth():
     s_pass = "SpecialistPass123"
     r4 = s.post(
         "/register/",
-        json={"email": s_email, "password": s_pass, "role": "specialist", "name": "Анна Мастер"},
+        json={"email": s_email, "password": s_pass, "role": "specialist", "name": "Анна Мастер", "accept_terms": True, "pd_consent": True},
         headers={"X-Forwarded-For": f"198.51.101.{TS % 250}"},
     )
     assert r4.status_code == 200
@@ -126,7 +135,7 @@ def test_auth():
     # 5.3 Дубликат email
     dup = s.post(
         "/register/",
-        json={"email": c_email, "password": "AnotherPassword123"},
+        json={"email": c_email, "password": "AnotherPassword123", "accept_terms": True, "pd_consent": True},
         headers={"X-Forwarded-For": f"198.51.104.{TS % 250}"},
     )
     assert dup.status_code == 400
@@ -136,7 +145,7 @@ def test_auth():
     # 5.4 Слишком короткий пароль (<6 символов)
     short_pass = s.post(
         "/register/",
-        json={"email": f"short.{TS}@test.ru", "password": "123"},
+        json={"email": f"short.{TS}@test.ru", "password": "123", "accept_terms": True, "pd_consent": True},
         headers={"X-Forwarded-For": f"198.51.105.{TS % 250}"},
     )
     assert short_pass.status_code == 422
@@ -145,7 +154,7 @@ def test_auth():
     # 5.5 Некорректный email
     invalid_email = s.post(
         "/register/",
-        json={"email": "not-an-email", "password": "ValidPassword123"},
+        json={"email": "not-an-email", "password": "ValidPassword123", "accept_terms": True, "pd_consent": True},
         headers={"X-Forwarded-For": f"198.51.106.{TS % 250}"},
     )
     assert invalid_email.status_code == 422
@@ -155,7 +164,7 @@ def test_auth():
     hack_email = f"auth.test.rolehack.{TS}@delo-test.ru"
     r_hack = s.post(
         "/register/",
-        json={"email": hack_email, "password": "HackPass123", "role": "admin", "name": "Хакер"},
+        json={"email": hack_email, "password": "HackPass123", "role": "admin", "name": "Хакер", "accept_terms": True, "pd_consent": True},
         headers={"X-Forwarded-For": f"198.51.108.{TS % 250}"},
     )
     assert r_hack.status_code == 200
@@ -164,6 +173,41 @@ def test_auth():
     assert hack_me["role"] == "customer", "role=admin при регистрации не должен применяться"
     assert hack_me["is_admin"] is False, "is_admin не должен подниматься через /register"
     print("  [OK] 5.6 role=admin при регистрации проигнорирован -> customer, is_admin=false")
+
+    # 5.7 Без согласия аккаунт не создаётся (152-ФЗ): ни без обеих отметок,
+    #     ни с одной из двух. Проверяем и ответ, и что входа нет.
+    for n, extra in enumerate(({}, {"accept_terms": True}, {"pd_consent": True})):
+        no_consent_email = f"auth.test.noconsent{n}.{TS}@delo-test.ru"
+        r_nc = s.post(
+            "/register/",
+            json={"email": no_consent_email, "password": "ConsentPass123", **extra},
+            headers={"X-Forwarded-For": f"198.51.109.{(TS + n) % 250}"},
+        )
+        assert r_nc.status_code == 400, f"регистрация без согласия ({extra}): {r_nc.status_code} {r_nc.text}"
+        assert "согласие" in r_nc.json()["detail"], r_nc.text
+        r_nc_login = s.post(
+            "/login",
+            data={"username": no_consent_email, "password": "ConsentPass123"},
+            headers={"X-Forwarded-For": f"198.51.109.{(TS + n) % 250}"},
+        )
+        assert r_nc_login.status_code == 401, "аккаунт без согласия не должен был создаться"
+    print("  [OK] 5.7 Регистрация без согласия (или с одной отметкой из двух) -> 400, аккаунт не создан")
+
+    # 5.8 Повторное согласие уже зарегистрированного пользователя
+    r_lc_bad = s.post(
+        "/users/me/legal-consent",
+        json={"accept_terms": True},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r_lc_bad.status_code == 400, f"legal-consent без согласия на ПДн: {r_lc_bad.status_code}"
+    r_lc = s.post(
+        "/users/me/legal-consent",
+        json={"accept_terms": True, "pd_consent": True},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r_lc.status_code == 200, f"legal-consent: {r_lc.status_code} {r_lc.text}"
+    assert r_lc.json()["legal_version"] == me["legal_version_required"]
+    print("  [OK] 5.8 POST /users/me/legal-consent: без отметки -> 400, с обеими -> 200")
 
     # 6. Запрос сброса пароля (dev_reset_link)
     forgot = s.post(
