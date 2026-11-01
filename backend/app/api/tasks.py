@@ -2,11 +2,12 @@ import json
 from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi.encoders import jsonable_encoder
+from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from app.core.database import get_db
 from app.core.enums import enum_value
-from app.core.security import oauth2_scheme, decode_token
+from app.core.security import oauth2_scheme, decode_token, is_admin
 from app.core.money import credit_balance, claim
 from app.core.csrf import verify_csrf
 from app.core.logging import logger, log_escrow_operation
@@ -26,6 +27,71 @@ def decode_token_or_401(token: str) -> dict:
 
 class TaskImagesDeleteRequest(BaseModel):
     urls_to_delete: List[str]
+
+
+# ---------------------------------------------------------------------------
+# Точный адрес задания — только участникам сделки.
+#
+# Заказчик пишет в поле «Адрес» улицу и дом — чаще всего свои собственные.
+# Раньше лента GET /tasks/ и страница GET /tasks/{id} отдавали их любому
+# анонимному запросу вместе с координатами точки на карте: адрес квартиры
+# и время, когда хозяин ждёт мастера, собирались одним запросом без входа.
+#
+# Теперь в публичной выдаче — город и координаты, округлённые до района,
+# а улица, дом и точная точка — только заказчику, назначенному исполнителю
+# и модераторам. Исполнителю, который решает, откликаться ли, этого хватает:
+# видно город и примерное место на карте. Обещание записано в правилах
+# сервиса (frontend/src/pages/legal/TermsDoc.jsx, п. 3.1).
+# Регресс — tests/security/check_task_address_privacy.py.
+# ---------------------------------------------------------------------------
+
+# Два знака после запятой — около 1,1 км по широте и 0,6 км по долготе
+# на широте Москвы: район, а не дом.
+PUBLIC_COORD_DIGITS = 2
+
+# Токен на странице задания необязателен: её открывают и без входа.
+optional_oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login", auto_error=False)
+
+
+def _approx_coord(value: Optional[float]) -> Optional[float]:
+    return round(value, PUBLIC_COORD_DIGITS) if value is not None else None
+
+
+def _public_task(task: Task) -> dict:
+    """Задание для общей ленты: все поля, кроме точного адреса.
+
+    Раньше лента отдавала ORM-объекты целиком, и любое новое поле модели
+    само попадало в публичный ответ. Набор полей прежний — все колонки
+    таблицы, — но адрес и точка теперь проходят через этот фильтр.
+    """
+    data = {column.name: getattr(task, column.name) for column in Task.__table__.columns}
+    data["address"] = None
+    data["latitude"] = _approx_coord(task.latitude)
+    data["longitude"] = _approx_coord(task.longitude)
+    # Фронтенд по этому флагу объясняет, почему адреса нет: он есть, но скрыт.
+    data["address_hidden"] = bool(task.address)
+    return data
+
+
+def _sees_exact_location(task: Task, token: Optional[str], db: Session) -> bool:
+    """Заказчик, назначенный исполнитель или модератор.
+
+    Неверный или истёкший токен — 401, а не тихий переход к публичному виду:
+    фронтенд на 401 продлевает сессию и повторяет запрос
+    (frontend/src/utils/session.js), и исполнитель видит адрес сразу,
+    а не после перезагрузки страницы.
+    """
+    if not token:
+        return False
+    payload = decode_token(token)
+    try:
+        user_id = int(payload.get("sub"))
+    except (TypeError, ValueError):
+        return False
+    if user_id == task.customer_id or (task.executor_id is not None and user_id == task.executor_id):
+        return True
+    viewer = db.query(User).filter(User.id == user_id).first()
+    return viewer is not None and is_admin(viewer)
 
 @router.post("/")
 def create_task(task: TaskCreate, request: Request, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db), _csrf: None = Depends(verify_csrf)):
@@ -73,6 +139,11 @@ def create_task(task: TaskCreate, request: Request, token: str = Depends(oauth2_
 
 TASKS_LIST_MAX = 200
 
+# Ключ кэша ленты без фильтров. Версия в имени — формат выдачи: под прежним
+# ключом (tasks:list:open:all) лежала выдача с точным адресом, и после
+# обновления она отдавалась бы из кэша ещё минуту.
+TASKS_LIST_CACHE_KEY = "tasks:list:open:v2"
+
 
 @router.get("/")
 def get_tasks(
@@ -97,7 +168,7 @@ def get_tasks(
     )
 
     if is_cacheable:
-        cache_key = "tasks:list:open:all"
+        cache_key = TASKS_LIST_CACHE_KEY
         cached = cache.get(cache_key)
         if cached:
             try:
@@ -129,7 +200,7 @@ def get_tasks(
         total = query.count()
         tasks = query.offset((page - 1) * per_page).limit(per_page).all()
         return {
-            "tasks": tasks,
+            "tasks": [_public_task(t) for t in tasks],
             "page": page,
             "per_page": per_page,
             "total": total,
@@ -139,16 +210,15 @@ def get_tasks(
     # Без page — не больше TASKS_LIST_MAX записей. Раньше здесь отдавалась вся
     # таблица (в том числе Telegram-боту каждую секунду), и с ростом базы
     # каждый заход на главную тянул бы тысячи строк.
-    result = query.limit(TASKS_LIST_MAX).all()
+    result = [_public_task(t) for t in query.limit(TASKS_LIST_MAX).all()]
 
     # Сохраняем в кеш если это кешируемый запрос
     #
-    # jsonable_encoder обязателен: `result` — это ORM-объекты Task, а не словари.
-    # `json.dumps(..., default=str)` превращал каждый из них в `str(obj)`, то есть
-    # в строку вида "<app.models.Task object at 0x...>". Первый запрос (промах
-    # кэша) отдавал нормальный список, а все последующие в течение 60 секунд
-    # (попадание) — список таких строк. В products.py тот же код работает
-    # случайно: там результат заранее собран словарями через _serialize_product.
+    # jsonable_encoder обязателен: в словарях `result` остаются перечисления
+    # (category, status) и datetime. Раньше здесь были ORM-объекты Task, и
+    # `json.dumps(..., default=str)` превращал каждый в строку вида
+    # "<app.models.Task object at 0x...>": первый запрос (промах кэша) отдавал
+    # нормальный список, а все последующие в течение 60 секунд — такие строки.
     if is_cacheable and cache.enabled:
         try:
             cache.set(cache_key, json.dumps(jsonable_encoder(result)), ttl_seconds=60)
@@ -265,10 +335,15 @@ def get_my_tasks(
     return result
 
 @router.get("/{task_id}")
-def get_task_detail(task_id: int, db: Session = Depends(get_db)):
+def get_task_detail(
+    task_id: int,
+    token: Optional[str] = Depends(optional_oauth2_scheme),
+    db: Session = Depends(get_db),
+):
     task = db.query(Task).filter(Task.id == task_id).first()
     if not task:
         raise HTTPException(404, "Заказ не найден")
+    exact = _sees_exact_location(task, token, db)
     customer = db.query(User).filter(User.id == task.customer_id).first()
     responses_count = db.query(Response).filter(Response.task_id == task_id).count()
     return {
@@ -286,9 +361,10 @@ def get_task_detail(task_id: int, db: Session = Depends(get_db)):
             Dispute.task_id == task_id, Dispute.status == DisputeStatus.open
         ).first() is not None,
         "city": task.city,
-        "address": task.address,
-        "latitude": task.latitude,
-        "longitude": task.longitude,
+        "address": task.address if exact else None,
+        "latitude": task.latitude if exact else _approx_coord(task.latitude),
+        "longitude": task.longitude if exact else _approx_coord(task.longitude),
+        "address_hidden": bool(task.address) and not exact,
         "deadline": task.deadline,
         "is_remote": task.is_remote,
         "images": task.images,
