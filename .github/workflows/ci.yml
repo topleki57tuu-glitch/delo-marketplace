@@ -917,6 +917,20 @@ jobs:
       - name: Install dependencies
         run: pip install -r backend/requirements.txt
 
+      # На сервере pg_dump/pg_restore запускаются внутри контейнера postgres:15,
+      # а на раннере свой клиент новее (Ubuntu 26.04 — PostgreSQL 18): pg_restore
+      # 18 в базу 15 не восстанавливает. Тесты берут клиент версии базы.
+      - name: PostgreSQL 15 client (same version as in the postgres container)
+        run: |
+          if [ ! -x /usr/lib/postgresql/15/bin/pg_restore ]; then
+            sudo apt-get update -qq
+            if ! sudo apt-get install -y -qq postgresql-client-15; then
+              sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+              sudo apt-get install -y -qq postgresql-client-15
+            fi
+          fi
+          /usr/lib/postgresql/15/bin/pg_restore --version
+
       - name: ShellCheck
         run: |
           shellcheck --version | head -n 2
