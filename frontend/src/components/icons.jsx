@@ -17,6 +17,7 @@
  */
 import {
   ArrowDown,
+  ArrowRight,
   Baby,
   Ban,
   Banknote,
@@ -93,8 +94,15 @@ import {
   Zap,
 } from 'lucide-react';
 
+// Tailwind preflight делает svg блочным (display:block), поэтому иконка перед
+// текстом («<IconPin /> Москва») уезжала на отдельную строку — по всему
+// приложению значки стояли над подписями. Базовый класс возвращает иконку в
+// строку и выравнивает её по середине текста.
+const ICON_BASE = 'inline-block shrink-0 align-[-0.15em]';
+
 function createIcon(LucideIcon, defaultSize = 16) {
-  const Icon = ({ size = defaultSize, className = '', title, strokeWidth = 2, ...rest }) => {
+  const Icon = ({ size = defaultSize, className: extra = '', title, strokeWidth = 2, ...rest }) => {
+    const className = `${ICON_BASE} ${extra}`.trim();
     if (title) {
       return (
         <LucideIcon
@@ -136,6 +144,7 @@ export const IconLogout = createIcon(LogOut);
 
 /* --- Действия --- */
 export const IconCheck = createIcon(Check);
+export const IconArrowRight = createIcon(ArrowRight);
 export const IconClose = createIcon(X);
 export const IconWarning = createIcon(TriangleAlert);
 export const IconEdit = createIcon(Pencil);

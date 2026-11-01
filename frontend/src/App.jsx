@@ -13,6 +13,9 @@ import { Avatar } from './components/Avatar';
 // Eager load только критичные страницы
 import HomePage from './pages/HomePage';
 import { IconAdmin, IconBox, IconBriefcase, IconClose, IconMessages, IconReceipt, IconTasks, IconTools, IconUser } from './components/icons.jsx';
+import Logo from './components/Logo.jsx';
+import SiteFooter from './components/SiteFooter.jsx';
+import ScrollManager from './components/ScrollManager.jsx';
 
 // Lazy load остальные страницы (загружаются по требованию)
 const TasksPage = lazy(() => import('./pages/TasksPage'));
@@ -32,6 +35,7 @@ const CreateProductPage = lazy(() => import('./pages/CreateProductPage'));
 const MyOrdersPage = lazy(() => import('./pages/MyOrdersPage'));
 const MyProductsPage = lazy(() => import('./pages/MyProductsPage'));
 const EditProductPage = lazy(() => import('./pages/EditProductPage'));
+const NotFoundPage = lazy(() => import('./pages/NotFoundPage'));
 
 const API_URL = import.meta.env.VITE_API_URL || '';
 
@@ -88,13 +92,8 @@ function NavigationBar({ user, token, onOpenAuth, onOpenChatsDrawer, onLogout })
           запаса, а с lg возвращается прежние 24px. */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center gap-4 lg:gap-6">
         {/* Логотип */}
-        <Link to="/" className="flex items-center gap-2.5 shrink-0">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-600 to-amber-500 flex items-center justify-center text-white font-black text-lg shadow-md shadow-indigo-500/25">
-            Д
-          </div>
-          <span className="font-extrabold text-xl tracking-tight text-slate-900 dark:text-white">
-            ДЕЛО<span className="text-amber-500">.</span>
-          </span>
+        <Link to="/" className="shrink-0" aria-label="ДЕЛО — на главную">
+          <Logo size={34} />
         </Link>
 
         {/* Разделы */}
@@ -576,6 +575,7 @@ export default function App() {
   return (
     <ErrorBoundary>
       <BrowserRouter>
+        <ScrollManager />
         <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-slate-900 font-sans antialiased text-slate-800 dark:text-slate-100">
           {/* Skip link для keyboard navigation */}
           <a
@@ -727,26 +727,12 @@ export default function App() {
                     />
                   }
                 />
+                <Route path="*" element={<NotFoundPage />} />
               </Routes>
             </Suspense>
           </main>
 
-        {/* Footer */}
-        <footer className="border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 pt-8 pb-24 md:pb-8 px-4 sm:px-6 lg:px-8 text-center text-xs text-slate-400">
-          <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
-            <div className="flex items-center gap-2">
-              <div className="w-6 h-6 rounded-lg bg-indigo-600 text-white font-bold flex items-center justify-center text-xs">
-                Д
-              </div>
-              <span className="font-bold text-slate-700 dark:text-slate-300">Платформа «ДЕЛО»</span>
-              <span>© 2026. Все права защищены.</span>
-            </div>
-            <div className="flex items-center gap-4">
-              <Link to="/tasks" className="hover:underline">Задания</Link>
-              <Link to="/create-task" className="hover:underline">Создать заказ</Link>
-            </div>
-          </div>
-        </footer>
+        <SiteFooter />
 
         {/* Bottom Nav for Mobile */}
         <BottomNav onOpenAuth={handleOpenAuth} />
