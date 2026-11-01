@@ -66,6 +66,7 @@ echo   Done.
 echo ================================================
 echo   Site:    %SITE%
 echo   Status:  status-server.bat
+echo   Undo:    rollback.bat
 echo   Logs:    logs.bat
 echo   Shell:   server-shell.bat
 echo ================================================

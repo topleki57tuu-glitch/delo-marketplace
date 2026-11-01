@@ -239,8 +239,13 @@ export default function CreateTaskPage({ user, token, onOpenAuth, onTaskCreated 
                       placeholder="ул. Ленина, д. 10"
                       value={address}
                       onChange={(e) => setAddress(e.target.value)}
+                      aria-describedby="task-address-hint"
                       className="input"
                     />
+                    {/* Обещание держит backend: app/api/tasks.py, _public_task */}
+                    <p id="task-address-hint" className="mt-1.5 text-xs text-slate-500 dark:text-slate-400">
+                      Увидит только исполнитель, которого вы выберете. Остальным — город и район.
+                    </p>
                   </div>
                 </div>
               )}
