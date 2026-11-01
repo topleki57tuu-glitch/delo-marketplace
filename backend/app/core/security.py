@@ -319,6 +319,46 @@ def file_url_with_token(url: Optional[str]) -> Optional[str]:
     return f"/files/{file_id_part}?token={token}"
 
 
+def normalize_email(email: Optional[str]) -> str:
+    """Почта в каноническом виде: без пробелов по краям, в нижнем регистре.
+
+    Почтовые сервисы регистр адреса не различают, а база различает. Раньше
+    регистрация сохраняла адрес как ввели, поэтому Admin@delo.ru и
+    admin@delo.ru были двумя разными аккаунтами — а is_admin сравнивал без
+    учёта регистра и выдавал права модератора обоим.
+    """
+    return (email or "").strip().lower()
+
+
+def find_user_by_email(db, email: Optional[str]):
+    """Аккаунт по почте без учёта регистра — для входа и сброса пароля.
+
+    Порядок поиска:
+    1. точное совпадение с каноническим видом — так хранятся все аккаунты,
+       заведённые после исправления (и старые, приведённые миграцией);
+    2. точное совпадение с тем, что ввёл человек, — для старых «двойников»,
+       которые миграция оставила как есть (см. normalize_user_emails);
+    3. без учёта регистра, но только если такой аккаунт ровно один: из двух
+       аккаунтов, отличающихся регистром, угадывать нужный нельзя.
+    """
+    from sqlalchemy import func
+    from app.models import User
+
+    canonical = normalize_email(email)
+    if not canonical:
+        return None
+    user = db.query(User).filter(User.email == canonical).first()
+    if user:
+        return user
+    typed = (email or "").strip()
+    if typed != canonical:
+        user = db.query(User).filter(User.email == typed).first()
+        if user:
+            return user
+    matches = db.query(User).filter(func.lower(User.email) == canonical).limit(2).all()
+    return matches[0] if len(matches) == 1 else None
+
+
 def is_admin(user) -> bool:
     """Права модератора платформы.
 
@@ -332,12 +372,26 @@ def is_admin(user) -> bool:
     занял этот адрес (и вместе с ними — очередь выплат с реквизитами).
     Нет переменной — нет модераторов.
 
+    Почта аккаунта должна быть сохранена в каноническом виде. До исправления
+    сравнение шло без учёта регистра, а регистрация хранила адрес как ввели:
+    рядом с admin@delo.ru любой мог зарегистрировать «Admin@delo.ru» и
+    получить очередь выплат, споры и документы на проверку. Такие «двойники»
+    могли остаться в базе — прав они не получают. Адреса из ADMIN_EMAILS
+    регистрация теперь не принимает вовсе: аккаунт модератора заводится на
+    сервере (scripts/admin_access.sh).
+
     Список берём из settings, а не из os.environ напрямую: так он читается
     из того же .env, что и остальные настройки, и о пустом значении
     предупреждает старт приложения (app/core/config.py).
     """
-    email = getattr(user, "email", None)
-    return bool(email and email.lower() in settings.ADMIN_EMAILS)
+    email = getattr(user, "email", None) or ""
+    return bool(email) and email == normalize_email(email) and email in settings.ADMIN_EMAILS
+
+
+def is_reserved_admin_email(email: Optional[str]) -> bool:
+    """Адрес из ADMIN_EMAILS: зарегистрировать его с сайта нельзя."""
+    canonical = normalize_email(email)
+    return bool(canonical) and canonical in settings.ADMIN_EMAILS
 
 
 # ---------------------------------------------------------------------------
