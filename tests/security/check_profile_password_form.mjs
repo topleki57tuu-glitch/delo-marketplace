@@ -215,47 +215,53 @@ await page.addInitScript(
 );
 
 console.log('='.repeat(68));
-console.log('1. Карточка «Безопасность» есть в профиле');
+console.log('1. В профиле есть вкладка «Настройки» с формой смены пароля');
 console.log('='.repeat(68));
 await page.goto(`${SITE}/profile`, { waitUntil: 'domcontentloaded' });
 
-// exact: true обязателен. По подстроке «Безопасность» находится ещё и
-// заголовок «Безопасность и доверие сервиса «ДЕЛО»», локатор становится
-// неоднозначным и Playwright падает — а проглоченное исключение выглядело
-// как «карточки нет», хотя она на месте.
-const heading = page.getByRole('heading', { name: 'Безопасность', exact: true });
-const toggle = page.getByRole('button', { name: 'Сменить пароль' });
-let headingVisible = true;
+// Разделы кабинета — вкладки в шапке (role="tab"), форма смены пароля живёт
+// во вкладке «Настройки». Открываем её нажатием, как пользователь, а не
+// адресом ?tab=settings: так проверяется и то, что вкладка вообще видна.
+const settingsTab = page.getByRole('tab', { name: 'Настройки', exact: true });
+let tabVisible = true;
 try {
-  await heading.waitFor({ state: 'visible', timeout: 20000 });
+  await settingsTab.waitFor({ state: 'visible', timeout: 20000 });
 } catch (err) {
-  headingVisible = false;
-  const headingCount = await heading.count();
-  const toggleCount = await toggle.count();
-  console.log(`  заголовков «Безопасность»: ${headingCount}, кнопок «Сменить пароль»: ${toggleCount}`);
+  tabVisible = false;
+  console.log(`  вкладок «Настройки»: ${await settingsTab.count()}`);
   console.log(`  адрес страницы: ${page.url()}`);
   console.log(`  причина: ${String(err.message).split('\n')[0]}`);
 }
-record('заголовок «Безопасность» виден', headingVisible);
-if (!headingVisible) {
-  await page.screenshot({ path: join(ROOT, '..', 'visual-check', '27-profile-no-card.png'), fullPage: true });
+record('вкладка «Настройки» видна', tabVisible);
+if (!tabVisible) {
+  await page.screenshot({ path: join(ROOT, '..', 'visual-check', '27-profile-no-settings.png'), fullPage: true });
   await browser.close();
   process.exit(1);
 }
-record('кнопка «Сменить пароль» видна', (await toggle.count()) === 1);
+await settingsTab.click();
+record('вкладка «Настройки» выбрана', (await settingsTab.getAttribute('aria-selected')) === 'true');
+
+// exact: true — чтобы локатор не стал неоднозначным, если на странице
+// появится другой заголовок со словом «пароль».
+const heading = page.getByRole('heading', { name: 'Смена пароля', exact: true });
+const headingVisible = await heading
+  .waitFor({ state: 'visible', timeout: 5000 })
+  .then(() => true)
+  .catch(() => false);
+record('заголовок «Смена пароля» виден', headingVisible);
 
 console.log();
 console.log('='.repeat(68));
-console.log('2. Форма раскрывается по кнопке');
+console.log('2. Поля формы и кнопка на месте');
 console.log('='.repeat(68));
-await page.getByRole('button', { name: 'Сменить пароль' }).first().click();
 const curField = page.getByLabel('Текущий пароль');
 const curVisible = await curField
   .waitFor({ state: 'visible', timeout: 5000 })
   .then(() => true)
   .catch(() => false);
-record('поле «Текущий пароль» появилось', curVisible);
-
+record('поле «Текущий пароль» видно', curVisible);
+const submit = page.getByRole('button', { name: 'Сменить пароль' });
+record('кнопка «Сменить пароль» одна', (await submit.count()) === 1);
 console.log();
 console.log('='.repeat(68));
 console.log('3. Повтор нового пароля не совпадает — отказ до запроса');
@@ -263,7 +269,7 @@ console.log('='.repeat(68));
 await curField.fill(currentPassword);
 await page.getByLabel('Новый пароль', { exact: true }).fill(newPassword);
 await page.getByLabel('Повторите новый пароль').fill(newPassword + 'опечатка');
-await page.getByRole('button', { name: 'Сменить пароль' }).last().click();
+await submit.click();
 const mismatchToast = await waitForToast(page, 'не совпадают');
 record('показано «Новый пароль и повтор не совпадают»', Boolean(mismatchToast), mismatchToast || 'тоста нет');
 
@@ -273,7 +279,7 @@ console.log('4. Неверный текущий пароль — отказ от
 console.log('='.repeat(68));
 await curField.fill('заведомо-неверный-пароль');
 await page.getByLabel('Повторите новый пароль').fill(newPassword);
-await page.getByRole('button', { name: 'Сменить пароль' }).last().click();
+await submit.click();
 const wrongToast = await waitForToast(page, 'неверно');
 record('бэкенд отбил неверный текущий пароль', Boolean(wrongToast), wrongToast || 'тоста нет');
 
@@ -282,7 +288,7 @@ console.log('='.repeat(68));
 console.log('5. Верные данные — пароль действительно меняется');
 console.log('='.repeat(68));
 await curField.fill(currentPassword);
-await page.getByRole('button', { name: 'Сменить пароль' }).last().click();
+await submit.click();
 const okToast = await waitForToast(page, 'Пароль изменён');
 record('показано «Пароль изменён»', Boolean(okToast), okToast || 'тоста нет');
 await page.waitForTimeout(500);
