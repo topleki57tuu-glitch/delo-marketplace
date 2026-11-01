@@ -1,6 +1,81 @@
 @import "tailwindcss";
 
 /* ============================================================================
+   Шрифты
+   ----------------------------------------------------------------------------
+   Раздаются с нашего же сервера (public/fonts), а не с Google Fonts:
+   - запрос к fonts.googleapis.com передавал Google (серверы за рубежом)
+     IP-адрес и User-Agent каждого посетителя — лишняя трансграничная
+     передача, которую пришлось бы описывать в политике обработки ПДн;
+   - из России Google Fonts временами грузится медленно: до загрузки текст
+     рисуется системным шрифтом, а потом «прыгает».
+   Файлы — вариативные (одна ось веса вместо пяти файлов) подмножества
+   cyrillic, latin и latin-ext, ровно те, что отдавал Google (кроме latin-ext
+   у Unbounded, см. ниже). По unicode-range браузер качает только нужное:
+   latin-ext Manrope, например, понадобится для знака ₽ (U+20BD). Первые три
+   файла предзагружаются из index.html. Лицензия — SIL OFL 1.1, см.
+   public/fonts/OFL.txt.
+   ========================================================================== */
+/* Manrope — cyrillic */
+@font-face {
+    font-family: "Manrope";
+    font-style: normal;
+    font-weight: 400 800;
+    font-display: swap;
+    src: url("/fonts/manrope-cyrillic.woff2") format("woff2");
+    unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* Manrope — latin */
+@font-face {
+    font-family: "Manrope";
+    font-style: normal;
+    font-weight: 400 800;
+    font-display: swap;
+    src: url("/fonts/manrope-latin.woff2") format("woff2");
+    unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* Manrope — latin-ext */
+@font-face {
+    font-family: "Manrope";
+    font-style: normal;
+    font-weight: 400 800;
+    font-display: swap;
+    src: url("/fonts/manrope-latin-ext.woff2") format("woff2");
+    unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* Unbounded — cyrillic */
+@font-face {
+    font-family: "Unbounded";
+    font-style: normal;
+    font-weight: 600 800;
+    font-display: swap;
+    src: url("/fonts/unbounded-cyrillic.woff2") format("woff2");
+    unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* Unbounded — latin */
+@font-face {
+    font-family: "Unbounded";
+    font-style: normal;
+    font-weight: 600 800;
+    font-display: swap;
+    src: url("/fonts/unbounded-latin.woff2") format("woff2");
+    unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* Unbounded — только знак ₽. Целый latin-ext (166 КБ, ~800 знаков) браузер
+   качал на главной ради одного символа — рубля в ценах. Это подмножество
+   (880 байт) сделано из того же файла: pyftsubset --unicodes=U+20BD
+   --flavor=woff2. Остальная латиница с диакритикой в заголовках редка и
+   берётся из Manrope — следующего шрифта в --font-display. */
+@font-face {
+    font-family: "Unbounded";
+    font-style: normal;
+    font-weight: 600 800;
+    font-display: swap;
+    src: url("/fonts/unbounded-rub.woff2") format("woff2");
+    unicode-range: U+20BD;
+}
+
+/* ============================================================================
    Токены темы
    ========================================================================== */
 @theme {
@@ -488,6 +563,207 @@
         }
 
         .page-subtitle {
+            color: var(--color-slate-400);
+        }
+    }
+}
+
+/* ============================================================================
+   Юридические документы (/legal/*)
+   Типографика для длинного текста: разметка документов — простые h2/p/ul,
+   без классов на каждом элементе, чтобы текст было легко править.
+   ========================================================================== */
+@layer components {
+    .legal-doc {
+        color: var(--color-slate-700);
+        font-size: 0.9375rem;
+        line-height: 1.7;
+    }
+
+    .legal-doc h2 {
+        margin-top: 2.25rem;
+        font-size: 1.125rem;
+        line-height: 1.5rem;
+        font-weight: 800;
+        letter-spacing: -0.01em;
+        color: var(--color-slate-900);
+        scroll-margin-top: 5.5rem;
+    }
+
+    .legal-doc h3 {
+        font-size: 1rem;
+        font-weight: 700;
+        color: var(--color-slate-900);
+    }
+
+    .legal-doc p,
+    .legal-doc ul,
+    .legal-doc ol,
+    .legal-doc dl {
+        margin-top: 0.75rem;
+    }
+
+    .legal-doc ul {
+        list-style: disc;
+        padding-left: 1.25rem;
+    }
+
+    .legal-doc ol {
+        list-style: decimal;
+        padding-left: 1.5rem;
+    }
+
+    .legal-doc li + li {
+        margin-top: 0.375rem;
+    }
+
+    .legal-doc li::marker {
+        color: var(--color-slate-400);
+    }
+
+    .legal-doc a {
+        color: var(--color-accent);
+        font-weight: 600;
+        text-decoration: underline;
+        text-decoration-color: rgba(79, 70, 229, 0.35);
+        text-underline-offset: 3px;
+    }
+
+    .legal-doc a:hover {
+        text-decoration-color: currentColor;
+    }
+
+    .legal-doc strong {
+        font-weight: 700;
+        color: var(--color-slate-900);
+    }
+
+    .legal-doc code {
+        padding: 0.0625rem 0.375rem;
+        border-radius: 0.375rem;
+        background-color: var(--color-slate-100);
+        font-size: 0.8125rem;
+    }
+
+    .legal-lead {
+        font-size: 1.0625rem;
+        color: var(--color-slate-600);
+    }
+
+    .legal-num {
+        font-weight: 700;
+        color: var(--color-slate-900);
+        font-variant-numeric: tabular-nums;
+    }
+
+    /* Незаполненный реквизит: должен бросаться в глаза владельцу сайта,
+       а не сливаться с текстом. */
+    .legal-req {
+        padding: 0 0.3125rem;
+        border-radius: 0.375rem;
+        background-color: var(--color-amber-100);
+        color: var(--color-amber-900);
+        font-weight: 600;
+        box-decoration-break: clone;
+        -webkit-box-decoration-break: clone;
+    }
+
+    .legal-purpose {
+        margin-top: 1rem;
+        padding: 1rem 1.25rem;
+        border: 1px solid var(--color-slate-200);
+        border-radius: var(--radius-card);
+        background-color: #fff;
+    }
+
+    .legal-purpose dl,
+    .legal-requisites {
+        display: grid;
+        gap: 0.5rem;
+    }
+
+    .legal-purpose dl > div,
+    .legal-requisites > div {
+        display: grid;
+        gap: 0.125rem;
+    }
+
+    .legal-purpose dt,
+    .legal-requisites dt {
+        font-size: 0.75rem;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: var(--color-slate-500);
+    }
+
+    .legal-purpose p {
+        margin-top: 0.75rem;
+        font-size: 0.875rem;
+        color: var(--color-slate-600);
+    }
+
+    .legal-requisites {
+        padding: 1rem 1.25rem;
+        border-radius: var(--radius-card);
+        background-color: var(--color-slate-100);
+    }
+
+    @media (min-width: 640px) {
+        .legal-purpose dl > div,
+        .legal-requisites > div {
+            grid-template-columns: 8.5rem minmax(0, 1fr);
+            gap: 1rem;
+        }
+
+        .legal-purpose dt,
+        .legal-requisites dt {
+            padding-top: 0.25rem;
+        }
+    }
+
+    @media (prefers-color-scheme: dark) {
+        .legal-doc {
+            color: var(--color-slate-300);
+        }
+
+        .legal-doc h2,
+        .legal-doc h3,
+        .legal-doc strong,
+        .legal-num {
+            color: #fff;
+        }
+
+        .legal-doc a {
+            color: var(--color-indigo-300);
+            text-decoration-color: rgba(165, 180, 252, 0.4);
+        }
+
+        .legal-doc code {
+            background-color: var(--color-slate-800);
+        }
+
+        .legal-lead,
+        .legal-purpose p {
+            color: var(--color-slate-400);
+        }
+
+        .legal-req {
+            background-color: rgba(245, 158, 11, 0.2);
+            color: var(--color-amber-200);
+        }
+
+        .legal-purpose {
+            background-color: var(--color-slate-900);
+            border-color: var(--color-slate-800);
+        }
+
+        .legal-requisites {
+            background-color: var(--color-slate-900);
+        }
+
+        .legal-purpose dt,
+        .legal-requisites dt {
             color: var(--color-slate-400);
         }
     }
