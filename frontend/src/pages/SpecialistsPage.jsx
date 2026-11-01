@@ -170,7 +170,7 @@ export default function SpecialistsPage({ user, onOpenAuth }) {
                   )}
 
                   <div className="text-[11px] text-slate-400">
-                    {s.city ? <><IconPin /> ${s.city}</> : <><IconPin /> Город не указан</>}
+                    {s.city ? <><IconPin /> {s.city}</> : <><IconPin /> Город не указан</>}
                   </div>
                 </button>
               );

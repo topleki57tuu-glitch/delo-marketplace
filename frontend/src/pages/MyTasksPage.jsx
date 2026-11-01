@@ -17,9 +17,24 @@ const FILTERS = [
   { id: 'all',       label: 'Все' },
 ];
 
+// «2026-11-08 11:23:53.514187» → «8 нояб. 2026, 11:23». Раньше дата
+// выводилась как есть, прямо из API, с микросекундами.
+function toDate(iso) {
+  if (!iso) return null;
+  const d = new Date(String(iso).replace(' ', 'T'));
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
 function formatDate(iso) {
-  if (!iso) return '';
-  return iso.slice(0, 16).replace('T', ' ');
+  const d = toDate(iso);
+  if (!d) return iso || '';
+  return d.toLocaleString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+function formatDay(iso) {
+  const d = toDate(iso);
+  if (!d) return iso || '';
+  return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
 }
 
 export default function MyTasksPage({ onOpenAuth }) {
@@ -196,7 +211,7 @@ export default function MyTasksPage({ onOpenAuth }) {
                     ) : (
                       <span><IconBriefcase /> Заказчик: <b>{t.counterparty_name || '—'}</b></span>
                     )}
-                    {t.deadline && <span><IconCalendar /> до {t.deadline}</span>}
+                    {t.deadline && <span><IconCalendar /> до {formatDay(t.deadline)}</span>}
                   </div>
 
                   {t.created_at && (

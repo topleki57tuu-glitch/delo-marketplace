@@ -2,7 +2,12 @@
 <html lang="ru">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <!-- Иконки. Раньше здесь стоял /vite.svg, которого в public нет, — у вкладки
+         не было значка вовсе. -->
+    <link rel="icon" href="/favicon.ico" sizes="32x32" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
     <!-- Шрифты темы. Раньше здесь были только preconnect, а сама таблица
@@ -21,12 +26,27 @@
 
     <!-- Apple mobile web app -->
     <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="ДЕЛО">
 
     <!-- Описание -->
-    <meta name="description" content="ДЕЛО - маркетплейс услуг и задач. Найдите исполнителя или получите заказы." />
+    <meta name="description" content="Найдите специалиста для любой задачи: ремонт, уборка, IT, дизайн, доставка. Оплата через безопасную сделку — деньги переходят исполнителю только после приёмки работы." />
 
-    <title>ДЕЛО - Маркетплейс услуг</title>
+    <!-- Превью ссылки в Telegram, VK, WhatsApp. Адрес картинки абсолютный:
+         относительный путь часть соцсетей не понимает. Домен — дело.online
+         в punycode. Исходник картинки — brand/og-image.svg. -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="ДЕЛО" />
+    <meta property="og:locale" content="ru_RU" />
+    <meta property="og:title" content="ДЕЛО — найдите специалиста для любой задачи" />
+    <meta property="og:description" content="Услуги и товары с безопасной сделкой: эскроу, арбитраж споров, проверенные исполнители." />
+    <meta property="og:image" content="https://xn--d1acsm.online/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="ДЕЛО — найдите специалиста для любой задачи. Безопасная сделка, эскроу, арбитраж споров" />
+    <meta name="twitter:card" content="summary_large_image" />
+
+    <title>ДЕЛО — найдите специалиста для любой задачи</title>
   </head>
   <body>
     <div id="root"></div>

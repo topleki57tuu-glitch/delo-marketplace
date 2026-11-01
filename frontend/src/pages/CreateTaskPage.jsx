@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import CityInput from '../components/CityInput';
 import { ImageUploader } from '../components/ImageUploader';
 import { AITaskAssistant } from '../components/AITaskAssistant';
@@ -25,7 +25,9 @@ export default function CreateTaskPage({ user, token, onOpenAuth, onTaskCreated 
   const navigate = useNavigate();
   const { addToast } = useToast();
 
-  const [title, setTitle] = useState('');
+  // ?title= приходит из поиска на главной: «Что нужно сделать?» → сюда.
+  const [searchParams] = useSearchParams();
+  const [title, setTitle] = useState(() => (searchParams.get('title') || '').slice(0, 200));
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState('development');
   const [budget, setBudget] = useState('');

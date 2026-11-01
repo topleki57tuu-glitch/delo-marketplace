@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useProductsStore } from '../store/productsStore';
 import './ProductsPage.css';
-import { IconRecycle, IconCatAuto, IconCatClothing, IconCatElectronics, IconCatHobby, IconCatHome, IconCatKids, IconCatOther, IconBox, IconCheck, IconPin, IconProducts, IconSearch } from '../components/icons.jsx';
+import { IconRecycle, IconCatAuto, IconCatClothing, IconCatElectronics, IconCatHobby, IconCatHome, IconCatKids, IconCatOther, IconBox, IconCheck, IconPin, IconProducts, IconSearch, IconFilter } from '../components/icons.jsx';
 
 const PRODUCT_CATEGORIES = [
   { id: 'electronics', label: 'Электроника', icon: <IconCatElectronics /> },
@@ -20,6 +20,8 @@ const PRODUCT_CONDITIONS = [
 ];
 
 export default function ProductsPage() {
+  // На телефоне фильтры занимали весь первый экран — прячем их за кнопкой.
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const navigate = useNavigate();
   const { products, loading, filters, setFilters, fetchProducts } = useProductsStore();
 
@@ -61,7 +63,12 @@ export default function ProductsPage() {
   return (
     <div className="products-page">
       <div className="products-header">
-        <h1><IconProducts /> Маркетплейс товаров</h1>
+        <div>
+          <h1>Товары</h1>
+          <p className="products-subtitle">
+            Покупка через безопасную сделку: продавец получит деньги после того, как вы подтвердите получение.
+          </p>
+        </div>
         <button
           className="btn btn-primary"
           onClick={() => navigate('/create-product')}
@@ -81,8 +88,20 @@ export default function ProductsPage() {
         <button type="submit" className="btn"><IconSearch /> Найти</button>
       </form>
 
+      <div className="products-layout">
+      <button
+        type="button"
+        className="filters-toggle"
+        aria-expanded={filtersOpen}
+        onClick={() => setFiltersOpen((v) => !v)}
+      >
+        <IconFilter /> Фильтры
+        {(filters.category || filters.condition || filters.city || filters.price_min || filters.price_max) && (
+          <span className="filters-dot" aria-label="есть активные фильтры" />
+        )}
+      </button>
       {/* Фильтры */}
-      <div className="filters-section">
+      <aside className={`filters-section ${filtersOpen ? 'is-open' : ''}`} aria-label="Фильтры">
         <div className="filter-group">
           <h3>Категории</h3>
           <div className="category-buttons">
@@ -150,8 +169,9 @@ export default function ProductsPage() {
             />
           </div>
         </div>
-      </div>
+      </aside>
 
+      <div className="products-results">
       {/* Список товаров */}
       {loading ? (
         <div className="loading">
@@ -186,7 +206,7 @@ export default function ProductsPage() {
                   <div className="no-image"><IconBox /></div>
                 )}
                 <div className={`product-condition-badge ${product.condition}`}>
-                  {product.condition === 'new' ? '🆕 Новое' : <><IconRecycle /> Б/У</>}
+                  {product.condition === 'new' ? 'Новое' : <><IconRecycle size={12} /> Б/У</>}
                 </div>
               </div>
 
@@ -215,6 +235,8 @@ export default function ProductsPage() {
           ))}
         </div>
       )}
+      </div>
+      </div>
     </div>
   );
 }
