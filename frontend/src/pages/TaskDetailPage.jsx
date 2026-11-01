@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useToast } from '../components/Toast';
+import { taskCategoryLabel } from '../constants/categories.js';
 import { IconCheck, IconOnline, IconStarEmpty, IconCalendar, IconJustice, IconMessages, IconPin, IconQuestion, IconStar, IconUser, IconWarning } from '../components/icons.jsx';
 
 export default function TaskDetailPage({ user, token, onOpenAuth, onOpenChat, onOpenPublicProfile }) {
@@ -297,10 +298,10 @@ export default function TaskDetailPage({ user, token, onOpenAuth, onOpenChat, on
             <div>
               <div className="flex flex-wrap items-center gap-2 mb-2">
                 <span className="px-3 py-1 rounded-full text-xs font-semibold bg-indigo-50 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300">
-                  {task.category}
+                  {taskCategoryLabel(task.category)}
                 </span>
                 <span
-                  className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                  className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold ${
                     task.status === 'open'
                       ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
                       : task.status === 'in_progress'
@@ -327,7 +328,7 @@ export default function TaskDetailPage({ user, token, onOpenAuth, onOpenChat, on
 
             <div className="text-left sm:text-right">
               <span className="text-xs text-slate-400 block mb-0.5">Бюджет</span>
-              <span className="text-2xl sm:text-3xl font-extrabold text-emerald-600 dark:text-emerald-400">
+              <span className="text-2xl sm:text-3xl font-extrabold text-emerald-600 dark:text-emerald-400 whitespace-nowrap">
                 {task.budget ? `${task.budget.toLocaleString('ru-RU')} ₽` : 'По договоренности'}
               </span>
             </div>
@@ -504,12 +505,17 @@ export default function TaskDetailPage({ user, token, onOpenAuth, onOpenChat, on
         {/* Responses List */}
         <div className="bg-white dark:bg-slate-800 p-6 sm:p-8 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm space-y-4">
           <h3 className="text-xl font-bold text-slate-900 dark:text-white flex items-center justify-between">
-            <span>Отклики специалистов ({responses.length})</span>
+            <span>Отклики специалистов ({isAuthor ? responses.length : (task.responses_count ?? responses.length)})</span>
           </h3>
 
+          {/* Чужие отклики видит только автор задания (бэкенд отдаёт остальным
+              лишь их собственный). Поэтому «Будьте первым» показываем, только
+              когда откликов действительно нет. */}
           {responses.length === 0 ? (
             <div className="py-8 text-center text-slate-400 text-sm">
-              Пока нет откликов. Будьте первым, кто откликнется!
+              {!isAuthor && (task.responses_count || 0) > 0
+                ? 'Отклики видит только заказчик. Откликнитесь, чтобы предложить свою цену и сроки.'
+                : 'Пока нет откликов. Будьте первым, кто откликнется!'}
             </div>
           ) : (
             <div className="space-y-4 divide-y divide-slate-100 dark:divide-slate-700/50">
