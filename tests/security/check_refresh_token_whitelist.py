@@ -37,8 +37,9 @@ sys.path.insert(0, str(ROOT / "backend"))
 A_EMAIL = "tmp_whitelist_a@delo.ru"
 A2_EMAIL = "tmp_whitelist_a2@delo.ru"
 B2_EMAIL = "tmp_whitelist_b2@delo.ru"
+C_EMAIL = "tmp_whitelist_c@delo.ru"
 A_PASSWORD = "TempWhitelist1"
-TEMP_EMAILS = (A_EMAIL, A2_EMAIL, B2_EMAIL)
+TEMP_EMAILS = (A_EMAIL, A2_EMAIL, B2_EMAIL, C_EMAIL)
 
 results = []
 
@@ -69,12 +70,32 @@ def me(access_token):
         return exc.code, exc.read().decode("utf-8", "replace")
 
 
-def login(email, password):
+def login(email, password, ip=None):
     data = urllib.parse.urlencode({"username": email, "password": password}).encode()
+    headers = {"Content-Type": "application/x-www-form-urlencoded"}
+    # Свой адрес — свой счётчик лимита на вход (10 за 5 минут на IP): наборы
+    # в CI идут подряд с одного 127.0.0.1. Бэкенд верит X-Forwarded-For
+    # только от приватного адреса, а 127.0.0.1 таким и считается.
+    if ip:
+        headers["X-Forwarded-For"] = ip
     req = urllib.request.Request(
         BASE + "/login",
         data=data,
-        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        headers=headers,
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            return resp.status, json.loads(resp.read())
+    except urllib.error.HTTPError as exc:
+        return exc.code, exc.read().decode("utf-8", "replace")
+
+
+def post_json(path, payload):
+    req = urllib.request.Request(
+        BASE + path,
+        data=json.dumps(payload).encode(),
+        headers={"Content-Type": "application/json"},
         method="POST",
     )
     try:
@@ -230,6 +251,48 @@ def main() -> int:
                 status == 401,
                 f"HTTP {status}, id переиспользован: {reused}",
             )
+
+        # 7–11. Путь фронтенда: /auth/refresh и /auth/logout, токен в теле.
+        #      /refresh берёт токен из строки запроса, а её пишут журналы
+        #      прокси; к тому же production-nginx /refresh не проксирует —
+        #      сессия во фронтенде не продлевалась вовсе.
+        make_user(C_EMAIL)
+        st_laptop, laptop = login(C_EMAIL, A_PASSWORD, ip="203.0.113.71")
+        st_phone, phone = login(C_EMAIL, A_PASSWORD, ip="203.0.113.72")
+        if st_laptop != 200 or st_phone != 200:
+            record("подготовка проверки /auth/*", False, f"логин: {st_laptop}/{st_phone}")
+        else:
+            laptop, phone = laptop["refresh_token"], phone["refresh_token"]
+
+            status, body = post_json("/auth/refresh", {"refresh_token": laptop})
+            access = body.get("access_token", "") if isinstance(body, dict) else ""
+            ok = status == 200 and body.get("role") == "customer"
+            if ok:
+                me_status, me_body = me(access)
+                ok = me_status == 200 and me_body.get("email") == C_EMAIL
+            record("/auth/refresh: токен в теле выдаёт рабочий access-токен", ok, f"HTTP {status}")
+
+            status, _ = post_json("/auth/logout", {"refresh_token": laptop})
+            record("/auth/logout отвечает 200", status == 200, f"HTTP {status}")
+            status, _ = post_json("/auth/refresh", {"refresh_token": laptop})
+            record("после /auth/logout этот refresh-токен не работает", status == 401, f"HTTP {status}")
+            status, _ = post_json("/auth/refresh", {"refresh_token": phone})
+            record("выход на одном устройстве не закрывает сессию на другом", status == 200, f"HTTP {status}")
+
+            # Выйти должно получаться всегда: повторно, с мусором, с access-
+            # токеном вместо refresh. Последний ничего не отзывает.
+            statuses = [
+                post_json("/auth/logout", {"refresh_token": laptop})[0],
+                post_json("/auth/logout", {"refresh_token": "не-токен"})[0],
+                post_json("/auth/logout", {"refresh_token": access or "x"})[0],
+            ]
+            phone_alive = post_json("/auth/refresh", {"refresh_token": phone})[0] == 200
+            record(
+                "/auth/logout с мёртвым, мусорным или access-токеном — 200 и без побочных эффектов",
+                statuses == [200, 200, 200] and phone_alive,
+                f"HTTP {statuses}, второе устройство живо: {phone_alive}",
+            )
+
     finally:
         # Убираем за собой: временный аккаунт не должен пережить проверку.
         purge()

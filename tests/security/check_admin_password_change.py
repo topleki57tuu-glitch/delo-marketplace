@@ -216,10 +216,16 @@ def main():
         json_body={"current_password": current, "new_password": new_password},
     )
     record("смена пароля принята", status == 200, f"HTTP {status} {body.strip()[:120]}")
-    revoked = json.loads(body).get("revoked_sessions") if status == 200 else None
+    changed = json.loads(body) if status == 200 else {}
+    revoked = changed.get("revoked_sessions")
 
     status, body = call("POST", "/refresh", params={"refresh_token": refresh})
     record("старый refresh-токен после смены отклонён", status == 401, f"HTTP {status}")
+
+    # Само устройство, где сменили пароль, остаётся в аккаунте: ответ несёт
+    # новую пару токенов, выданную после отзыва старых.
+    status, _ = call("POST", "/auth/refresh", json_body={"refresh_token": changed.get("refresh_token") or "-"})
+    record("новый refresh-токен из ответа смены пароля работает", status == 200, f"HTTP {status}")
 
     status, _ = login("admin@delo.ru", current)
     record("старый пароль больше не пускает", status == 401, f"HTTP {status}")
