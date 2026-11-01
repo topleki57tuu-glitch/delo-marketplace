@@ -158,10 +158,14 @@ SENTRY_TRACES_SAMPLE_RATE=0.1  # 10% трейсов для performance monitorin
 
 ### Проверка Sentry:
 ```bash
-curl -X POST http://localhost:8000/test-sentry-error
+cd backend
+python -c "import sentry_sdk; from app.core.error_tracking import init_sentry; init_sentry('backend'); sentry_sdk.capture_message('ДЕЛО: проверка Sentry'); sentry_sdk.flush()"
 ```
 
-В Sentry должна появиться тестовая ошибка с контекстом (user_id, request).
+В Sentry должно появиться сообщение «ДЕЛО: проверка Sentry». Персональные
+данные (IP, заголовки, тела запросов, аргументы задач, почта в тексте ошибок)
+не отправляются — см. `backend/app/core/error_tracking.py`. На VPS —
+UPDATE_GUIDE.md, раздел «Мониторинг и уведомления».
 
 ---
 
@@ -286,10 +290,10 @@ alembic upgrade head
 - [ ] Настроить Sentry DSN
 - [ ] Настроить SMTP для сброса паролей
 - [ ] Добавить реальные email в `ADMIN_EMAILS`
-- [ ] Настроить backup PostgreSQL (cron)
+- [ ] Настроить backup PostgreSQL (cron) — на VPS: `bash scripts/backup.sh --install`
 - [ ] Настроить SSL сертификаты (Let's Encrypt)
 - [ ] Настроить firewall (открыть только 80, 443)
-- [ ] Настроить мониторинг (Prometheus + Grafana)
+- [ ] Настроить мониторинг — на VPS: `bash scripts/monitor.sh --setup` и внешняя проверка (UPDATE_GUIDE.md)
 - [ ] Провести нагрузочное тестирование
 - [ ] Настроить CDN для статики (опционально)
 
