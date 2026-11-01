@@ -15,6 +15,9 @@ echo.
 echo   Useful once inside:
 echo     cd /opt/delo-marketplace
 echo     bash scripts/vps_update.sh           - update app
+echo     bash scripts/vps_update.sh --rollback - back to previous version
+echo     bash scripts/monitor.sh              - check site, disk, backups
+echo     bash scripts/backup.sh --list        - list backups
 echo     docker compose -f docker-compose.prod.yml ps
 echo     docker compose -f docker-compose.prod.yml logs -f backend
 echo     nano .env                            - edit secrets
