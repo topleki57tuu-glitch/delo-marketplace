@@ -19,3 +19,18 @@ export const TASK_CATEGORY_LABELS = {
 };
 
 export const taskCategoryLabel = (id) => TASK_CATEGORY_LABELS[id] || id || 'Другое';
+
+/** Подписи категорий товаров — общие для витрины, карточки и форм. */
+export const PRODUCT_CATEGORY_LABELS = {
+  electronics: 'Электроника',
+  clothing: 'Одежда и обувь',
+  home: 'Товары для дома',
+  hobby: 'Хобби и развлечения',
+  auto: 'Авто и мото',
+  kids: 'Детские товары',
+  other: 'Другое',
+};
+
+export const PRODUCT_CATEGORY_OPTIONS = Object.entries(PRODUCT_CATEGORY_LABELS).map(([id, label]) => ({ id, label }));
+
+export const productCategoryLabel = (id) => PRODUCT_CATEGORY_LABELS[id] || 'Другое';
