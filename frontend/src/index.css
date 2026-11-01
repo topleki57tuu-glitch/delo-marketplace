@@ -1,5 +1,15 @@
 @import "tailwindcss";
 
+/* Тёмная тема включается классом .dark на <html>, а не только настройкой
+   системы: так её можно выбрать переключателем в шапке и в подвале
+   («Светлая», «Тёмная», «Как в системе»). Класс ставит маленький скрипт в
+   index.html ещё до первой отрисовки — без вспышки светлой страницы, — а
+   дальше им управляет utils/theme.js. Разметку менять не пришлось: все
+   ~900 dark:-классов работают как раньше, поменялось только условие.
+   Класс .dark можно ставить и на часть страницы — так тёмная шапка разделов
+   (.hero-band) получает тёмные поля, карточки и кнопки в любой теме. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 /* ============================================================================
    Шрифты
    ----------------------------------------------------------------------------
@@ -160,7 +170,7 @@
     backdrop-filter: blur(14px) saturate(140%);
     -webkit-backdrop-filter: blur(14px) saturate(140%);
 
-    @media (prefers-color-scheme: dark) {
+    @variant dark {
         background-color: rgba(30, 41, 59, 0.97);
         border-color: var(--color-slate-700);
     }
@@ -203,33 +213,41 @@
         -moz-osx-font-smoothing: grayscale;
     }
 
-    @media (prefers-color-scheme: dark) {
-        body {
-            background-color: var(--color-slate-950);
-            color: var(--color-slate-100);
-        }
+    :root {
+        color-scheme: light;
+    }
 
-        /* Токены поверхности и текста в тёмной теме.
-           Переопределяем сами переменные, а не дублируем dark:-варианты
-           в разметке: утилиты Tailwind ссылаются на var(--color-*), поэтому
-           одного переопределения здесь хватает всем ~170 местам сразу.
-           Без этого блока text-ink остался бы тёмно-синим на тёмном фоне —
-           то есть нечитаемым: в разметке у этих классов dark:-вариантов нет,
-           потому что раньше значения менялись именно здесь. */
-        :root {
-            --color-surface: #1e293b;        /* slate-800 */
-            --color-surface-2: #1e293b;
-            --color-elevated: #334155;       /* slate-700 — hover заметнее покоя */
-            --color-border: #334155;
-            --color-border-bright: #475569;  /* slate-600 */
-            --color-ink: #f1f5f9;            /* slate-100 */
-            --color-muted: #94a3b8;          /* slate-400 */
-            --color-accent-bright: #818cf8;  /* indigo-400: в темноте «ярче» = светлее */
-            --color-success: #34d399;
-            --color-danger: #f87171;
-            --color-warning: #fbbf24;        /* amber-400 — на тёмном фоне */
-            --color-accent-glow: rgba(99, 102, 241, 0.45);
-        }
+    .dark body,
+    body.dark {
+        background-color: var(--color-slate-950);
+        color: var(--color-slate-100);
+    }
+
+    /* Токены поверхности и текста в тёмной теме.
+       Переопределяем сами переменные, а не дублируем dark:-варианты
+       в разметке: утилиты Tailwind ссылаются на var(--color-*), поэтому
+       одного переопределения здесь хватает всем ~170 местам сразу.
+       Без этого блока text-ink остался бы тёмно-синим на тёмном фоне —
+       то есть нечитаемым: в разметке у этих классов dark:-вариантов нет,
+       потому что раньше значения менялись именно здесь.
+       Селектор — .dark, а не :root.dark: переменные наследуются, и тот же
+       блок перекрашивает любую часть страницы с классом dark.
+       color-scheme — чтобы нативные элементы (значок календаря в поле даты,
+       выпадающие списки, полосы прокрутки) тоже стали тёмными. */
+    .dark {
+        color-scheme: dark;
+        --color-surface: #1e293b;        /* slate-800 */
+        --color-surface-2: #1e293b;
+        --color-elevated: #334155;       /* slate-700 — hover заметнее покоя */
+        --color-border: #334155;
+        --color-border-bright: #475569;  /* slate-600 */
+        --color-ink: #f1f5f9;            /* slate-100 */
+        --color-muted: #94a3b8;          /* slate-400 */
+        --color-accent-bright: #818cf8;  /* indigo-400: в темноте «ярче» = светлее */
+        --color-success: #34d399;
+        --color-danger: #f87171;
+        --color-warning: #fbbf24;        /* amber-400 — на тёмном фоне */
+        --color-accent-glow: rgba(99, 102, 241, 0.45);
     }
 
     /* Видимый фокус для клавиатуры — на всех интерактивных элементах */
@@ -266,16 +284,14 @@
         background-clip: content-box;
     }
 
-    @media (prefers-color-scheme: dark) {
-        ::-webkit-scrollbar-thumb {
-            background: var(--color-slate-700);
-            background-clip: content-box;
-        }
+    :where(.dark, .dark *)::-webkit-scrollbar-thumb {
+        background: var(--color-slate-700);
+        background-clip: content-box;
+    }
 
-        ::-webkit-scrollbar-thumb:hover {
-            background: var(--color-slate-600);
-            background-clip: content-box;
-        }
+    :where(.dark, .dark *)::-webkit-scrollbar-thumb:hover {
+        background: var(--color-slate-600);
+        background-clip: content-box;
     }
 
     /* Поля ввода: аккуратный автозаполнитель в светлой теме.
@@ -291,15 +307,13 @@
         transition: background-color 5000s ease-in-out 0s;
     }
 
-    @media (prefers-color-scheme: dark) {
-        input:-webkit-autofill,
-        input:-webkit-autofill:hover,
-        input:-webkit-autofill:focus,
-        select:-webkit-autofill,
-        textarea:-webkit-autofill {
-            -webkit-text-fill-color: var(--color-slate-100);
-            -webkit-box-shadow: 0 0 0 1000px var(--color-slate-800) inset;
-        }
+    .dark input:-webkit-autofill,
+    .dark input:-webkit-autofill:hover,
+    .dark input:-webkit-autofill:focus,
+    .dark select:-webkit-autofill,
+    .dark textarea:-webkit-autofill {
+        -webkit-text-fill-color: var(--color-slate-100);
+        -webkit-box-shadow: 0 0 0 1000px var(--color-slate-800) inset;
     }
 
     /* Тач-таргеты на мобильных */
@@ -452,6 +466,16 @@
         box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.14);
     }
 
+    /* Подпись над полем формы */
+    .field-label {
+        display: block;
+        margin-bottom: 0.375rem;
+        color: var(--color-slate-700);
+        font-size: 0.875rem;
+        line-height: 1.25rem;
+        font-weight: 600;
+    }
+
     /* Чипсы фильтров */
     .chip {
         display: inline-flex;
@@ -509,62 +533,379 @@
     }
 
     /* Тёмная тема для компонентов */
-    @media (prefers-color-scheme: dark) {
-        .card {
-            background-color: var(--color-slate-800);
-            border-color: var(--color-slate-700);
+    .dark .card {
+        background-color: var(--color-slate-800);
+        border-color: var(--color-slate-700);
+    }
+
+    .dark .card-hover:hover {
+        border-color: var(--color-slate-600);
+    }
+
+    .dark .btn-secondary {
+        background-color: var(--color-slate-800);
+        border-color: var(--color-slate-700);
+        color: var(--color-slate-200);
+    }
+
+    .dark .btn-secondary:hover:not(:disabled) {
+        background-color: var(--color-slate-700);
+        border-color: var(--color-slate-600);
+    }
+
+    .dark .btn-ghost {
+        color: var(--color-slate-300);
+    }
+
+    .dark .btn-ghost:hover:not(:disabled) {
+        background-color: var(--color-slate-800);
+        color: #fff;
+    }
+
+    .dark .input,
+    .dark .select,
+    .dark .textarea {
+        background-color: var(--color-slate-800);
+        border-color: var(--color-slate-700);
+        color: var(--color-slate-100);
+    }
+
+    .dark .field-label {
+        color: var(--color-slate-200);
+    }
+
+    .dark .chip {
+        background-color: var(--color-slate-800);
+        border-color: var(--color-slate-700);
+        color: var(--color-slate-300);
+    }
+
+    .dark .chip:hover {
+        border-color: var(--color-slate-600);
+        color: #fff;
+    }
+
+    .dark .chip-active {
+        background-color: rgba(79, 70, 229, 0.18);
+        border-color: var(--color-accent);
+        color: #a5b4fc;
+    }
+
+    .dark .page-title {
+        color: #fff;
+    }
+
+    .dark .page-subtitle {
+        color: var(--color-slate-400);
+    }
+}
+
+/* ============================================================================
+   Шапка раздела (PageHero) — тёмная полоса с сеткой, как на главной
+   ----------------------------------------------------------------------------
+   Раньше у каждой страницы был свой заголовок: где-то жирный Manrope, где-то
+   тонкий 300-й, у товаров — отдельные CSS-файлы со своими отступами. Теперь
+   все разделы начинаются одинаково: тёмная полоса со свечением и сеткой,
+   «таблетка»-рубрика, заголовок шрифтом Unbounded, подзаголовок и действия.
+   Полоса тёмная в обеих темах, поэтому в разметке у неё стоит класс dark:
+   поля, карточки и кнопки внутри неё сами берут тёмные стили.
+   ========================================================================== */
+@layer components {
+    .hero-band {
+        position: relative;
+        isolation: isolate;
+        overflow: hidden;
+        background-color: var(--color-slate-950);
+        color: #fff;
+        /* Сверху вниз: сетка 44px (2 слоя), три пятна света — индиго слева,
+           голубое справа, янтарное снизу. Те же значения, что в hero главной,
+           только прозрачность слоёв перенесена в цвета. */
+        background-image:
+            linear-gradient(rgba(255, 255, 255, 0.06) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(255, 255, 255, 0.06) 1px, transparent 1px),
+            radial-gradient(60% 90% at 12% 0%, rgba(99, 102, 241, 0.42), transparent 70%),
+            radial-gradient(45% 80% at 92% 20%, rgba(14, 165, 233, 0.2), transparent 70%),
+            radial-gradient(55% 70% at 60% 120%, rgba(245, 158, 11, 0.15), transparent 70%);
+        background-size: 44px 44px, 44px 44px, 100% 100%, 100% 100%, 100% 100%;
+        background-position: center top;
+    }
+
+    /* В тёмной теме страница почти того же цвета, что полоса, —
+       отделяем её тонкой линией. */
+    :root.dark .hero-band {
+        box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.08);
+    }
+
+    .hero-eyebrow {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.25rem 0.75rem;
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        border-radius: 9999px;
+        background-color: rgba(255, 255, 255, 0.05);
+        color: var(--color-indigo-100);
+        font-size: 0.75rem;
+        line-height: 1rem;
+        font-weight: 600;
+    }
+
+    .hero-title {
+        font-family: var(--font-display);
+        font-weight: 700;
+        font-size: 1.625rem;
+        line-height: 1.2;
+        letter-spacing: -0.02em;
+        color: #fff;
+        overflow-wrap: anywhere;
+    }
+
+    .hero-subtitle {
+        margin-top: 0.75rem;
+        max-width: 42rem;
+        color: var(--color-slate-300);
+        font-size: 0.9375rem;
+        line-height: 1.6;
+    }
+
+    @media (min-width: 640px) {
+        .hero-title {
+            font-size: 2.125rem;
         }
 
-        .card-hover:hover {
-            border-color: var(--color-slate-600);
+        .hero-subtitle {
+            font-size: 1rem;
         }
+    }
 
-        .btn-secondary {
-            background-color: var(--color-slate-800);
-            border-color: var(--color-slate-700);
-            color: var(--color-slate-200);
+    @media (min-width: 1024px) {
+        .hero-title {
+            font-size: 2.5rem;
         }
+    }
 
-        .btn-secondary:hover:not(:disabled) {
-            background-color: var(--color-slate-700);
-        }
+    .hero-title-sm {
+        font-size: 1.375rem;
+        line-height: 1.25;
+    }
 
-        .btn-ghost {
-            color: var(--color-slate-300);
+    @media (min-width: 640px) {
+        .hero-title-sm {
+            font-size: 1.75rem;
         }
+    }
 
-        .btn-ghost:hover:not(:disabled) {
-            background-color: var(--color-slate-800);
-            color: #fff;
-        }
+    .hero-back {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.375rem;
+        color: var(--color-slate-300);
+        font-size: 0.875rem;
+        font-weight: 600;
+        transition: color 0.16s ease;
+    }
 
-        .input,
-        .select,
-        .textarea {
-            background-color: var(--color-slate-800);
-            border-color: var(--color-slate-700);
-            color: var(--color-slate-100);
-        }
+    .hero-back:hover {
+        color: #fff;
+    }
 
-        .chip {
-            background-color: var(--color-slate-800);
-            border-color: var(--color-slate-700);
-            color: var(--color-slate-300);
-        }
+    /* Акцентная кнопка — янтарная, как «Создать задание» на главной */
+    .btn-cta {
+        background-color: var(--color-amber-400);
+        color: var(--color-slate-950);
+        box-shadow: 0 8px 20px -10px rgba(245, 158, 11, 0.7);
+    }
 
-        .chip-active {
-            background-color: rgba(79, 70, 229, 0.18);
-            border-color: var(--color-accent);
-            color: #a5b4fc;
-        }
+    .btn-cta:hover:not(:disabled) {
+        background-color: var(--color-amber-300);
+    }
 
-        .page-title {
-            color: #fff;
-        }
+    /* Кнопка на тёмной полосе: полупрозрачная, со светлой рамкой */
+    .btn-glass {
+        background-color: rgba(255, 255, 255, 0.07);
+        border-color: rgba(255, 255, 255, 0.16);
+        color: #fff;
+    }
 
-        .page-subtitle {
-            color: var(--color-slate-400);
-        }
+    .btn-glass:hover:not(:disabled) {
+        background-color: rgba(255, 255, 255, 0.14);
+        border-color: rgba(255, 255, 255, 0.28);
+    }
+
+    .btn-glass-active,
+    .btn-glass-active:hover:not(:disabled) {
+        background-color: #fff;
+        border-color: #fff;
+        color: var(--color-slate-900);
+    }
+
+    /* Вкладки на тёмной полосе: «Я заказчик / Я исполнитель»,
+       «Покупки / Продажи», разделы профиля */
+    .hero-tabs {
+        display: flex;
+        gap: 0.25rem;
+        width: fit-content;
+        max-width: 100%;
+        padding: 0.25rem;
+        overflow-x: auto;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 1rem;
+        background-color: rgba(255, 255, 255, 0.05);
+        scrollbar-width: none;
+    }
+
+    .hero-tabs::-webkit-scrollbar {
+        display: none;
+    }
+
+    .hero-tab {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+        flex-shrink: 0;
+        padding: 0.5rem 1rem;
+        border-radius: 0.75rem;
+        color: var(--color-slate-300);
+        font-size: 0.875rem;
+        font-weight: 700;
+        white-space: nowrap;
+        cursor: pointer;
+        transition: background-color 0.16s ease, color 0.16s ease;
+    }
+
+    .hero-tab:hover {
+        color: #fff;
+        background-color: rgba(255, 255, 255, 0.06);
+    }
+
+    .hero-tab-active,
+    .hero-tab-active:hover {
+        background-color: #fff;
+        color: var(--color-slate-900);
+        box-shadow: 0 6px 16px -8px rgba(2, 6, 23, 0.6);
+    }
+
+    .hero-tab-count {
+        min-width: 1.25rem;
+        padding: 0 0.375rem;
+        border-radius: 9999px;
+        background-color: rgba(255, 255, 255, 0.12);
+        font-size: 0.6875rem;
+        line-height: 1.25rem;
+        text-align: center;
+    }
+
+    .hero-tab-active .hero-tab-count {
+        background-color: var(--color-indigo-600);
+        color: #fff;
+    }
+
+    /* «Таблетки» на тёмной полосе — категории, быстрые фильтры */
+    .hero-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.375rem;
+        flex-shrink: 0;
+        padding: 0.375rem 0.75rem;
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        border-radius: 9999px;
+        background-color: rgba(255, 255, 255, 0.05);
+        color: var(--color-slate-200);
+        font-size: 0.75rem;
+        line-height: 1rem;
+        font-weight: 600;
+        white-space: nowrap;
+        cursor: pointer;
+        transition: background-color 0.16s ease, border-color 0.16s ease, color 0.16s ease;
+    }
+
+    .hero-chip:hover {
+        background-color: rgba(255, 255, 255, 0.1);
+        color: #fff;
+    }
+
+    .hero-chip-active,
+    .hero-chip-active:hover {
+        background-color: #fff;
+        border-color: #fff;
+        color: var(--color-slate-900);
+    }
+
+    /* Строка поиска на тёмной полосе — белая плашка, как на главной */
+    .hero-search {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.375rem;
+        border-radius: 1rem;
+        background-color: #fff;
+        color: var(--color-slate-900);
+        box-shadow: 0 25px 50px -12px rgba(30, 27, 75, 0.45);
+    }
+
+    .hero-search-input {
+        flex: 1 1 auto;
+        min-width: 0;
+        padding: 0.625rem 0.25rem;
+        background: transparent;
+        color: var(--color-slate-900);
+        font-size: 0.9375rem;
+        outline: none;
+    }
+
+    .hero-search-input::placeholder {
+        color: var(--color-slate-400);
+    }
+
+    /* Плашка с цифрами в шапке раздела: баланс, рейтинг, счётчики */
+    .hero-stat {
+        padding: 0.75rem 1rem;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 1rem;
+        background-color: rgba(255, 255, 255, 0.05);
+    }
+
+    .hero-stat-label {
+        color: var(--color-slate-400);
+        font-size: 0.75rem;
+        font-weight: 600;
+    }
+
+    .hero-stat-value {
+        margin-top: 0.125rem;
+        color: #fff;
+        font-family: var(--font-display);
+        font-size: 1.125rem;
+        font-weight: 700;
+        letter-spacing: -0.01em;
+        white-space: nowrap;
+    }
+
+    /* Подзаголовок блока внутри страницы — как «Категории / Чем можем помочь»
+       на главной: маленькая рубрика капсом и жирный заголовок. */
+    .section-eyebrow {
+        color: var(--color-indigo-600);
+        font-size: 0.75rem;
+        font-weight: 700;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+    }
+
+    .section-title {
+        color: var(--color-slate-900);
+        font-size: 1.25rem;
+        line-height: 1.75rem;
+        font-weight: 800;
+        letter-spacing: -0.02em;
+    }
+
+    .dark .section-eyebrow {
+        color: var(--color-indigo-400);
+    }
+
+    .dark .section-title {
+        color: #fff;
     }
 }
 
@@ -722,49 +1063,47 @@
         }
     }
 
-    @media (prefers-color-scheme: dark) {
-        .legal-doc {
-            color: var(--color-slate-300);
-        }
+    .dark .legal-doc {
+        color: var(--color-slate-300);
+    }
 
-        .legal-doc h2,
-        .legal-doc h3,
-        .legal-doc strong,
-        .legal-num {
-            color: #fff;
-        }
+    .dark .legal-doc h2,
+    .dark .legal-doc h3,
+    .dark .legal-doc strong,
+    .dark .legal-num {
+        color: #fff;
+    }
 
-        .legal-doc a {
-            color: var(--color-indigo-300);
-            text-decoration-color: rgba(165, 180, 252, 0.4);
-        }
+    .dark .legal-doc a {
+        color: var(--color-indigo-300);
+        text-decoration-color: rgba(165, 180, 252, 0.4);
+    }
 
-        .legal-doc code {
-            background-color: var(--color-slate-800);
-        }
+    .dark .legal-doc code {
+        background-color: var(--color-slate-800);
+    }
 
-        .legal-lead,
-        .legal-purpose p {
-            color: var(--color-slate-400);
-        }
+    .dark .legal-lead,
+    .dark .legal-purpose p {
+        color: var(--color-slate-400);
+    }
 
-        .legal-req {
-            background-color: rgba(245, 158, 11, 0.2);
-            color: var(--color-amber-200);
-        }
+    .dark .legal-req {
+        background-color: rgba(245, 158, 11, 0.2);
+        color: var(--color-amber-200);
+    }
 
-        .legal-purpose {
-            background-color: var(--color-slate-900);
-            border-color: var(--color-slate-800);
-        }
+    .dark .legal-purpose {
+        background-color: var(--color-slate-900);
+        border-color: var(--color-slate-800);
+    }
 
-        .legal-requisites {
-            background-color: var(--color-slate-900);
-        }
+    .dark .legal-requisites {
+        background-color: var(--color-slate-900);
+    }
 
-        .legal-purpose dt,
-        .legal-requisites dt {
-            color: var(--color-slate-400);
-        }
+    .dark .legal-purpose dt,
+    .dark .legal-requisites dt {
+        color: var(--color-slate-400);
     }
 }
