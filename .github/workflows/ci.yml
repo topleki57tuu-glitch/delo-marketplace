@@ -217,7 +217,8 @@ jobs:
             security/check_withdrawal_review \
             security/check_celery_tasks \
             security/check_payment_amount_credit \
-            security/check_audit_fixes
+            security/check_audit_fixes \
+            security/check_admin_access
           do
             echo "::group::$suite"
             python "tests/${suite}.py"

@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
 from jose import JWTError, jwt
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.config import settings
@@ -14,6 +15,7 @@ from app.core.security import (
     hash_password, verify_password, create_access_token, create_refresh_token,
     verify_refresh_token, rate_limit, oauth2_scheme,
     check_account_login_allowed, record_login_failure, clear_login_failures,
+    find_user_by_email, is_reserved_admin_email, normalize_email,
 )
 from app.core.csrf import verify_csrf
 from app.core.money import claim
@@ -36,13 +38,21 @@ def register(user: UserCreate, request: Request, db: Session = Depends(get_db), 
     # здесь, а не только в форме, — API доступен и в обход фронтенда.
     if not (user.accept_terms and user.pd_consent):
         raise HTTPException(400, CONSENT_REQUIRED_MESSAGE)
-    if db.query(User).filter(User.email == user.email).first():
+    # Почту храним в каноническом виде и дубли ищем без учёта регистра:
+    # иначе рядом с admin@delo.ru регистрировался «Admin@delo.ru».
+    email = normalize_email(user.email)
+    # Адреса модераторов с сайта не регистрируются: почта здесь не
+    # подтверждается, и права модератора получил бы тот, кто первым занял
+    # адрес из ADMIN_EMAILS. Аккаунт модератора заводится на сервере
+    # (scripts/admin_access.sh). Ответ тот же, что для занятого адреса, —
+    # по нему не узнать, какие адреса принадлежат модераторам.
+    if is_reserved_admin_email(email) or db.query(User).filter(func.lower(User.email) == email).first():
         raise HTTPException(400, "Email уже зарегистрирован в системе")
     # Роль задаём сами: в схеме её больше нет, иначе клиент мог бы сразу
     # зарегистрироваться специалистом в обход обычного переключения роли.
     now = datetime.utcnow()
     new_user = User(
-        email=user.email,
+        email=email,
         hashed_password=hash_password(user.password),
         role=UserRole.customer,
         name=user.name,
@@ -78,7 +88,7 @@ def login(request: Request, form: OAuth2PasswordRequestForm = Depends(), db: Ses
     # смотрим счётчик неудач по самой учётной записи.
     check_account_login_allowed(request, form.username)
 
-    user = db.query(User).filter(User.email == form.username).first()
+    user = find_user_by_email(db, form.username)
     if not user:
         # bcrypt всё равно считаем: без этого ответ для несуществующего email
         # приходил на ~200 мс быстрее, и по времени перебирались
@@ -228,7 +238,7 @@ def forgot_password(req: ForgotPasswordRequest, request: Request, db: Session = 
     start_time = time.time()
 
     rate_limit(request, "forgot", limit=5, window_sec=3600)
-    user = db.query(User).filter(User.email == req.email).first()
+    user = find_user_by_email(db, req.email)
     dev_reset_link = None
     if user:
         token = secrets.token_urlsafe(32)
@@ -243,7 +253,7 @@ def forgot_password(req: ForgotPasswordRequest, request: Request, db: Session = 
         link = f"{frontend_url}/reset?token={token}"
         try:
             send_email_sync(
-                req.email,
+                user.email,
                 "ДЕЛО — сброс пароля",
                 f"Здравствуйте!\n\nКто-то запросил сброс пароля на маркетплейсе ДЕЛО.\n"
                 f"Ссылка действительна 1 час:\n\n{link}\n\n"
