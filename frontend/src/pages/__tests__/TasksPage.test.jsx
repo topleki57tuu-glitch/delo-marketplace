@@ -84,6 +84,19 @@ describe('TasksPage', () => {
     expect(screen.queryByText('Сверстать лендинг')).not.toBeInTheDocument();
   });
 
+  it('город фильтрует список, удалённые задания остаются', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    // Раньше поле города получало чужие пропсы и фильтр не срабатывал вовсе
+    await user.type(screen.getByPlaceholderText(/Все города/), 'Казань');
+
+    expect(screen.getByText('Написать тексты')).toBeInTheDocument();
+    expect(screen.getByText('Сверстать лендинг')).toBeInTheDocument();
+    expect(screen.queryByText('Собрать шкаф')).not.toBeInTheDocument();
+    expect(screen.getByText('2')).toBeInTheDocument();
+  });
+
   it('пустой результат показывает подсказку, а не пустой экран', async () => {
     const user = userEvent.setup();
     renderPage();

@@ -7,6 +7,7 @@ import {
     IconParty,
     IconStar,
 } from './icons.jsx';
+import { parseServerDate } from '../utils/format.js';
 
 // Используем относительные пути (проксируются vite → backend:8000)
 // Значения — компоненты иконок, а не строки: они рендерятся как JSX-потомок
@@ -140,7 +141,7 @@ export const NotificationBell = ({ token }) => {
                                                 {n.text}
                                             </p>
                                             <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1 font-semibold uppercase tracking-wide">
-                                                {new Date(n.created_at).toLocaleString('ru-RU', {
+                                                {parseServerDate(n.created_at)?.toLocaleString('ru-RU', {
                                                     day: '2-digit', month: 'short',
                                                     hour: '2-digit', minute: '2-digit'
                                                 })}

@@ -1,12 +1,26 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { useProductsStore } from '../store/productsStore';
 import { useAuthStore } from '../store/authStore';
-import './MyProductsPage.css';
-import { IconCheck, IconClose, IconRecycle, IconTrash, IconWarning, IconBox, IconEdit, IconEye } from '../components/icons.jsx';
+import { useToast } from '../components/Toast';
+import { useDialogs } from '../components/DialogProvider.jsx';
+import PageHero, { PageBody } from '../components/PageHero.jsx';
+import { AuthRequired, Spinner, StateCard } from '../components/PageState.jsx';
+import { productCategoryLabel } from '../constants/categories.js';
+import { IconRecycle, IconTrash, IconBox, IconEdit, IconEye, IconPin, IconProducts } from '../components/icons.jsx';
 
-export default function MyProductsPage() {
-  const navigate = useNavigate();
+const STATUS = {
+  active: { label: 'Активен', cls: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300' },
+  sold_out: { label: 'Нет в наличии', cls: 'bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300' },
+  removed: { label: 'Снят с продажи', cls: 'bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300' },
+};
+
+// Цена приходит с бэкенда в рублях (см. комментарий в ProductsPage).
+const formatPrice = (priceInRubles) => (priceInRubles ?? 0).toLocaleString('ru-RU') + ' ₽';
+
+export default function MyProductsPage({ onOpenAuth }) {
+  const { addToast } = useToast();
+  const dialogs = useDialogs();
   const { myProducts, loading, fetchMyProducts, deleteProduct } = useProductsStore();
   const { user, token } = useAuthStore();
 
@@ -16,207 +30,146 @@ export default function MyProductsPage() {
     if (token && user) {
       // Отдельный эндпоинт: отдаёт все товары продавца, включая распроданные
       // и снятые с продажи. Общий список содержит только активные позиции.
-      fetchMyProducts(token);
+      fetchMyProducts(token).catch(() => {});
     }
   }, [token, user]);
 
+  const total = myProducts.length;
+  const active = myProducts.filter((p) => p.status === 'active').length;
+  const inStock = myProducts.reduce((sum, p) => sum + (p.stock || 0), 0);
+
+  const hero = (
+    <PageHero
+      eyebrow="Кабинет продавца"
+      icon={IconProducts}
+      title="Мои товары"
+      subtitle="Все ваши объявления — активные, распроданные и снятые с продажи."
+      actions={
+        user && token ? (
+          <>
+            <Link to="/products" className="btn btn-glass">К каталогу</Link>
+            <Link to="/create-product" className="btn btn-cta">+ Добавить товар</Link>
+          </>
+        ) : null
+      }
+    >
+      {user && token && total > 0 && (
+        <div className="grid grid-cols-3 gap-2 sm:gap-3 max-w-xl">
+          <div className="hero-stat">
+            <p className="hero-stat-label">Всего</p>
+            <p className="hero-stat-value">{total}</p>
+          </div>
+          <div className="hero-stat">
+            <p className="hero-stat-label">Активных</p>
+            <p className="hero-stat-value">{active}</p>
+          </div>
+          <div className="hero-stat">
+            <p className="hero-stat-label">В наличии, шт.</p>
+            <p className="hero-stat-value">{inStock}</p>
+          </div>
+        </div>
+      )}
+    </PageHero>
+  );
+
   if (!user || !token) {
     return (
-      <div className="my-products-page">
-        <div className="auth-required">
-          <h2>Требуется авторизация</h2>
-          <button className="btn btn-primary" onClick={() => navigate('/login')}>
-            Войти
-          </button>
-        </div>
-      </div>
+      <>
+        {hero}
+        <PageBody>
+          <AuthRequired onOpenAuth={onOpenAuth} text="Войдите, чтобы управлять своими товарами." />
+        </PageBody>
+      </>
     );
   }
 
-  // Цена приходит с бэкенда в рублях (см. комментарий в ProductsPage).
-  const formatPrice = (priceInRubles) => {
-    return (priceInRubles ?? 0).toLocaleString('ru-RU') + ' ₽';
-  };
-
   const handleDelete = async (productId, productTitle) => {
-    if (!confirm(`Удалить товар "${productTitle}"?`)) return;
+    const ok = await dialogs.confirm({
+      title: 'Удалить товар?',
+      message: `«${productTitle}» пропадёт из каталога.`,
+      confirmText: 'Удалить',
+      danger: true,
+    });
+    if (!ok) return;
 
-    setDeleting({ ...deleting, [productId]: true });
+    setDeleting((prev) => ({ ...prev, [productId]: true }));
     try {
       await deleteProduct(productId, token);
-      alert('Товар удалён');
+      addToast('Товар удалён', 'success');
     } catch (error) {
-      alert(error.message || 'Ошибка при удалении');
+      addToast(error.message || 'Ошибка при удалении', 'error');
     } finally {
-      setDeleting({ ...deleting, [productId]: false });
-    }
-  };
-
-  const getStatusLabel = (status) => {
-    switch (status) {
-      case 'active':
-        return { label: 'Активен', color: '#28a745', icon: <IconCheck /> };
-      case 'sold_out':
-        return { label: 'Нет в наличии', color: '#ffc107', icon: <IconWarning /> };
-      case 'removed':
-        return { label: 'Удалён', color: '#6c757d', icon: <IconClose /> };
-      default:
-        return { label: status, color: '#999', icon: '•' };
+      setDeleting((prev) => ({ ...prev, [productId]: false }));
     }
   };
 
   return (
-    <div className="my-products-page">
-      <div className="page-header">
-        <h1>Мои товары</h1>
-        <div className="header-actions">
-          <button
-            className="btn btn-primary"
-            onClick={() => navigate('/create-product')}
-          >
-            + Добавить товар
-          </button>
-          <button
-            className="btn btn-secondary"
-            onClick={() => navigate('/products')}
-          >
-            К каталогу
-          </button>
-        </div>
-      </div>
-
-      {loading ? (
-        <div className="loading">Загрузка товаров...</div>
-      ) : myProducts.length === 0 ? (
-        <div className="no-products">
-          <div className="empty-state">
-            <div className="empty-icon"><IconBox /></div>
-            <h2>У вас пока нет товаров</h2>
-            <p>Создайте первый товар и начните продавать</p>
-            <button
-              className="btn btn-primary btn-large"
-              onClick={() => navigate('/create-product')}
-            >
-              + Добавить товар
-            </button>
-          </div>
-        </div>
-      ) : (
-        <>
-          <div className="products-stats">
-            <div className="stat-card">
-              <div className="stat-value">{myProducts.length}</div>
-              <div className="stat-label">Всего товаров</div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-value">
-                {myProducts.filter(p => p.status === 'active').length}
-              </div>
-              <div className="stat-label">Активных</div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-value">
-                {myProducts.reduce((sum, p) => sum + (p.stock || 0), 0)}
-              </div>
-              <div className="stat-label">В наличии</div>
-            </div>
-          </div>
-
-          <div className="products-list">
+    <>
+      {hero}
+      <PageBody>
+        {loading ? (
+          <Spinner label="Загрузка товаров..." />
+        ) : total === 0 ? (
+          <StateCard dashed icon={IconBox} title="У вас пока нет товаров" text="Создайте первое объявление — оплата покупателя будет защищена безопасной сделкой.">
+            <Link to="/create-product" className="btn btn-primary">+ Добавить товар</Link>
+          </StateCard>
+        ) : (
+          <div className="grid gap-4 lg:grid-cols-2">
             {myProducts.map((product) => {
-              const status = getStatusLabel(product.status);
-              const isDeleting = deleting[product.id];
-
+              const status = STATUS[product.status] || { label: product.status, cls: STATUS.removed.cls };
+              const isDeleting = !!deleting[product.id];
               return (
-                <div key={product.id} className="product-item">
-                  <div
-                    className="product-image"
-                    onClick={() => navigate(`/products/${product.id}`)}
+                <article key={product.id} className="flex gap-4 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-4">
+                  <Link
+                    to={`/products/${product.id}`}
+                    tabIndex={-1}
+                    aria-hidden="true"
+                    className="relative w-24 h-24 sm:w-28 sm:h-28 shrink-0 rounded-xl overflow-hidden bg-gradient-to-br from-indigo-50 to-slate-100 dark:from-slate-700/60 dark:to-slate-800 flex items-center justify-center text-indigo-300 dark:text-slate-500"
                   >
-                    {product.first_image ? (
-                      <img src={product.first_image} alt={product.title} />
-                    ) : (
-                      <div className="no-image"><IconBox /></div>
+                    {product.first_image ? <img src={product.first_image} alt="" className="w-full h-full object-cover" /> : <IconBox size={30} />}
+                    {product.condition !== 'new' && (
+                      <span className="absolute bottom-1.5 left-1.5 inline-flex items-center gap-0.5 rounded-full bg-white/95 dark:bg-slate-900/90 px-1.5 py-0.5 text-[10px] font-bold text-amber-700 dark:text-amber-300">
+                        <IconRecycle size={10} /> Б/У
+                      </span>
                     )}
-                    <div className="product-condition">
-                      {product.condition === 'new' ? '🆕' : <IconRecycle />}
-                    </div>
-                  </div>
+                  </Link>
 
-                  <div className="product-details">
-                    <div className="product-header">
-                      <h3
-                        className="product-title"
-                        onClick={() => navigate(`/products/${product.id}`)}
-                      >
+                  <div className="min-w-0 flex-1 flex flex-col">
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <Link to={`/products/${product.id}`} className="font-bold text-slate-900 dark:text-white leading-snug line-clamp-2 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors">
                         {product.title}
-                      </h3>
-                      <div
-                        className="product-status"
-                        style={{ color: status.color }}
-                      >
-                        <span>{status.icon}</span>
-                        <span>{status.label}</span>
-                      </div>
+                      </Link>
+                      <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-bold ${status.cls}`}>{status.label}</span>
                     </div>
-
-                    <p className="product-description">
-                      {product.description.length > 150
-                        ? product.description.substring(0, 150) + '...'
-                        : product.description}
+                    <p className="mt-1 font-display font-bold text-slate-900 dark:text-white">{formatPrice(product.price)}</p>
+                    <p className="mt-1 text-xs text-slate-500 dark:text-slate-400 flex flex-wrap gap-x-3 gap-y-1">
+                      <span>{productCategoryLabel(product.category)}</span>
+                      <span>В наличии: {product.stock} шт.</span>
+                      <span className="inline-flex items-center gap-1"><IconPin size={12} /> {product.city || 'Город не указан'}</span>
                     </p>
-
-                    <div className="product-meta">
-                      <div className="meta-item">
-                        <span className="meta-label">Цена:</span>
-                        <span className="meta-value price">
-                          {formatPrice(product.price)}
-                        </span>
-                      </div>
-                      <div className="meta-item">
-                        <span className="meta-label">В наличии:</span>
-                        <span className="meta-value">{product.stock} шт.</span>
-                      </div>
-                      <div className="meta-item">
-                        <span className="meta-label">Категория:</span>
-                        <span className="meta-value">{product.category}</span>
-                      </div>
-                      <div className="meta-item">
-                        <span className="meta-label">Город:</span>
-                        <span className="meta-value">
-                          {product.city || 'Не указан'}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="product-actions">
-                      <button
-                        className="btn btn-secondary btn-sm"
-                        onClick={() => navigate(`/products/${product.id}`)}
-                      >
+                    <div className="mt-auto pt-3 flex flex-wrap gap-2">
+                      <Link to={`/products/${product.id}`} className="btn btn-secondary !px-3 !py-1.5 !text-xs">
                         <IconEye /> Просмотр
-                      </button>
-                      <button
-                        className="btn btn-secondary btn-sm"
-                        onClick={() => navigate(`/products/${product.id}/edit`)}
-                      >
+                      </Link>
+                      <Link to={`/products/${product.id}/edit`} className="btn btn-secondary !px-3 !py-1.5 !text-xs">
                         <IconEdit /> Редактировать
-                      </button>
+                      </Link>
                       <button
-                        className="btn btn-danger btn-sm"
+                        type="button"
+                        className="btn btn-ghost !px-3 !py-1.5 !text-xs text-red-600 dark:text-red-400"
                         onClick={() => handleDelete(product.id, product.title)}
                         disabled={isDeleting}
                       >
-                        {isDeleting ? 'Удаление...' : <><IconTrash /> Удалить</>}
+                        <IconTrash /> {isDeleting ? 'Удаление...' : 'Удалить'}
                       </button>
                     </div>
                   </div>
-                </div>
+                </article>
               );
             })}
           </div>
-        </>
-      )}
-    </div>
+        )}
+      </PageBody>
+    </>
   );
 }

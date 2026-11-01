@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useSearchParams, useNavigate, Link } from 'react-router-dom';
 import { useToast } from '../components/Toast';
-import { IconKey } from '../components/icons.jsx';
+import { IconCheck, IconKey } from '../components/icons.jsx';
 
 export default function ResetPasswordPage() {
   const [searchParams] = useSearchParams();
@@ -43,66 +43,70 @@ export default function ResetPasswordPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex items-center justify-center p-4">
-      <div className="bg-white dark:bg-slate-800 p-8 rounded-3xl max-w-md w-full space-y-5 shadow-xl border border-slate-200 dark:border-slate-700">
-        <div className="text-center space-y-2">
-          <div className="text-4xl"><IconKey /></div>
-          <h1 className="text-xl font-bold text-slate-900 dark:text-white">Новый пароль</h1>
+    <section className="hero-band min-h-[75vh] flex items-center">
+      <div className="relative w-full max-w-md mx-auto px-4 py-12 sm:py-16">
+        <div className="text-center mb-6">
+          <span className="hero-eyebrow mb-4">
+            <IconKey size={14} className="text-amber-300" /> Восстановление доступа
+          </span>
+          <h1 className="hero-title">Новый пароль</h1>
         </div>
 
-        {!token ? (
-          <div className="text-center space-y-4">
-            <p className="text-sm text-slate-500 dark:text-slate-400">
-              Ссылка недействительна — в ней нет токена. Запросите сброс пароля заново.
-            </p>
-            <Link to="/" className="inline-block px-4 py-2 bg-indigo-600 text-white rounded-xl font-medium">
-              На главную
-            </Link>
-          </div>
-        ) : done ? (
-          <div className="text-center space-y-4">
-            <p className="text-sm text-emerald-600 dark:text-emerald-400 font-semibold">
-              Пароль успешно обновлён. Теперь вы можете войти с новым паролем.
-            </p>
-            <button
-              onClick={() => navigate('/')}
-              className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl text-sm"
-            >
-              Перейти ко входу
-            </button>
-          </div>
-        ) : (
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="block text-xs font-semibold text-slate-500 mb-1">Новый пароль (от 8 символов)</label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-500"
-                required
-              />
+        <div className="card p-6 sm:p-8 shadow-pop">
+          {!token ? (
+            <div className="text-center space-y-5">
+              <p className="text-sm text-slate-600 dark:text-slate-300">
+                Ссылка недействительна — в ней нет токена. Запросите сброс пароля заново.
+              </p>
+              <Link to="/" className="btn btn-primary w-full">
+                На главную
+              </Link>
             </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-500 mb-1">Повторите пароль</label>
-              <input
-                type="password"
-                value={confirm}
-                onChange={(e) => setConfirm(e.target.value)}
-                className="w-full p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-500"
-                required
-              />
+          ) : done ? (
+            <div className="text-center space-y-5">
+              <span className="mx-auto w-12 h-12 rounded-full flex items-center justify-center bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-300">
+                <IconCheck size={22} />
+              </span>
+              <p className="text-sm text-emerald-700 dark:text-emerald-300 font-semibold">
+                Пароль успешно обновлён. Теперь вы можете войти с новым паролем.
+              </p>
+              <button type="button" onClick={() => navigate('/')} className="btn btn-primary w-full">
+                Перейти ко входу
+              </button>
             </div>
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full py-3.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-bold rounded-xl text-sm shadow-md transition-all"
-            >
-              {loading ? 'Сохранение...' : 'Сохранить новый пароль'}
-            </button>
-          </form>
-        )}
+          ) : (
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <label htmlFor="reset-password" className="field-label">Новый пароль (от 8 символов)</label>
+                <input
+                  id="reset-password"
+                  type="password"
+                  autoComplete="new-password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="input"
+                  required
+                />
+              </div>
+              <div>
+                <label htmlFor="reset-confirm" className="field-label">Повторите пароль</label>
+                <input
+                  id="reset-confirm"
+                  type="password"
+                  autoComplete="new-password"
+                  value={confirm}
+                  onChange={(e) => setConfirm(e.target.value)}
+                  className="input"
+                  required
+                />
+              </div>
+              <button type="submit" disabled={loading} className="btn btn-primary w-full !py-3">
+                {loading ? 'Сохранение...' : 'Сохранить новый пароль'}
+              </button>
+            </form>
+          )}
+        </div>
       </div>
-    </div>
+    </section>
   );
 }
