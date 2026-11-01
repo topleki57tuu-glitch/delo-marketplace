@@ -31,6 +31,7 @@ from sqlalchemy import text
 from app.core.config import settings
 from app.core.database import SessionLocal, engine, Base
 from app.core.security import hash_password, encrypt_sensitive, generate_strong_password
+from app.core.legal import LEGAL_VERSION
 from app.models import (
     User, Task, Response, Message, Review, Notification, Transaction,
     UserRole, TaskStatus, TaskCategory, TransactionType,
@@ -125,6 +126,12 @@ def main():
             verified=verified,
             response_credits=credits,
             last_seen=NOW - timedelta(minutes=last_seen_min) if last_seen_min is not None else None,
+            # Демо-аккаунты — вымышленные люди, «согласие» у них условное.
+            # Без него окно с документами перекрывало бы демо и браузерные
+            # тесты в CI, которые входят под этими аккаунтами.
+            terms_accepted_at=NOW,
+            pd_consent_at=NOW,
+            legal_version=LEGAL_VERSION,
         )
         if skills:
             u.skills = "[" + ", ".join(f'"{s}"' for s in skills) + "]"
