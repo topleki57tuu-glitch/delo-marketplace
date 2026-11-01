@@ -113,7 +113,7 @@ export default function TaskDetailPage({ user, token, onOpenAuth, onOpenChat, on
   };
 
   const handleAssignSpecialist = async (specialistId) => {
-    if (!window.confirm('Назначить этого специалиста исполнителем? Средства (бюджет) будут заморожены через безопасную сделку.')) {
+    if (!window.confirm('Назначить этого специалиста исполнителем? Средства (бюджет) будут заморожены через безопасную сделку.\n\nПосле назначения отменить заказ в одностороннем порядке нельзя: если что-то пойдёт не так, откройте спор — арбитр решит, вернуть ли деньги.')) {
       return;
     }
 
@@ -441,6 +441,13 @@ export default function TaskDetailPage({ user, token, onOpenAuth, onOpenChat, on
                 </button>
               )}
             </div>
+            {isAuthor && task.status === 'in_progress' && (
+              <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
+                Заказ в работе нельзя отменить в одностороннем порядке. Если исполнитель не справляется,
+                откройте спор — арбитр решит, вернуть ли вам замороженные средства. Исполнитель может сам
+                отказаться от заказа, тогда деньги вернутся автоматически.
+              </p>
+            )}
           </div>
         </div>
 
