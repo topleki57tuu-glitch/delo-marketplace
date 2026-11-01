@@ -174,8 +174,11 @@ export const AvatarUploader = ({ token, currentAvatar, onUploadSuccess }) => {
 export const PortfolioUploader = ({ token, portfolio = [], onUploadSuccess, onDelete }) => {
     return (
         <div>
-            <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
-                <h3 className="text-sm font-bold uppercase tracking-wider text-slate-400">Портфолио</h3>
+            <div className="flex items-start justify-between mb-4 gap-3 flex-wrap">
+                <div>
+                    <p className="section-eyebrow">Портфолио</p>
+                    <h3 className="section-title mt-1">Примеры работ</h3>
+                </div>
                 <ImageUploader
                     token={token}
                     endpoint="/upload/image"
@@ -192,7 +195,7 @@ export const PortfolioUploader = ({ token, portfolio = [], onUploadSuccess, onDe
                             <div key={idx} className="relative group">
                                 <img
                                     src={url}
-                                    alt={`Portfolio ${idx + 1}`}
+                                    alt={`Работа ${idx + 1}`}
                                     className="w-full h-32 object-cover rounded-xl border border-slate-200 dark:border-slate-700 cursor-pointer"
                                     onClick={() => window.open(url, '_blank')}
                                 />

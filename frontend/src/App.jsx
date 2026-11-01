@@ -17,10 +17,11 @@ import { LegalConsentFields } from './components/LegalConsentFields.jsx';
 
 // Eager load только критичные страницы
 import HomePage from './pages/HomePage';
-import { IconAdmin, IconBox, IconBriefcase, IconClose, IconMessages, IconReceipt, IconTasks, IconTools, IconUser } from './components/icons.jsx';
+import { IconAdmin, IconBox, IconBriefcase, IconClose, IconMessages, IconReceipt, IconTasks, IconTools, IconUser, IconWallet } from './components/icons.jsx';
 import Logo from './components/Logo.jsx';
 import SiteFooter from './components/SiteFooter.jsx';
 import ScrollManager from './components/ScrollManager.jsx';
+import { ThemeSwitch, ThemeToggle } from './components/ThemeToggle.jsx';
 
 // Lazy load остальные страницы (загружаются по требованию)
 const TasksPage = lazy(() => import('./pages/TasksPage'));
@@ -120,6 +121,10 @@ function NavigationBar({ user, token, onOpenAuth, onOpenChatsDrawer, onLogout })
 
         {/* Действия */}
         <div className="flex items-center gap-2 sm:gap-3">
+          {/* Переключатель темы. Гостю на самых узких экранах (<390px) он не
+              помещается рядом с «Вход» и «Регистрация» — там тема выбирается
+              в подвале. */}
+          <ThemeToggle className={user ? '' : 'max-[389px]:hidden'} />
           {token && <NotificationBell token={token} />}
 
           {/* На 768–1023px шапка не вмещает всё сразу: логотип, три ссылки,
@@ -166,10 +171,13 @@ function NavigationBar({ user, token, onOpenAuth, onOpenChatsDrawer, onLogout })
               {menuOpen && (
                 <div
                   role="menu"
-                  className="absolute right-0 mt-2 w-56 p-1.5 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-pop"
+                  className="absolute right-0 mt-2 w-64 p-1.5 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-pop"
                 >
                   <Link to="/profile" className={menuItemClass} onClick={() => setMenuOpen(false)}>
                     <IconUser /> Мой профиль
+                  </Link>
+                  <Link to="/profile?tab=wallet" className={menuItemClass} onClick={() => setMenuOpen(false)}>
+                    <IconWallet /> Кошелёк
                   </Link>
                   <Link to="/my-tasks" className={menuItemClass} onClick={() => setMenuOpen(false)}>
                     <IconTasks /> Мои заказы
@@ -192,6 +200,11 @@ function NavigationBar({ user, token, onOpenAuth, onOpenChatsDrawer, onLogout })
                       <IconAdmin /> Админ-панель
                     </Link>
                   )}
+                  <div className="my-1.5 h-px bg-slate-200 dark:bg-slate-700" />
+                  <div className="px-3 pt-1 pb-2">
+                    <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">Тема</p>
+                    <ThemeSwitch className="w-full" />
+                  </div>
                   <div className="my-1.5 h-px bg-slate-200 dark:bg-slate-700" />
                   <button
                     type="button"
@@ -692,7 +705,6 @@ export default function App() {
                       token={token}
                       onOpenAuth={handleOpenAuth}
                       onOpenChat={(tId) => setDrawerChatTaskId(tId)}
-                      onOpenPublicProfile={(sId) => window.location.assign(`/specialist/${sId}`)}
                     />
                   }
                 />
@@ -743,23 +755,23 @@ export default function App() {
                 />
                 <Route
                   path="/products/:id"
-                  element={<ProductDetailPage />}
+                  element={<ProductDetailPage onOpenAuth={handleOpenAuth} />}
                 />
                 <Route
                   path="/create-product"
-                  element={<CreateProductPage />}
+                  element={<CreateProductPage onOpenAuth={handleOpenAuth} />}
                 />
                 <Route
                   path="/my-orders"
-                  element={<MyOrdersPage />}
+                  element={<MyOrdersPage onOpenAuth={handleOpenAuth} />}
                 />
                 <Route
                   path="/my-products"
-                  element={<MyProductsPage />}
+                  element={<MyProductsPage onOpenAuth={handleOpenAuth} />}
                 />
                 <Route
                   path="/products/:id/edit"
-                  element={<EditProductPage />}
+                  element={<EditProductPage onOpenAuth={handleOpenAuth} />}
                 />
                 <Route
                   path="/disputes"
@@ -794,6 +806,7 @@ export default function App() {
                     <AdminDashboardPage
                       user={user}
                       token={token}
+                      onOpenAuth={handleOpenAuth}
                     />
                   }
                 />

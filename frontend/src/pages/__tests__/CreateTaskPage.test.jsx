@@ -143,6 +143,25 @@ describe('CreateTaskPage', () => {
     expect(payload.images).toBeNull();
   });
 
+  it('город из поля уходит в задание строкой', async () => {
+    const user = userEvent.setup();
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ task_id: 44 }),
+    });
+
+    renderPage();
+    await fillRequired(user);
+    // Раньше поле получало чужие пропсы: введённый город терялся, и в
+    // задание уходил city: null.
+    await user.type(screen.getByPlaceholderText('Выберите город'), 'Казань');
+    await user.click(screen.getByRole('button', { name: /Опубликовать задание/ }));
+
+    await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(1));
+    const payload = JSON.parse(global.fetch.mock.calls[0][1].body);
+    expect(payload.city).toBe('Казань');
+  });
+
   it('ошибка бэкенда показывается текстом бэкенда, задание не считается созданным', async () => {
     const user = userEvent.setup();
     const onTaskCreated = vi.fn();

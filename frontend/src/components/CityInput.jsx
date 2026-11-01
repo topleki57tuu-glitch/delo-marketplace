@@ -194,6 +194,7 @@ export const POPULAR_CITIES = [
  * 4. Полностью поддерживает очистку и сброс.
  */
 export default function CityInput({
+    id,
     value = '',
     onChange,
     placeholder = 'Любой город России (Москва, Казань, Сочи...)',
@@ -260,12 +261,13 @@ export default function CityInput({
                     <IconPin />
                 </span>
                 <input
+                    id={id}
                     type="text"
                     value={searchTerm}
                     onChange={handleInputChange}
                     onFocus={() => setIsOpen(true)}
                     placeholder={placeholder}
-                    className="w-full pl-9 pr-10 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-medium text-slate-900 dark:text-white"
+                    className="input !pl-9 !pr-10"
                 />
                 {allowClear && searchTerm && (
                     <button

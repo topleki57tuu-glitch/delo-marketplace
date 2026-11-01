@@ -1,384 +1,137 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import React, { useEffect, useState } from 'react';
+import { Link, useParams, useNavigate } from 'react-router-dom';
 import { useProductsStore } from '../store/productsStore';
 import { useAuthStore } from '../store/authStore';
-import { ImageUploader } from '../components/ImageUploader';
-import './CreateProductPage.css';
-import { IconCatAuto, IconCatClothing, IconCatElectronics, IconCatHobby, IconCatHome, IconCatKids, IconCatOther, IconDelivery, IconPin, IconRecycle } from '../components/icons.jsx';
+import { useToast } from '../components/Toast';
+import PageHero, { PageBody } from '../components/PageHero.jsx';
+import { AuthRequired, Spinner, StateCard } from '../components/PageState.jsx';
+import ProductForm, { EMPTY_PRODUCT_FORM, formToPayload, productToForm, validateProductForm } from '../components/ProductForm.jsx';
+import { IconEdit, IconWarning } from '../components/icons.jsx';
 
-const PRODUCT_CATEGORIES = [
-  { id: 'electronics', label: 'Электроника' },
-  { id: 'clothing', label: 'Одежда и обувь' },
-  { id: 'home', label: 'Товары для дома' },
-  { id: 'hobby', label: 'Хобби и развлечения' },
-  { id: 'auto', label: 'Авто и мото' },
-  { id: 'kids', label: 'Детские товары' },
-  { id: 'other', label: 'Другое' },
-];
+function parseImages(raw) {
+  if (!raw) return [];
+  try {
+    const list = JSON.parse(raw);
+    return Array.isArray(list) ? list : [];
+  } catch {
+    return [];
+  }
+}
 
-export default function EditProductPage() {
+export default function EditProductPage({ onOpenAuth }) {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { currentProduct, fetchProduct, updateProduct } = useProductsStore();
+  const { addToast } = useToast();
+  const { fetchProduct, updateProduct } = useProductsStore();
   const { token, user } = useAuthStore();
 
-  const [formData, setFormData] = useState({
-    title: '',
-    description: '',
-    category: 'other',
-    condition: 'new',
-    price: '',
-    stock: '1',
-    city: '',
-    delivery_options: 'both',
-  });
-
+  const [formData, setFormData] = useState(EMPTY_PRODUCT_FORM);
   const [images, setImages] = useState([]);
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState({});
-  const [initialLoading, setInitialLoading] = useState(true);
+  // 'loading' | 'ready' | 'missing' | 'forbidden'
+  const [state, setState] = useState('loading');
 
+  // Ждём профиль: раньше проверка владельца шла, пока user ещё не
+  // загрузился, — и владелец получал «Вы не можете редактировать чужой
+  // товар» с переходом на другую страницу.
   useEffect(() => {
-    if (id && token) {
-      fetchProduct(id).then((product) => {
-        if (!product) {
-          alert('Товар не найден');
-          navigate('/my-products');
-          return;
-        }
-
-        if (product.seller_id !== user?.id) {
-          alert('Вы не можете редактировать чужой товар');
-          navigate('/my-products');
-          return;
-        }
-
-        // Заполнить форму данными товара
-        setFormData({
-          title: product.title,
-          description: product.description,
-          category: product.category,
-          condition: product.condition,
-          price: String(product.price), // цена в рублях, как её хранит бэкенд
-          stock: String(product.stock),
-          city: product.city || '',
-          delivery_options: product.delivery_options,
-        });
-
-        // Загрузить изображения
-        try {
-          if (product.images) {
-            const parsedImages = JSON.parse(product.images);
-            if (Array.isArray(parsedImages)) {
-              setImages(parsedImages);
-            }
-          }
-        } catch (e) {
-          console.error('Failed to parse images', e);
-        }
-
-        setInitialLoading(false);
-      }).catch((error) => {
-        alert('Ошибка загрузки товара');
-        navigate('/my-products');
-      });
-    }
-  }, [id, token]);
+    if (!id || !token || !user) return;
+    let alive = true;
+    setState('loading');
+    fetchProduct(id)
+      .then((product) => {
+        if (!alive) return;
+        if (!product) return setState('missing');
+        if (product.seller_id !== user.id) return setState('forbidden');
+        setFormData(productToForm(product));
+        setImages(parseImages(product.images));
+        setState('ready');
+      })
+      .catch(() => alive && setState('missing'));
+    return () => {
+      alive = false;
+    };
+  }, [id, token, user?.id]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
-    if (errors[name]) {
-      setErrors(prev => ({ ...prev, [name]: null }));
-    }
-  };
-
-  const validate = () => {
-    const newErrors = {};
-
-    if (!formData.title.trim() || formData.title.length < 3) {
-      newErrors.title = 'Название должно содержать минимум 3 символа';
-    }
-
-    if (!formData.description.trim() || formData.description.length < 10) {
-      newErrors.description = 'Описание должно содержать минимум 10 символов';
-    }
-
-    const price = parseInt(formData.price);
-    if (!price || price <= 0) {
-      newErrors.price = 'Укажите корректную цену';
-    }
-
-    const stock = parseInt(formData.stock);
-    if (!stock || stock < 1) {
-      newErrors.stock = 'Количество должно быть минимум 1';
-    }
-
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
+    setFormData((prev) => ({ ...prev, [name]: value }));
+    if (errors[name]) setErrors((prev) => ({ ...prev, [name]: null }));
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-
     if (!token) {
-      alert('Войдите в систему');
-      navigate('/login');
+      onOpenAuth?.('login');
       return;
     }
-
-    if (!validate()) {
-      return;
-    }
+    const found = validateProductForm(formData);
+    setErrors(found);
+    if (Object.keys(found).length) return;
 
     setLoading(true);
-
     try {
-      const productData = {
-        title: formData.title.trim(),
-        description: formData.description.trim(),
-        category: formData.category,
-        condition: formData.condition,
-        price: parseInt(formData.price), // в рублях
-        stock: parseInt(formData.stock),
-        city: formData.city.trim() || null,
-        delivery_options: formData.delivery_options,
-        images: images.length > 0 ? JSON.stringify(images) : null,
-      };
-
-      await updateProduct(id, productData, token);
-      alert('Товар успешно обновлён!');
+      await updateProduct(id, formToPayload(formData, images), token);
+      addToast('Изменения сохранены', 'success');
       navigate(`/products/${id}`);
     } catch (error) {
-      alert(error.message || 'Ошибка при обновлении товара');
+      addToast(error.message || 'Ошибка при обновлении товара', 'error');
     } finally {
       setLoading(false);
     }
   };
 
-  if (!user) {
-    return (
-      <div className="create-product-page">
-        <div className="auth-required">
-          <h2>Требуется авторизация</h2>
-          <p>Войдите в систему, чтобы редактировать товары</p>
-          <button className="btn btn-primary" onClick={() => navigate('/login')}>
-            Войти
-          </button>
-        </div>
-      </div>
-    );
-  }
+  const hero = (
+    <PageHero
+      width="medium"
+      size="sm"
+      back={{ to: '/my-products', label: 'Мои товары' }}
+      eyebrow="Редактирование"
+      icon={IconEdit}
+      title="Редактировать товар"
+      subtitle={state === 'ready' ? formData.title : undefined}
+    />
+  );
 
-  if (initialLoading) {
-    return (
-      <div className="create-product-page">
-        <div className="loading">Загрузка товара...</div>
-      </div>
+  let content;
+  if (!token) {
+    content = <AuthRequired onOpenAuth={onOpenAuth} text="Войдите, чтобы редактировать свои товары." />;
+  } else if (!user || state === 'loading') {
+    content = <Spinner label="Загрузка товара..." />;
+  } else if (state === 'missing' || state === 'forbidden') {
+    content = (
+      <StateCard
+        icon={IconWarning}
+        tone="warning"
+        title={state === 'missing' ? 'Товар не найден' : 'Это не ваш товар'}
+        text={state === 'missing' ? 'Возможно, он был удалён.' : 'Редактировать товар может только его продавец.'}
+        className="max-w-xl mx-auto"
+      >
+        <Link to="/my-products" className="btn btn-primary">Мои товары</Link>
+      </StateCard>
+    );
+  } else {
+    content = (
+      <ProductForm
+        formData={formData}
+        onChange={handleChange}
+        images={images}
+        setImages={setImages}
+        errors={errors}
+        submitting={loading}
+        submitLabel="Сохранить изменения"
+        submittingLabel="Сохранение..."
+        onSubmit={handleSubmit}
+        onCancel={() => navigate(`/products/${id}`)}
+      />
     );
   }
 
   return (
-    <div className="create-product-page">
-      <div className="page-header">
-        <button className="btn-back" onClick={() => navigate('/my-products')}>
-          ← Назад к моим товарам
-        </button>
-        <h1>Редактировать товар</h1>
-      </div>
-
-      <form className="product-form" onSubmit={handleSubmit}>
-        {/* Основная информация */}
-        <div className="form-section">
-          <h2>Основная информация</h2>
-
-          <div className="form-group">
-            <label>
-              Название товара <span className="required">*</span>
-            </label>
-            <input
-              type="text"
-              name="title"
-              value={formData.title}
-              onChange={handleChange}
-              placeholder="Например: iPhone 14 Pro 256GB Space Black"
-              maxLength="200"
-              className={errors.title ? 'error' : ''}
-            />
-            {errors.title && <div className="error-message">{errors.title}</div>}
-          </div>
-
-          <div className="form-group">
-            <label>
-              Описание <span className="required">*</span>
-            </label>
-            <textarea
-              name="description"
-              value={formData.description}
-              onChange={handleChange}
-              placeholder="Подробное описание товара: состояние, комплектация, особенности..."
-              rows="6"
-              maxLength="5000"
-              className={errors.description ? 'error' : ''}
-            />
-            {errors.description && <div className="error-message">{errors.description}</div>}
-            <div className="char-count">{formData.description.length} / 5000</div>
-          </div>
-
-          <div className="form-row">
-            <div className="form-group">
-              <label>
-                Категория <span className="required">*</span>
-              </label>
-              <select
-                name="category"
-                value={formData.category}
-                onChange={handleChange}
-              >
-                {PRODUCT_CATEGORIES.map(cat => (
-                  <option key={cat.id} value={cat.id}>
-                    {cat.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="form-group">
-              <label>
-                Состояние <span className="required">*</span>
-              </label>
-              <select
-                name="condition"
-                value={formData.condition}
-                onChange={handleChange}
-              >
-                <option value="new">🆕 Новое</option>
-                <option value="used"><IconRecycle /> Б/У</option>
-              </select>
-            </div>
-          </div>
-
-          <div className="form-row">
-            <div className="form-group">
-              <label>
-                Цена (₽) <span className="required">*</span>
-              </label>
-              <input
-                type="number"
-                name="price"
-                value={formData.price}
-                onChange={handleChange}
-                placeholder="10000"
-                min="1"
-                className={errors.price ? 'error' : ''}
-              />
-              {errors.price && <div className="error-message">{errors.price}</div>}
-            </div>
-
-            <div className="form-group">
-              <label>
-                Количество <span className="required">*</span>
-              </label>
-              <input
-                type="number"
-                name="stock"
-                value={formData.stock}
-                onChange={handleChange}
-                placeholder="1"
-                min="1"
-                className={errors.stock ? 'error' : ''}
-              />
-              {errors.stock && <div className="error-message">{errors.stock}</div>}
-            </div>
-          </div>
-        </div>
-
-        {/* Фотографии */}
-        <div className="form-section">
-          <h2>Фотографии</h2>
-          <p className="section-description">
-            Загрузите до 10 фотографий товара. Первое фото будет главным.
-          </p>
-          <ImageUploader
-            images={images}
-            setImages={setImages}
-            maxImages={10}
-          />
-        </div>
-
-        {/* Доставка */}
-        <div className="form-section">
-          <h2>Доставка и местоположение</h2>
-
-          <div className="form-group">
-            <label>Город</label>
-            <input
-              type="text"
-              name="city"
-              value={formData.city}
-              onChange={handleChange}
-              placeholder="Москва"
-            />
-          </div>
-
-          <div className="form-group">
-            <label>
-              Варианты доставки <span className="required">*</span>
-            </label>
-            <div className="radio-group">
-              <label className="radio-label">
-                <input
-                  type="radio"
-                  name="delivery_options"
-                  value="both"
-                  checked={formData.delivery_options === 'both'}
-                  onChange={handleChange}
-                />
-                <span><IconDelivery /><IconPin /> Доставка и самовывоз</span>
-              </label>
-              <label className="radio-label">
-                <input
-                  type="radio"
-                  name="delivery_options"
-                  value="delivery"
-                  checked={formData.delivery_options === 'delivery'}
-                  onChange={handleChange}
-                />
-                <span><IconDelivery /> Только доставка</span>
-              </label>
-              <label className="radio-label">
-                <input
-                  type="radio"
-                  name="delivery_options"
-                  value="pickup"
-                  checked={formData.delivery_options === 'pickup'}
-                  onChange={handleChange}
-                />
-                <span><IconPin /> Только самовывоз</span>
-              </label>
-            </div>
-          </div>
-        </div>
-
-        {/* Кнопки */}
-        <div className="form-actions">
-          <button
-            type="button"
-            className="btn btn-secondary"
-            onClick={() => navigate('/my-products')}
-            disabled={loading}
-          >
-            Отмена
-          </button>
-          <button
-            type="submit"
-            className="btn btn-primary"
-            disabled={loading}
-          >
-            {loading ? 'Сохранение...' : 'Сохранить изменения'}
-          </button>
-        </div>
-      </form>
-    </div>
+    <>
+      {hero}
+      <PageBody width="medium">{content}</PageBody>
+    </>
   );
 }

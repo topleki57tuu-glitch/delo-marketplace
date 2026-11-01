@@ -1,24 +1,31 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { LogoMark } from '../components/Logo.jsx';
 import { useDocumentTitle } from '../components/RouteMeta.jsx';
+import { IconSearch } from '../components/icons.jsx';
 
 export default function NotFoundPage() {
   useDocumentTitle('Страница не найдена');
   return (
-    <div className="min-h-[70vh] flex items-center justify-center px-4 py-16">
-      <div className="text-center max-w-md">
-        <LogoMark size={56} className="mx-auto" />
-        <p className="mt-8 font-display text-6xl font-bold text-slate-900 dark:text-white">404</p>
-        <h1 className="mt-3 text-xl font-bold text-slate-900 dark:text-white">Такой страницы нет</h1>
-        <p className="mt-2 text-slate-500 dark:text-slate-400">
+    <section className="hero-band dark min-h-[70vh] flex items-center">
+      <div className="relative w-full max-w-2xl mx-auto px-4 py-16 sm:py-24 text-center">
+        <span className="hero-eyebrow mb-6">
+          <IconSearch size={14} className="text-amber-300" /> Ошибка 404
+        </span>
+        <p
+          aria-hidden="true"
+          className="font-display font-bold leading-none tracking-tight text-[6rem] sm:text-[8.5rem] bg-gradient-to-b from-white to-indigo-300/60 bg-clip-text text-transparent"
+        >
+          404
+        </p>
+        <h1 className="hero-title mt-4">Такой страницы нет</h1>
+        <p className="hero-subtitle mx-auto max-w-md">
           Возможно, ссылка устарела или в адресе опечатка. Начните с главной или посмотрите открытые задания.
         </p>
         <div className="mt-8 flex flex-col sm:flex-row gap-3 justify-center">
-          <Link to="/" className="btn btn-primary">На главную</Link>
-          <Link to="/tasks" className="btn btn-secondary">Все задания</Link>
+          <Link to="/" className="btn btn-cta">На главную</Link>
+          <Link to="/tasks" className="btn btn-glass">Все задания</Link>
         </div>
       </div>
-    </div>
+    </section>
   );
 }

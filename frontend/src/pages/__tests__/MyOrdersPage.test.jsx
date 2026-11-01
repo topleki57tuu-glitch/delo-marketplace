@@ -3,6 +3,8 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import MyOrdersPage from '../MyOrdersPage';
+import { ToastProvider } from '../../components/Toast';
+import { DialogProvider } from '../../components/DialogProvider';
 import { useProductsStore } from '../../store/productsStore';
 import { useAuthStore } from '../../store/authStore';
 
@@ -50,7 +52,11 @@ const ACTIONS = [
 function renderPage() {
   return render(
     <MemoryRouter initialEntries={['/my-orders']}>
-      <MyOrdersPage />
+      <ToastProvider>
+        <DialogProvider>
+          <MyOrdersPage />
+        </DialogProvider>
+      </ToastProvider>
     </MemoryRouter>
   );
 }
@@ -95,8 +101,10 @@ describe('MyOrdersPage', () => {
   it('показывает счётчики покупок и продаж', async () => {
     renderPage();
 
-    expect(screen.getByRole('button', { name: /Покупки \(1\)/ })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Продажи \(1\)/ })).toBeInTheDocument();
+    // Вкладки в шапке — role="tab", счётчик читается вместе с названием
+    expect(screen.getByRole('tab', { name: /Покупки 1/ })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /Продажи 1/ })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /Покупки 1/ })).toHaveAttribute('aria-selected', 'true');
   });
 
   it('на вкладке покупок видны покупки и не видны продажи', async () => {
@@ -110,7 +118,7 @@ describe('MyOrdersPage', () => {
     const user = userEvent.setup();
     renderPage();
 
-    await user.click(screen.getByRole('button', { name: /Продажи \(1\)/ }));
+    await user.click(screen.getByRole('tab', { name: /Продажи 1/ }));
 
     expect(await screen.findByText('Велосипед')).toBeInTheDocument();
     expect(screen.queryByText('Кофемолка')).not.toBeInTheDocument();
@@ -122,7 +130,7 @@ describe('MyOrdersPage', () => {
     renderPage();
 
     expect(screen.getByText('У вас пока нет покупок')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Перейти к товарам/ })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Перейти к товарам/ })).toHaveAttribute('href', '/products');
   });
 
   it('во время загрузки показывает индикатор вместо списка', () => {
@@ -150,7 +158,7 @@ describe('MyOrdersPage', () => {
     const user = userEvent.setup();
     renderPage();
 
-    await user.click(screen.getByRole('button', { name: /Продажи \(1\)/ }));
+    await user.click(screen.getByRole('tab', { name: /Продажи 1/ }));
 
     expect(await screen.findByText('Подтверждён')).toBeInTheDocument();
   });

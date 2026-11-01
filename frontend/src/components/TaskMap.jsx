@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import { IconClose, IconPin, IconTarget, IconWarning } from '../components/icons.jsx';
+import { useToast } from './Toast.jsx';
 
 const YANDEX_API_KEY = import.meta.env.VITE_YANDEX_MAPS_API_KEY || '';
 const MOSCOW_CENTER = [55.751574, 37.573856];
@@ -65,6 +66,7 @@ export const TaskMap = ({
     height = "100%",
     userRole = "specialist"
 }) => {
+    const { addToast } = useToast();
     const mapContainerRef = useRef(null);
     const mapInstance = useRef(null);
     const clustererRef = useRef(null);
@@ -207,7 +209,7 @@ export const TaskMap = ({
     // Geolocation handler
     const locateUser = useCallback(() => {
         if (!navigator.geolocation) {
-            alert('Геолокация не поддерживается вашим устройством');
+            addToast('Геолокация не поддерживается вашим устройством', 'error');
             return;
         }
 
@@ -262,11 +264,11 @@ export const TaskMap = ({
             (err) => {
                 console.warn("Geolocation error:", err);
                 setGeoLocating(false);
-                alert('Не удалось определить местоположение. Проверьте разрешения в браузере.');
+                addToast('Не удалось определить местоположение. Проверьте разрешения в браузере.', 'error');
             },
             { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 }
         );
-    }, []);
+    }, [addToast]);
 
     // Center all markers
     const fitAllMarkers = useCallback(() => {

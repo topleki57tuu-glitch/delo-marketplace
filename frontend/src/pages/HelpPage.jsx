@@ -2,7 +2,8 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { COMPANY } from '../constants/company.js';
 import { LEGAL_DOCS, legalHref } from '../constants/legal.js';
-import { IconBox, IconBriefcase, IconJustice, IconLock, IconMail, IconPhone, IconTools, IconUser } from '../components/icons.jsx';
+import PageHero, { PageBody } from '../components/PageHero.jsx';
+import { IconBox, IconBriefcase, IconJustice, IconLock, IconMail, IconPhone, IconQuestion, IconTools, IconUser } from '../components/icons.jsx';
 
 /**
  * Центр помощи. Ответы сверены с тем, как сервис работает на самом деле
@@ -187,59 +188,57 @@ function Contacts() {
 
 export default function HelpPage() {
   return (
-    <div className="container-page py-8 sm:py-12">
-      <header className="max-w-2xl">
-        <p className="text-xs font-bold uppercase tracking-[0.16em] text-indigo-600 dark:text-indigo-400">
-          Центр помощи
-        </p>
-        <h1 className="mt-2 page-title sm:!text-[2.25rem] sm:!leading-[2.75rem]">Как работает ДЕЛО</h1>
-        <p className="page-subtitle">
-          Ответы на частые вопросы заказчиков, исполнителей и покупателей: оплата, отмена, споры и
-          данные аккаунта.
-        </p>
-      </header>
-
-      <nav aria-label="Разделы помощи" className="mt-6 -mx-4 px-4 sm:mx-0 sm:px-0 flex gap-2 overflow-x-auto no-scrollbar">
-        {SECTIONS.map((s) => (
-          <a key={s.id} href={`#${s.id}`} className="chip shrink-0">
-            <s.icon /> {s.title}
-          </a>
-        ))}
-      </nav>
-
-      <div className="mt-8 grid gap-10 lg:grid-cols-[minmax(0,1fr)_20rem] lg:gap-12">
-        <div className="space-y-10 min-w-0">
+    <>
+      <PageHero
+        eyebrow="Центр помощи"
+        icon={IconQuestion}
+        title="Как работает ДЕЛО"
+        subtitle="Ответы на частые вопросы заказчиков, исполнителей и покупателей: оплата, отмена, споры и данные аккаунта."
+      >
+        <nav aria-label="Разделы помощи" className="-mx-4 px-4 sm:mx-0 sm:px-0 flex gap-2 overflow-x-auto no-scrollbar">
           {SECTIONS.map((s) => (
-            <section key={s.id} id={s.id} className="scroll-mt-24" aria-labelledby={`${s.id}-title`}>
-              <h2 id={`${s.id}-title`} className="flex items-center gap-2 text-xl font-extrabold text-slate-900 dark:text-white">
-                <span className="w-9 h-9 rounded-xl bg-indigo-50 dark:bg-indigo-500/15 text-indigo-600 dark:text-indigo-300 flex items-center justify-center">
-                  <s.icon />
-                </span>
-                {s.title}
-              </h2>
-              <Faq items={s.items} />
-            </section>
+            <a key={s.id} href={`#${s.id}`} className="hero-chip">
+              <s.icon /> {s.title}
+            </a>
           ))}
-        </div>
+        </nav>
+      </PageHero>
 
-        <aside className="space-y-6 lg:sticky lg:top-24 self-start">
-          <Contacts />
-          <div className="card p-5 sm:p-6">
-            <h2 className="flex items-center gap-2 text-lg font-extrabold text-slate-900 dark:text-white">
-              <IconLock /> Документы
-            </h2>
-            <ul className="mt-3 space-y-2 text-sm">
-              {LEGAL_DOCS.map((d) => (
-                <li key={d.slug}>
-                  <Link to={legalHref(d.slug)} className="font-semibold text-indigo-600 hover:underline dark:text-indigo-400">
-                    {d.title}
-                  </Link>
-                </li>
-              ))}
-            </ul>
+      <PageBody>
+        <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_20rem] lg:gap-12">
+          <div className="space-y-10 min-w-0">
+            {SECTIONS.map((s) => (
+              <section key={s.id} id={s.id} className="scroll-mt-24" aria-labelledby={`${s.id}-title`}>
+                <h2 id={`${s.id}-title`} className="flex items-center gap-2 text-xl font-extrabold text-slate-900 dark:text-white">
+                  <span className="w-9 h-9 rounded-xl bg-indigo-50 dark:bg-indigo-500/15 text-indigo-600 dark:text-indigo-300 flex items-center justify-center">
+                    <s.icon />
+                  </span>
+                  {s.title}
+                </h2>
+                <Faq items={s.items} />
+              </section>
+            ))}
           </div>
-        </aside>
-      </div>
-    </div>
+
+          <aside className="space-y-6 lg:sticky lg:top-24 self-start">
+            <Contacts />
+            <div className="card p-5 sm:p-6">
+              <h2 className="flex items-center gap-2 text-lg font-extrabold text-slate-900 dark:text-white">
+                <IconLock /> Документы
+              </h2>
+              <ul className="mt-3 space-y-2 text-sm">
+                {LEGAL_DOCS.map((d) => (
+                  <li key={d.slug}>
+                    <Link to={legalHref(d.slug)} className="font-semibold text-indigo-600 hover:underline dark:text-indigo-400">
+                      {d.title}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </aside>
+        </div>
+      </PageBody>
+    </>
   );
 }

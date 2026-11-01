@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
+import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import { TaskMap } from '../components/TaskMap';
 import CityInput from '../components/CityInput';
-import { IconCatBeauty, IconCatBusiness, IconCatCleaning, IconCatDelivery, IconCatDesign, IconCatDevelopment, IconCatEvents, IconCatOther, IconCatPhotoVideo, IconCatRepairs, IconCatTutoring, IconCatWriting, IconFilter, IconLightning, IconMap, IconMessages, IconPin, IconSearch } from '../components/icons.jsx';
+import PageHero, { PageBody } from '../components/PageHero.jsx';
+import { Spinner, StateCard } from '../components/PageState.jsx';
+import { IconCatBeauty, IconCatBusiness, IconCatCleaning, IconCatDelivery, IconCatDesign, IconCatDevelopment, IconCatEvents, IconCatOther, IconCatPhotoVideo, IconCatRepairs, IconCatTutoring, IconCatWriting, IconBriefcase, IconFilter, IconGlobe, IconLightning, IconMap, IconMessages, IconPin, IconSearch } from '../components/icons.jsx';
 
 const CATEGORIES = [
   { id: 'all', label: 'Все категории', icon: <IconLightning /> },
@@ -33,14 +35,15 @@ export default function TasksPage({
 
   const selectedCategory = searchParams.get('category') || 'all';
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCity, setSelectedCity] = useState(null);
+  const [selectedCity, setSelectedCity] = useState('');
   const [isRemoteOnly, setIsRemoteOnly] = useState(false);
   // На телефоне город, «удалённо» и сброс прячутся за кнопкой «Фильтры»:
   // раскрытая панель с 13 категориями в несколько строк занимала больше
   // экрана, и первое задание оказывалось ниже сгиба. Скрытие — классами,
   // а не условным рендером: с sm и шире всё видно как раньше.
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const activeFilters = (selectedCity ? 1 : 0) + (isRemoteOnly ? 1 : 0);
+  const cityQuery = selectedCity.trim().toLowerCase();
+  const activeFilters = (cityQuery ? 1 : 0) + (isRemoteOnly ? 1 : 0);
   // Вид «карта» храним в URL (?view=map), чтобы на него можно было
   // вести ссылкой из нижней навигации и чтобы работала кнопка «назад».
   const showMap = searchParams.get('view') === 'map';
@@ -67,7 +70,7 @@ export default function TasksPage({
   const filteredTasks = tasks.filter((t) => {
     if (selectedCategory !== 'all' && t.category !== selectedCategory) return false;
     if (isRemoteOnly && !t.is_remote) return false;
-    if (selectedCity && t.city && !t.city.toLowerCase().includes(selectedCity.name.toLowerCase())) return false;
+    if (cityQuery && t.city && !t.city.toLowerCase().includes(cityQuery)) return false;
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       const matchTitle = t.title?.toLowerCase().includes(q);
@@ -77,226 +80,201 @@ export default function TasksPage({
     return true;
   });
 
+  const resetFilters = () => {
+    setSearchQuery('');
+    setSelectedCity('');
+    setIsRemoteOnly(false);
+    handleCategorySelect('all');
+  };
+
+  const openTask = (e, t) => {
+    if (!onTaskClick) return;
+    e.preventDefault();
+    onTaskClick(t);
+  };
+
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 pb-24 pt-6 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
-      {/* Header & Controls */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 dark:text-white">
-            Задания и поиск заказов
-          </h1>
-          <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">
-            Найдено заданий: <span className="font-semibold text-indigo-600 dark:text-indigo-400">{filteredTasks.length}</span>
-          </p>
-        </div>
-
-        <div className="flex items-center gap-3">
-          <button
-            onClick={toggleMap}
-            className={`px-4 py-2 rounded-xl text-sm font-semibold border transition-all flex items-center gap-2 ${
-              showMap
-                ? 'bg-indigo-600 text-white border-indigo-600 shadow-md shadow-indigo-600/20'
-                : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700'
-            }`}
-          >
-            <span><IconMap /></span>
-            <span>{showMap ? 'Скрыть карту' : 'Показать на карте'}</span>
-          </button>
-
-          <button
-            onClick={() => {
-              if (user) {
-                navigate('/create-task');
-              } else {
-                onOpenAuth('register');
-              }
-            }}
-            className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-xl text-sm shadow-md shadow-amber-500/20 transition-all"
-          >
-            + Создать задание
-          </button>
-        </div>
-      </div>
-
-      {/* Filter Bar */}
-      <div className="bg-white dark:bg-slate-800 p-4 rounded-2xl border border-slate-200 dark:border-slate-700/60 shadow-sm mb-6 space-y-4">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-          {/* Search Input */}
-          <div className="flex gap-2">
-            <div className="relative flex-1 min-w-0">
-              <input
-                type="text"
-                placeholder="Поиск по названию или описанию..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              />
-              <span className="absolute left-3 top-3 text-slate-400"><IconSearch /></span>
-            </div>
+    <>
+      <PageHero
+        eyebrow="Биржа заданий"
+        icon={IconBriefcase}
+        title="Задания"
+        subtitle="Выбирайте задачу и предлагайте свою цену. Оплата заказчика резервируется до приёмки работы."
+        actions={
+          <>
             <button
               type="button"
-              onClick={() => setFiltersOpen((v) => !v)}
-              aria-expanded={filtersOpen}
-              aria-controls="tasks-extra-filters"
-              className={`sm:hidden shrink-0 inline-flex items-center gap-1.5 px-3.5 rounded-xl border text-sm font-semibold transition-colors ${
-                filtersOpen || activeFilters
-                  ? 'border-indigo-500 text-indigo-600 bg-indigo-50 dark:bg-indigo-500/15 dark:text-indigo-300'
-                  : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
-              }`}
+              onClick={toggleMap}
+              aria-pressed={showMap}
+              className={`btn btn-glass ${showMap ? 'btn-glass-active' : ''}`}
             >
-              <IconFilter /> Фильтры
-              {activeFilters > 0 && (
-                <span className="min-w-5 h-5 px-1 rounded-full bg-indigo-600 text-white text-[11px] leading-5 text-center">
-                  {activeFilters}
-                </span>
-              )}
+              <IconMap />
+              {showMap ? 'Скрыть карту' : 'На карте'}
             </button>
-          </div>
-
-          {/* City Input */}
-          <div id="tasks-extra-filters" className={filtersOpen ? '' : 'hidden sm:block'}>
-            <CityInput
-              selectedCity={selectedCity}
-              onSelectCity={(city) => setSelectedCity(city)}
-              placeholder="Все города (или выберите)"
-            />
-          </div>
-
-          {/* Remote Checkbox */}
-          <div className={`${filtersOpen ? 'flex' : 'hidden'} sm:flex items-center px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl`}>
-            <label className="flex items-center gap-2 cursor-pointer text-sm select-none">
-              <input
-                type="checkbox"
-                checked={isRemoteOnly}
-                onChange={(e) => setIsRemoteOnly(e.target.checked)}
-                className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500"
-              />
-              <span>Только удаленно (онлайн)</span>
-            </label>
-          </div>
-
-          {/* Clear Filters */}
-          <div className={`${filtersOpen ? 'flex' : 'hidden'} sm:flex items-center`}>
             <button
+              type="button"
               onClick={() => {
-                setSearchQuery('');
-                setSelectedCity(null);
-                setIsRemoteOnly(false);
-                handleCategorySelect('all');
+                if (user) navigate('/create-task');
+                else onOpenAuth?.('register');
               }}
-              className="w-full py-2.5 px-4 text-sm font-medium text-slate-600 dark:text-slate-300 hover:text-red-500 dark:hover:text-red-400 transition-colors"
+              className="btn btn-cta"
             >
-              Сбросить фильтры
+              + Создать задание
             </button>
-          </div>
+          </>
+        }
+      >
+        {/* Поиск — белая плашка, как на главной */}
+        <div className="hero-search max-w-3xl">
+          <IconSearch size={18} className="ml-2.5 text-slate-400" />
+          <label htmlFor="tasks-search" className="sr-only">Поиск заданий</label>
+          <input
+            id="tasks-search"
+            type="search"
+            placeholder="Поиск по названию или описанию..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="hero-search-input"
+          />
+          <button
+            type="button"
+            onClick={() => setFiltersOpen((v) => !v)}
+            aria-expanded={filtersOpen}
+            aria-controls="tasks-extra-filters"
+            className={`sm:hidden shrink-0 inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-semibold transition-colors ${
+              filtersOpen || activeFilters ? 'bg-indigo-50 text-indigo-700' : 'bg-slate-100 text-slate-700'
+            }`}
+          >
+            <IconFilter /> Фильтры
+            {activeFilters > 0 && (
+              <span className="min-w-5 h-5 px-1 rounded-full bg-indigo-600 text-white text-[11px] leading-5 text-center">
+                {activeFilters}
+              </span>
+            )}
+          </button>
         </div>
 
-        {/* Categories Chips */}
-        {/* Категории: раньше это была одна прокручиваемая строка, и на широком
-            экране хвост списка просто обрезался. Переносим по строкам. */}
-        {/* На телефоне — одна прокручиваемая строка: перенос по строкам
-            давал пять-шесть рядов чипов над списком. */}
-        <div className="flex flex-nowrap sm:flex-wrap items-center gap-2 pt-3 border-t border-slate-100 dark:border-slate-700/50 overflow-x-auto sm:overflow-visible no-scrollbar -mx-4 px-4 sm:mx-0 sm:px-0">
+        {/* Категории. На телефоне — одна прокручиваемая строка: перенос
+            давал пять-шесть рядов «таблеток» над списком. */}
+        <div className="mt-4 flex flex-nowrap sm:flex-wrap gap-2 overflow-x-auto sm:overflow-visible no-scrollbar -mx-4 px-4 sm:mx-0 sm:px-0">
           {CATEGORIES.map((cat) => {
             const active = selectedCategory === cat.id;
             return (
               <button
                 key={cat.id}
+                type="button"
                 onClick={() => handleCategorySelect(cat.id)}
-                className={`px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all flex items-center gap-1.5 ${
-                  active
-                    ? 'bg-indigo-600 text-white shadow-sm'
-                    : 'bg-slate-100 dark:bg-slate-700/50 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
-                }`}
+                aria-pressed={active}
+                className={`hero-chip ${active ? 'hero-chip-active' : ''}`}
               >
-                <span>{cat.icon}</span>
-                <span>{cat.label}</span>
+                {cat.icon}
+                {cat.label}
               </button>
             );
           })}
         </div>
-      </div>
+      </PageHero>
 
-      {/* Map View (Toggleable) */}
-      {showMap && (
-        <div className="mb-8 bg-white dark:bg-slate-800 p-2 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden h-96">
-          <TaskMap tasks={filteredTasks} onTaskClick={onTaskClick} />
-        </div>
-      )}
-
-      {/* Tasks List */}
-      {loading ? (
-        <div className="py-20 text-center">
-          <div className="w-10 h-10 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-sm text-slate-400">Загрузка заданий...</p>
-        </div>
-      ) : filteredTasks.length === 0 ? (
-        <div className="py-16 text-center bg-white dark:bg-slate-800 rounded-2xl border border-dashed border-slate-300 dark:border-slate-700 p-8">
-          <div className="text-4xl mb-3"><IconSearch /></div>
-          <h3 className="text-lg font-bold text-slate-800 dark:text-slate-200 mb-1">Ничего не найдено</h3>
-          <p className="text-sm text-slate-500 dark:text-slate-400 max-w-sm mx-auto mb-4">
-            Попробуйте изменить параметры поиска или сбросить фильтры.
+      <PageBody>
+        {/* Найдено + город, «удалённо», сброс. На телефоне фильтры
+            прячутся за кнопкой «Фильтры»: раскрытая панель занимала больше
+            экрана, и первое задание оказывалось ниже сгиба. Скрытие —
+            классами, а не условным рендером: с sm и шире всё видно сразу. */}
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-6">
+          <p className="text-sm text-slate-500 dark:text-slate-400 shrink-0">
+            Найдено заданий:{' '}
+            <span className="font-bold text-slate-900 dark:text-white">{filteredTasks.length}</span>
           </p>
-          <button
-            onClick={() => {
-              setSearchQuery('');
-              setSelectedCity(null);
-              setIsRemoteOnly(false);
-              handleCategorySelect('all');
-            }}
-            className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-xl hover:bg-indigo-500 transition-colors"
+          <div
+            id="tasks-extra-filters"
+            className={`${filtersOpen ? 'flex' : 'hidden'} sm:flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 sm:ml-auto`}
           >
-            Сбросить фильтры
-          </button>
+            <CityInput
+              className="sm:w-72"
+              value={selectedCity}
+              onChange={setSelectedCity}
+              placeholder="Все города (или выберите)"
+            />
+            <label className="inline-flex items-center gap-2 px-3.5 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 cursor-pointer text-sm font-semibold text-slate-700 dark:text-slate-200 select-none">
+              <input
+                type="checkbox"
+                checked={isRemoteOnly}
+                onChange={(e) => setIsRemoteOnly(e.target.checked)}
+                className="w-4 h-4 rounded accent-indigo-600"
+              />
+              Только удалённо
+            </label>
+            <button type="button" onClick={resetFilters} className="btn btn-ghost">
+              Сбросить фильтры
+            </button>
+          </div>
         </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredTasks.map((t) => (
-            <div
-              key={t.id}
-              onClick={() => {
-                if (onTaskClick) onTaskClick(t);
-                else navigate(`/tasks/${t.id}`);
-              }}
-              className="p-5 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200/80 dark:border-slate-700/60 shadow-sm hover:shadow-md hover:border-indigo-400 dark:hover:border-indigo-500 transition-all cursor-pointer flex flex-col justify-between group"
-            >
-              <div>
-                <div className="flex items-start justify-between gap-3 mb-2">
-                  <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-indigo-50 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300">
+
+        {/* Карта (по кнопке «На карте») */}
+        {showMap && (
+          <div className="mb-8 bg-white dark:bg-slate-800 p-2 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden h-96">
+            <TaskMap tasks={filteredTasks} onTaskClick={onTaskClick} />
+          </div>
+        )}
+
+        {loading ? (
+          <Spinner label="Загрузка заданий..." />
+        ) : filteredTasks.length === 0 ? (
+          <StateCard
+            dashed
+            icon={IconSearch}
+            title="Ничего не найдено"
+            text="Попробуйте изменить параметры поиска или сбросить фильтры."
+          >
+            <button type="button" onClick={resetFilters} className="btn btn-primary">
+              Сбросить фильтры
+            </button>
+          </StateCard>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {filteredTasks.map((t) => (
+              <Link
+                key={t.id}
+                to={`/tasks/${t.id}`}
+                onClick={(e) => openTask(e, t)}
+                className="group flex flex-col rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-5 hover:border-indigo-300 dark:hover:border-indigo-500/60 hover:shadow-card-hover transition-all"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-indigo-50 dark:bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 text-[11px] font-bold px-2.5 py-1">
                     {CATEGORIES.find((c) => c.id === t.category)?.label || t.category}
                   </span>
-                  <span className="text-base font-bold text-emerald-600 dark:text-emerald-400 whitespace-nowrap">
+                  <span className="font-display font-bold text-slate-900 dark:text-white whitespace-nowrap">
                     {t.budget ? `${t.budget.toLocaleString('ru-RU')} ₽` : 'По договоренности'}
                   </span>
                 </div>
 
-                <h3 className="text-base font-bold text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors line-clamp-2 mb-2">
+                <h3 className="mt-3 font-bold text-slate-900 dark:text-white leading-snug line-clamp-2 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
                   {t.title}
                 </h3>
 
-                <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 line-clamp-3 mb-4">
+                <p className="mt-2 text-sm text-slate-500 dark:text-slate-400 line-clamp-3">
                   {t.description}
                 </p>
-              </div>
 
-              <div className="pt-3 border-t border-slate-100 dark:border-slate-700/50 flex items-center justify-between text-xs text-slate-400">
-                <div className="flex items-center gap-1.5">
-                  <span><IconPin /></span>
-                  <span>{t.is_remote ? 'Удаленно' : t.city || 'Город не указан'}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  {t.responses_count !== undefined && (
-                    <span className="text-indigo-500 font-medium"><IconMessages /> {t.responses_count}</span>
-                  )}
-                  <span className="text-slate-400 group-hover:translate-x-0.5 transition-transform">
-                    Подробнее &rarr;
+                <div className="mt-auto pt-4 flex items-center justify-between gap-3 text-xs text-slate-400">
+                  <span className="inline-flex items-center gap-1.5 min-w-0">
+                    {t.is_remote ? <IconGlobe size={13} /> : <IconPin size={13} />}
+                    <span className="truncate">{t.is_remote ? 'Удалённо' : t.city || 'Город не указан'}</span>
+                  </span>
+                  <span className="inline-flex items-center gap-3 shrink-0">
+                    {t.responses_count !== undefined && (
+                      <span className="inline-flex items-center gap-1 font-semibold text-indigo-500 dark:text-indigo-400" title="Откликов">
+                        <IconMessages size={13} /> {t.responses_count}
+                      </span>
+                    )}
+                    <span className="font-semibold group-hover:text-indigo-500 transition-colors">Подробнее →</span>
                   </span>
                 </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
+              </Link>
+            ))}
+          </div>
+        )}
+      </PageBody>
+    </>
   );
 }

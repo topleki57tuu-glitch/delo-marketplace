@@ -17,6 +17,7 @@
  */
 import {
   ArrowDown,
+  ArrowLeft,
   ArrowRight,
   Baby,
   Ban,
@@ -57,6 +58,8 @@ import {
   MapPin,
   Maximize,
   MessageCircle,
+  Monitor,
+  Moon,
   Package,
   Palette,
   PartyPopper,
@@ -80,6 +83,7 @@ import {
   Sparkles,
   Star,
   StarOff,
+  Sun,
   Target,
   ThumbsUp,
   Trash2,
@@ -145,6 +149,7 @@ export const IconLogout = createIcon(LogOut);
 /* --- Действия --- */
 export const IconCheck = createIcon(Check);
 export const IconArrowRight = createIcon(ArrowRight);
+export const IconArrowLeft = createIcon(ArrowLeft);
 export const IconClose = createIcon(X);
 export const IconWarning = createIcon(TriangleAlert);
 export const IconEdit = createIcon(Pencil);
@@ -154,6 +159,11 @@ export const IconUpload = createIcon(Upload);
 export const IconRefresh = createIcon(RefreshCw);
 export const IconPlus = createIcon(Plus);
 export const IconSettings = createIcon(Settings);
+
+/* --- Тема оформления --- */
+export const IconSun = createIcon(Sun);
+export const IconMoon = createIcon(Moon);
+export const IconMonitor = createIcon(Monitor);
 export const IconExpand = createIcon(Maximize);
 export const IconDownload = createIcon(ArrowDown);
 export const IconSearch = createIcon(Search);

@@ -1,46 +1,71 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useToast } from '../components/Toast';
-import { IconPayout, IconBox, IconBriefcase, IconJustice, IconLock, IconParty, IconTools } from '../components/icons.jsx';
+import { useDialogs } from '../components/DialogProvider.jsx';
+import PageHero, { PageBody } from '../components/PageHero.jsx';
+import { AuthRequired, ErrorState, Spinner, StateCard } from '../components/PageState.jsx';
+import {
+  IconAdmin,
+  IconBox,
+  IconBriefcase,
+  IconJustice,
+  IconLock,
+  IconParty,
+  IconPayout,
+  IconRefresh,
+  IconTools,
+} from '../components/icons.jsx';
+import { plural } from '../utils/format.js';
+
+const formatMoney = (value) => (value ? `${Number(value).toLocaleString('ru-RU')} ₽` : '—');
+
+const DECISIONS = {
+  refund_customer: {
+    title: 'Вернуть деньги заказчику?',
+    message: 'Сумма из эскроу вернётся на баланс заказчика, спор и сделка закроются.',
+    confirmText: 'Вернуть заказчику',
+  },
+  pay_specialist: {
+    title: 'Выплатить исполнителю?',
+    message: 'Сумма из эскроу (за вычетом комиссии) уйдёт на баланс исполнителя, спор и сделка закроются.',
+    confirmText: 'Выплатить',
+  },
+};
 
 export default function DisputesPage({ user, token, onOpenAuth }) {
   const { addToast } = useToast();
+  const dialogs = useDialogs();
   const [disputes, setDisputes] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [forbidden, setForbidden] = useState(false);
+  const [status, setStatus] = useState('loading'); // loading | ready | forbidden | error
   const [resolvingId, setResolvingId] = useState(null);
   const [comments, setComments] = useState({});
 
-  const fetchDisputes = async () => {
-    setLoading(true);
+  const fetchDisputes = useCallback(async () => {
+    setStatus((s) => (s === 'ready' ? s : 'loading'));
     try {
       const res = await fetch('/admin/disputes', {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (res.status === 403) {
-        setForbidden(true);
+        setStatus('forbidden');
         return;
       }
       if (!res.ok) throw new Error('Не удалось загрузить споры');
       const data = await res.json();
       setDisputes(data.disputes || []);
+      setStatus('ready');
     } catch (err) {
-      addToast(err.message, 'error');
-    } finally {
-      setLoading(false);
+      setStatus('error');
     }
-  };
+  }, [token]);
 
   useEffect(() => {
     if (token) fetchDisputes();
-    else setLoading(false);
-  }, [token]);
+  }, [token, fetchDisputes]);
 
   const handleResolve = async (disputeId, decision) => {
-    const decisionText = decision === 'refund_customer'
-      ? 'вернуть средства заказчику'
-      : 'выплатить средства исполнителю';
-    if (!window.confirm(`Подтвердите решение: ${decisionText}?`)) return;
+    const ok = await dialogs.confirm({ ...DECISIONS[decision], cancelText: 'Отмена' });
+    if (!ok) return;
 
     setResolvingId(disputeId + decision);
     try {
@@ -52,7 +77,7 @@ export default function DisputesPage({ user, token, onOpenAuth }) {
         },
         body: JSON.stringify({ decision, comment: comments[disputeId] || null }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.detail || 'Ошибка при вынесении решения');
       addToast(data.message || 'Спор закрыт', 'success');
       fetchDisputes();
@@ -63,138 +88,143 @@ export default function DisputesPage({ user, token, onOpenAuth }) {
     }
   };
 
-  if (!user) {
-    return (
-      <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex items-center justify-center p-4">
-        <div className="bg-white dark:bg-slate-800 p-8 rounded-3xl max-w-md w-full text-center space-y-4 shadow-xl border border-slate-200 dark:border-slate-700">
-          <div className="text-4xl"><IconJustice /></div>
-          <h2 className="text-xl font-bold text-slate-900 dark:text-white">Арбитраж споров</h2>
-          <p className="text-sm text-slate-500 dark:text-slate-400">Войдите под учётной записью арбитра</p>
-          <button
-            onClick={() => onOpenAuth('login')}
-            className="w-full py-3 bg-indigo-600 text-white font-bold rounded-xl"
-          >
-            Войти
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex items-center justify-center">
-        <div className="w-10 h-10 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
-  }
-
-  if (forbidden) {
-    return (
-      <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex items-center justify-center p-4">
-        <div className="bg-white dark:bg-slate-800 p-8 rounded-3xl max-w-md w-full text-center space-y-4 shadow-xl border border-slate-200 dark:border-slate-700">
-          <div className="text-4xl"><IconLock /></div>
-          <h2 className="text-xl font-bold text-slate-900 dark:text-white">Нет доступа</h2>
-          <p className="text-sm text-slate-500 dark:text-slate-400">
-            Эта страница доступна только арбитрам платформы.
-          </p>
-          <Link to="/tasks" className="inline-block px-4 py-2 bg-indigo-600 text-white rounded-xl font-medium">
-            К списку заданий
-          </Link>
-        </div>
-      </div>
-    );
-  }
+  const total = disputes.reduce((sum, d) => sum + (Number(d.amount) || 0), 0);
+  const ready = user && status === 'ready';
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 py-8 px-4 sm:px-6 lg:px-8 max-w-4xl mx-auto space-y-6">
-      <div>
-        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 dark:text-white">
-          <IconJustice /> Арбитраж споров
-        </h1>
-        <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">
-          Открытых споров: <span className="font-semibold text-red-600 dark:text-red-400">{disputes.length}</span>
-        </p>
-      </div>
+    <>
+      <PageHero
+        width="medium"
+        eyebrow="Модерация"
+        icon={IconJustice}
+        title="Арбитраж споров"
+        subtitle="Споры по заданиям и заказам товаров. Решение закрывает сделку: деньги из эскроу уходят заказчику или исполнителю."
+        actions={
+          ready && (
+            <>
+              <button type="button" className="btn btn-glass" onClick={fetchDisputes}>
+                <IconRefresh /> Обновить
+              </button>
+              {user?.is_admin && (
+                <Link to="/admin/dashboard" className="btn btn-glass">
+                  <IconAdmin /> Панель управления
+                </Link>
+              )}
+            </>
+          )
+        }
+      >
+        {ready && (
+          <div className="grid grid-cols-2 gap-2 max-w-md">
+            <div className="hero-stat">
+              <p className="hero-stat-label">Открытых споров</p>
+              <p className="hero-stat-value">{disputes.length}</p>
+            </div>
+            <div className="hero-stat">
+              <p className="hero-stat-label">В эскроу</p>
+              <p className="hero-stat-value">{formatMoney(total)}</p>
+            </div>
+          </div>
+        )}
+      </PageHero>
 
-      {disputes.length === 0 ? (
-        <div className="bg-white dark:bg-slate-800 p-10 rounded-3xl border border-slate-200 dark:border-slate-700 text-center space-y-3">
-          <div className="text-4xl"><IconParty /></div>
-          <p className="font-bold text-slate-900 dark:text-white">Открытых споров нет</p>
-          <p className="text-sm text-slate-500 dark:text-slate-400">Все сделки идут без конфликтов.</p>
-        </div>
-      ) : (
-        <div className="space-y-4">
-          {disputes.map((d) => (
-            <div
-              key={d.id}
-              className="bg-white dark:bg-slate-800 p-6 rounded-3xl border border-red-200 dark:border-red-900/50 shadow-sm space-y-4"
-            >
-              <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
-                <div>
-                  {/* Спор может быть по заданию (task_id) или по заказу товара
-                      (order_id) — арбитру нужна одна очередь на оба вида. */}
-                  {d.kind === 'order' ? (
-                    <span className="text-lg font-bold text-slate-900 dark:text-white">
-                      <IconBox /> {d.title || `Заказ #${d.order_id}`}
+      <PageBody width="medium">
+        {!user ? (
+          <AuthRequired onOpenAuth={onOpenAuth} text="Войдите под учётной записью арбитра." />
+        ) : status === 'loading' ? (
+          <Spinner label="Загрузка споров..." />
+        ) : status === 'forbidden' ? (
+          <StateCard icon={IconLock} tone="warning" title="Нет доступа" text="Эта страница доступна только арбитрам платформы.">
+            <Link to="/tasks" className="btn btn-primary">К списку заданий</Link>
+          </StateCard>
+        ) : status === 'error' ? (
+          <ErrorState text="Не удалось загрузить споры." onRetry={fetchDisputes} />
+        ) : disputes.length === 0 ? (
+          <StateCard dashed icon={IconParty} title="Открытых споров нет" text="Все сделки идут без конфликтов." />
+        ) : (
+          <div className="space-y-4">
+            <p className="text-sm text-slate-500 dark:text-slate-400">
+              {disputes.length} {plural(disputes.length, 'спор ждёт', 'спора ждут', 'споров ждут')} решения
+            </p>
+            {disputes.map((d) => (
+              <article key={d.id} className="card p-5 sm:p-6 space-y-4 border-l-4 !border-l-red-500">
+                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    {/* Спор может быть по заданию (task_id) или по заказу товара
+                        (order_id) — арбитру нужна одна очередь на оба вида. */}
+                    <span className="badge bg-red-50 text-red-700 dark:bg-red-500/15 dark:text-red-300 mb-2">
+                      {d.kind === 'order' ? <><IconBox size={13} /> Заказ товара</> : <><IconBriefcase size={13} /> Задание</>}
                     </span>
-                  ) : (
-                    <Link
-                      to={`/tasks/${d.task_id}`}
-                      className="text-lg font-bold text-slate-900 dark:text-white hover:text-indigo-600 dark:hover:text-indigo-400 hover:underline"
-                    >
-                      {d.title}
-                    </Link>
-                  )}
-                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 dark:text-slate-400 mt-1">
-                    <span><IconBriefcase /> {d.customer_name}</span>
-                    <span>→</span>
-                    <span><IconTools /> {d.executor_name}</span>
-                    <span>•</span>
-                    <span>Спор открыл: <b>{d.opened_by_name}</b></span>
+                    {d.kind === 'order' ? (
+                      <h2 className="text-lg font-bold text-slate-900 dark:text-white">
+                        {d.title || `Заказ #${d.order_id}`}
+                      </h2>
+                    ) : (
+                      <h2 className="text-lg font-bold">
+                        <Link
+                          to={`/tasks/${d.task_id}`}
+                          className="text-slate-900 dark:text-white hover:text-indigo-600 dark:hover:text-indigo-400"
+                        >
+                          {d.title}
+                        </Link>
+                      </h2>
+                    )}
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 dark:text-slate-400 mt-1.5">
+                      <span className="inline-flex items-center gap-1"><IconBriefcase size={13} /> {d.customer_name}</span>
+                      <span aria-hidden="true">→</span>
+                      <span className="inline-flex items-center gap-1"><IconTools size={13} /> {d.executor_name}</span>
+                      <span aria-hidden="true">·</span>
+                      <span>Спор открыл: <b className="text-slate-700 dark:text-slate-200">{d.opened_by_name}</b></span>
+                    </div>
+                  </div>
+                  <div className="text-left sm:text-right shrink-0">
+                    <span className="text-xs text-slate-400 block">Сумма эскроу</span>
+                    <span className="text-xl font-extrabold text-amber-600 dark:text-amber-400">{formatMoney(d.amount)}</span>
                   </div>
                 </div>
-                <div className="text-left sm:text-right shrink-0">
-                  <span className="text-xs text-slate-400 block">Сумма эскроу</span>
-                  <span className="text-xl font-extrabold text-amber-600 dark:text-amber-400">
-                    {d.amount ? `${d.amount.toLocaleString('ru-RU')} ₽` : '—'}
-                  </span>
+
+                <div className="rounded-xl bg-slate-50 dark:bg-slate-900/60 p-4 text-sm text-slate-700 dark:text-slate-300">
+                  <span className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1">Причина спора</span>
+                  {d.reason}
                 </div>
-              </div>
 
-              <div className="bg-slate-50 dark:bg-slate-900 rounded-xl p-4 text-sm text-slate-700 dark:text-slate-300">
-                <span className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1">Причина спора</span>
-                {d.reason}
-              </div>
+                <div>
+                  <label htmlFor={`dispute-comment-${d.id}`} className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">
+                    Комментарий арбитра — его увидят обе стороны
+                  </label>
+                  <textarea
+                    id={`dispute-comment-${d.id}`}
+                    rows={2}
+                    placeholder="Почему принято такое решение..."
+                    value={comments[d.id] || ''}
+                    onChange={(e) => setComments({ ...comments, [d.id]: e.target.value })}
+                    className="textarea"
+                  />
+                </div>
 
-              <textarea
-                rows={2}
-                placeholder="Комментарий арбитра (виден обеим сторонам)..."
-                value={comments[d.id] || ''}
-                onChange={(e) => setComments({ ...comments, [d.id]: e.target.value })}
-                className="w-full p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-500"
-              />
-
-              <div className="flex flex-wrap gap-2 justify-end">
-                <button
-                  onClick={() => handleResolve(d.id, 'refund_customer')}
-                  disabled={!!resolvingId}
-                  className="px-5 py-2.5 bg-slate-600 hover:bg-slate-500 text-white font-bold rounded-xl text-sm shadow-md disabled:opacity-50 transition-all"
-                >
-                  {resolvingId === d.id + 'refund_customer' ? 'Обработка...' : '↩ Вернуть заказчику'}
-                </button>
-                <button
-                  onClick={() => handleResolve(d.id, 'pay_specialist')}
-                  disabled={!!resolvingId}
-                  className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-sm shadow-md disabled:opacity-50 transition-all"
-                >
-                  {resolvingId === d.id + 'pay_specialist' ? 'Обработка...' : <><IconPayout /> Выплатить исполнителю</>}
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
+                <div className="flex flex-wrap gap-2 justify-end">
+                  <button
+                    type="button"
+                    onClick={() => handleResolve(d.id, 'refund_customer')}
+                    disabled={!!resolvingId}
+                    className="btn btn-secondary"
+                  >
+                    {resolvingId === d.id + 'refund_customer' ? 'Обработка...' : '↩ Вернуть заказчику'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleResolve(d.id, 'pay_specialist')}
+                    disabled={!!resolvingId}
+                    className="btn bg-emerald-600 hover:bg-emerald-500 text-white"
+                  >
+                    {resolvingId === d.id + 'pay_specialist' ? 'Обработка...' : <><IconPayout /> Выплатить исполнителю</>}
+                  </button>
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+      </PageBody>
+    </>
   );
 }

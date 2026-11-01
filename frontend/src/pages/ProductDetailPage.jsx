@@ -1,49 +1,99 @@
 import React, { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { Link, useParams, useNavigate } from 'react-router-dom';
 import { useProductsStore } from '../store/productsStore';
 import { useDocumentTitle } from '../components/RouteMeta.jsx';
 import { useAuthStore } from '../store/authStore';
-import './ProductDetailPage.css';
-import { IconRecycle, IconBox, IconCheck, IconDelivery, IconEdit, IconPin, IconPurchases, IconStar, IconUser } from '../components/icons.jsx';
+import { useToast } from '../components/Toast';
+import PageHero, { PageBody } from '../components/PageHero.jsx';
+import { Spinner, StateCard } from '../components/PageState.jsx';
+import { productCategoryLabel } from '../constants/categories.js';
+import { IconRecycle, IconBox, IconCheck, IconDelivery, IconEdit, IconLock, IconPin, IconProducts, IconPurchases, IconStar, IconUser } from '../components/icons.jsx';
 
-export default function ProductDetailPage() {
+// Цена приходит с бэкенда в рублях (см. комментарий в ProductsPage).
+const formatPrice = (priceInRubles) => (priceInRubles ?? 0).toLocaleString('ru-RU') + ' ₽';
+
+function parseImages(raw) {
+  if (!raw) return [];
+  try {
+    const list = JSON.parse(raw);
+    return Array.isArray(list) ? list.filter(Boolean) : [];
+  } catch {
+    return [];
+  }
+}
+
+export default function ProductDetailPage({ onOpenAuth }) {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { currentProduct, loading, fetchProduct, createOrder } = useProductsStore();
+  const { addToast } = useToast();
+  const { currentProduct, fetchProduct, createOrder } = useProductsStore();
   const { user, token } = useAuthStore();
-  useDocumentTitle(currentProduct && String(currentProduct.id) === String(id) ? currentProduct.title : null);
+  const product = currentProduct && String(currentProduct.id) === String(id) ? currentProduct : null;
+  useDocumentTitle(product ? product.title : null);
 
   const [deliveryMethod, setDeliveryMethod] = useState('pickup');
   const [deliveryAddress, setDeliveryAddress] = useState('');
   const [quantity, setQuantity] = useState(1);
   const [showOrderForm, setShowOrderForm] = useState(false);
   const [ordering, setOrdering] = useState(false);
+  const [activeImage, setActiveImage] = useState(0);
+  // Раньше при ошибке загрузки (например, товар удалён) страница навсегда
+  // оставалась на «Загрузка...»: запрос падал, а товара так и не было.
+  const [loadError, setLoadError] = useState(false);
 
   useEffect(() => {
-    fetchProduct(id);
+    setLoadError(false);
+    setActiveImage(0);
+    fetchProduct(id).catch(() => setLoadError(true));
   }, [id]);
 
-  if (loading || !currentProduct) {
-    return <div className="loading-detail">Загрузка...</div>;
+  // Если товар доступен только с доставкой, способ по умолчанию — доставка
+  useEffect(() => {
+    if (product?.delivery_options === 'delivery') setDeliveryMethod('delivery');
+  }, [product?.delivery_options]);
+
+  if (loadError) {
+    return (
+      <>
+        <PageHero size="sm" back={{ to: '/products', label: 'Все товары' }} title="Товар не найден" />
+        <PageBody>
+          <StateCard icon={IconProducts} title="Такого товара нет" text="Возможно, продавец снял его с продажи или ссылка устарела.">
+            <Link to="/products" className="btn btn-primary">Перейти к товарам</Link>
+          </StateCard>
+        </PageBody>
+      </>
+    );
   }
 
-  const product = currentProduct;
-  const isOwner = user && user.id === product.seller_id;
-  const canOrder = user && !isOwner && product.stock > 0;
+  if (!product) {
+    return (
+      <>
+        <PageHero
+          size="sm"
+          back={{ to: '/products', label: 'Все товары' }}
+          title={<span aria-hidden="true" className="inline-block h-8 w-72 max-w-full rounded-lg bg-white/10 animate-pulse align-middle" />}
+        />
+        <PageBody>
+          <Spinner label="Загрузка товара..." />
+        </PageBody>
+      </>
+    );
+  }
 
-  // Цена приходит с бэкенда в рублях (см. комментарий в ProductsPage).
-  const formatPrice = (priceInRubles) => {
-    return (priceInRubles ?? 0).toLocaleString('ru-RU') + ' ₽';
-  };
+  const isOwner = !!user && user.id === product.seller_id;
+  const canOrder = !!user && !isOwner && product.stock > 0;
+  const pickup = product.delivery_options === 'both' || product.delivery_options === 'pickup';
+  const delivery = product.delivery_options === 'both' || product.delivery_options === 'delivery';
+  const images = parseImages(product.images);
+  const totalPrice = product.price * quantity;
 
   const handleOrder = async () => {
     if (!token) {
-      navigate('/login');
+      onOpenAuth?.('login');
       return;
     }
-
     if (deliveryMethod === 'delivery' && !deliveryAddress.trim()) {
-      alert('Укажите адрес доставки');
+      addToast('Укажите адрес доставки', 'error');
       return;
     }
 
@@ -56,243 +106,242 @@ export default function ProductDetailPage() {
         delivery_address: deliveryMethod === 'delivery' ? deliveryAddress : null,
       }, token);
 
-      alert('Заказ создан! Деньги заморожены в эскроу. Ожидайте подтверждения продавца.');
+      addToast('Заказ создан: деньги зарезервированы до получения товара. Ожидайте подтверждения продавца.', 'success');
       navigate('/my-orders');
     } catch (error) {
-      alert(error.message || 'Ошибка при создании заказа');
+      addToast(error.message || 'Ошибка при создании заказа', 'error');
     } finally {
       setOrdering(false);
     }
   };
 
-  const totalPrice = product.price * quantity;
-
-  let images = [];
-  try {
-    if (product.images) {
-      images = JSON.parse(product.images);
-    }
-  } catch (e) {
-    console.error('Failed to parse images', e);
-  }
+  const conditionBadge = (
+    <span
+      className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-bold ${
+        product.condition === 'new'
+          ? 'bg-emerald-400/15 text-emerald-300'
+          : 'bg-amber-400/15 text-amber-200'
+      }`}
+    >
+      {product.condition === 'new' ? 'Новое' : <><IconRecycle size={12} /> Б/У</>}
+    </span>
+  );
 
   return (
-    <div className="product-detail-page">
-      <button className="back-button" onClick={() => navigate('/products')}>
-        ← Назад к товарам
-      </button>
-
-      <div className="product-detail-container">
-        {/* Сетка в две колонки. Класс есть в ProductDetailPage.css, но в
-            разметке его не было — галерея и карточка товара шли друг под
-            другом одной колонкой, а правая половина контейнера пустовала. */}
-        <div className="product-detail-content">
-          {/* Галерея */}
-          <div className="product-gallery">
-            {images.length > 0 ? (
-              <div className="main-image">
-                <img src={images[0]} alt={product.title} />
-              </div>
+    <>
+      <PageHero
+        size="sm"
+        back={{ to: '/products', label: 'Все товары' }}
+        eyebrow={productCategoryLabel(product.category)}
+        icon={IconProducts}
+        title={product.title}
+        titleClassName="hero-title-sm"
+        subtitle={
+          <span className="flex flex-wrap items-center gap-x-3 gap-y-2">
+            {conditionBadge}
+            {product.stock > 0 ? (
+              <span className="text-sm text-slate-300">В наличии: {product.stock} шт.</span>
             ) : (
-              <div className="main-image no-image-large">
-                <span><IconBox /></span>
-              </div>
+              <span className="text-sm font-semibold text-red-300">Нет в наличии</span>
             )}
-
-            {images.length > 1 && (
-              <div className="image-thumbnails">
-                {images.map((img, idx) => (
-                  <div key={idx} className="thumbnail">
-                    <img src={img} alt={`${product.title} ${idx + 1}`} />
-                  </div>
-                ))}
-              </div>
+            {product.city && (
+              <span className="inline-flex items-center gap-1 text-sm text-slate-300">
+                <IconPin size={14} /> {product.city}
+              </span>
             )}
-          </div>
-
-          {/* Информация */}
-          <div className="product-info-section">
-            <div className="product-header">
-              <h1 className="product-detail-title">{product.title}</h1>
-              <div className={product.condition === 'new' ? 'badge badge-new' : 'badge badge-used'}>
-                {product.condition === 'new' ? '🆕 Новое' : <><IconRecycle /> Б/У</>}
-              </div>
-            </div>
-
-            <div className="product-price-section">
-              <div className="product-detail-price">{formatPrice(product.price)}</div>
-              {product.stock > 0 ? (
-                <div className="stock-info">В наличии: {product.stock} шт.</div>
+          </span>
+        }
+        aside={
+          <div className="hero-stat sm:min-w-[18rem]">
+            <p className="hero-stat-label">Цена</p>
+            <p className="hero-stat-value !text-[1.75rem] sm:!text-[2rem]">{formatPrice(product.price)}</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {isOwner ? (
+                <>
+                  <button type="button" className="btn btn-cta" onClick={() => navigate(`/products/${product.id}/edit`)}>
+                    <IconEdit /> Редактировать
+                  </button>
+                  <Link to="/my-products" className="btn btn-glass">
+                    <IconBox /> Мои товары
+                  </Link>
+                </>
+              ) : canOrder ? (
+                <button
+                  type="button"
+                  className="btn btn-cta w-full"
+                  aria-expanded={showOrderForm}
+                  aria-controls="order-form"
+                  onClick={() => setShowOrderForm((v) => !v)}
+                >
+                  <IconPurchases /> {showOrderForm ? 'Скрыть оформление' : 'Купить'}
+                </button>
+              ) : !user ? (
+                <button type="button" className="btn btn-cta w-full" onClick={() => onOpenAuth?.('login')}>
+                  Войдите, чтобы купить
+                </button>
               ) : (
-                <div className="stock-info out-of-stock">Нет в наличии</div>
+                <p className="text-sm text-slate-400">Товар закончился</p>
+              )}
+            </div>
+            <p className="mt-3 flex items-start gap-1.5 text-xs text-slate-400">
+              <IconLock size={13} className="mt-0.5 text-emerald-400" />
+              Оплата резервируется до получения товара
+            </p>
+          </div>
+        }
+      />
+
+      <PageBody>
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)] items-start">
+          {/* Галерея и описание */}
+          <div className="space-y-6 min-w-0">
+            <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 overflow-hidden">
+              <div className="aspect-[4/3] bg-gradient-to-br from-indigo-50 to-slate-100 dark:from-slate-700/60 dark:to-slate-800 flex items-center justify-center">
+                {images.length > 0 ? (
+                  <img src={images[Math.min(activeImage, images.length - 1)]} alt={product.title} className="w-full h-full object-contain" />
+                ) : (
+                  <IconBox size={64} strokeWidth={1.25} className="text-indigo-300 dark:text-slate-500" />
+                )}
+              </div>
+              {images.length > 1 && (
+                <div className="flex gap-2 p-3 overflow-x-auto no-scrollbar border-t border-slate-100 dark:border-slate-700">
+                  {images.map((img, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => setActiveImage(idx)}
+                      aria-label={`Фото ${idx + 1}`}
+                      aria-pressed={idx === activeImage}
+                      className={`w-16 h-16 shrink-0 rounded-xl overflow-hidden border-2 transition-colors ${
+                        idx === activeImage ? 'border-indigo-500' : 'border-transparent hover:border-slate-300 dark:hover:border-slate-600'
+                      }`}
+                    >
+                      <img src={img} alt="" className="w-full h-full object-cover" />
+                    </button>
+                  ))}
+                </div>
               )}
             </div>
 
-            {/* Продавец */}
-            <div className="seller-section">
-              <h3>Продавец</h3>
-              <div className="seller-info">
-                <div className="seller-avatar">
-                  {product.seller_avatar ? (
-                    <img src={product.seller_avatar} alt={product.seller_name} />
-                  ) : (
-                    <div className="avatar-placeholder"><IconUser /></div>
-                  )}
-                </div>
-                <div className="seller-details">
-                  <div className="seller-name">
-                    {product.seller_verified && <span className="seller-verified-badge"><IconCheck /></span>}
-                    {product.seller_name}
+            <section className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-5 sm:p-6">
+              <h2 className="section-title">Описание</h2>
+              <p className="mt-3 text-sm sm:text-base leading-relaxed text-slate-600 dark:text-slate-300 whitespace-pre-line break-words">
+                {product.description}
+              </p>
+            </section>
+          </div>
+
+          {/* Продавец, получение, оформление */}
+          <div className="space-y-4 min-w-0 lg:sticky lg:top-24">
+            {showOrderForm && canOrder && (
+              <section id="order-form" className="rounded-2xl border border-indigo-200 dark:border-indigo-500/40 bg-white dark:bg-slate-800 p-5 sm:p-6 shadow-card">
+                <h2 className="section-title">Оформление заказа</h2>
+
+                <label className="block mt-4">
+                  <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">Количество</span>
+                  <input
+                    type="number"
+                    min="1"
+                    max={product.stock}
+                    value={quantity}
+                    onChange={(e) => setQuantity(Math.max(1, Math.min(product.stock, parseInt(e.target.value, 10) || 1)))}
+                    className="input mt-1.5 max-w-[8rem]"
+                  />
+                </label>
+
+                <fieldset className="mt-4">
+                  <legend className="text-sm font-semibold text-slate-700 dark:text-slate-200">Способ получения</legend>
+                  <div className="mt-1.5 grid grid-cols-2 gap-2">
+                    {pickup && (
+                      <label className={`chip justify-center !py-2.5 ${deliveryMethod === 'pickup' ? 'chip-active' : ''}`}>
+                        <input type="radio" name="delivery" value="pickup" className="sr-only" checked={deliveryMethod === 'pickup'} onChange={(e) => setDeliveryMethod(e.target.value)} />
+                        <IconPin /> Самовывоз
+                      </label>
+                    )}
+                    {delivery && (
+                      <label className={`chip justify-center !py-2.5 ${deliveryMethod === 'delivery' ? 'chip-active' : ''}`}>
+                        <input type="radio" name="delivery" value="delivery" className="sr-only" checked={deliveryMethod === 'delivery'} onChange={(e) => setDeliveryMethod(e.target.value)} />
+                        <IconDelivery /> Доставка
+                      </label>
+                    )}
                   </div>
-                  {product.seller_rating && (
-                    <div className="seller-rating">
-                      <IconStar /> {product.seller_rating} ({product.seller_reviews_count} отзывов)
-                    </div>
+                </fieldset>
+
+                {deliveryMethod === 'delivery' && (
+                  <label className="block mt-4">
+                    <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">Адрес доставки</span>
+                    <textarea
+                      value={deliveryAddress}
+                      onChange={(e) => setDeliveryAddress(e.target.value)}
+                      placeholder="Город, улица, дом, квартира"
+                      rows="3"
+                      className="textarea mt-1.5"
+                    />
+                  </label>
+                )}
+
+                <dl className="mt-5 rounded-xl bg-slate-50 dark:bg-slate-900/60 p-4 text-sm space-y-2">
+                  <div className="flex justify-between gap-3 text-slate-500 dark:text-slate-400">
+                    <dt>Товар ({quantity} шт.)</dt>
+                    <dd>{formatPrice(totalPrice)}</dd>
+                  </div>
+                  <div className="flex justify-between gap-3 font-bold text-slate-900 dark:text-white">
+                    <dt>Итого</dt>
+                    <dd className="font-display">{formatPrice(totalPrice)}</dd>
+                  </div>
+                  <p className="pt-1 text-xs text-slate-500 dark:text-slate-400 flex items-start gap-1.5">
+                    <IconLock size={13} className="mt-0.5 text-emerald-500" />
+                    Деньги будут зарезервированы до получения товара
+                  </p>
+                </dl>
+
+                <button type="button" className="btn btn-primary w-full mt-4 !py-3" onClick={handleOrder} disabled={ordering}>
+                  {ordering ? 'Оформление...' : `Купить за ${formatPrice(totalPrice)}`}
+                </button>
+              </section>
+            )}
+
+            <section className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-5">
+              <h2 className="section-eyebrow">Продавец</h2>
+              <div className="mt-3 flex items-center gap-3">
+                <span className="w-12 h-12 shrink-0 rounded-2xl overflow-hidden bg-indigo-50 dark:bg-indigo-500/15 text-indigo-600 dark:text-indigo-300 flex items-center justify-center">
+                  {product.seller_avatar ? (
+                    <img src={product.seller_avatar} alt="" className="w-full h-full object-cover" />
+                  ) : (
+                    <IconUser size={22} />
+                  )}
+                </span>
+                <div className="min-w-0">
+                  <p className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                    <span className="truncate">{product.seller_name}</span>
+                    {product.seller_verified && <IconCheck size={15} className="text-emerald-500" title="Продавец проверен" />}
+                  </p>
+                  {product.seller_rating ? (
+                    <p className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1">
+                      <IconStar size={13} className="text-amber-400" /> {product.seller_rating} · {product.seller_reviews_count} отзывов
+                    </p>
+                  ) : (
+                    <p className="text-xs text-slate-500 dark:text-slate-400">Пока без отзывов</p>
                   )}
                 </div>
               </div>
-            </div>
+            </section>
 
-            {/* Доставка */}
-            <div className="delivery-section">
-              <h4>Доставка</h4>
-              <div className="delivery-options">
-                {(product.delivery_options === 'both' || product.delivery_options === 'pickup') && (
-                  <div className="delivery-badge"><IconPin /> Самовывоз</div>
-                )}
-                {(product.delivery_options === 'both' || product.delivery_options === 'delivery') && (
-                  <div className="delivery-badge"><IconDelivery /> Доставка</div>
-                )}
+            <section className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-5">
+              <h2 className="section-eyebrow">Получение</h2>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {pickup && <span className="chip !cursor-default"><IconPin /> Самовывоз</span>}
+                {delivery && <span className="chip !cursor-default"><IconDelivery /> Доставка</span>}
               </div>
               {product.city && (
-                <div className="location"><IconPin /> {product.city}</div>
+                <p className="mt-3 text-sm text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                  <IconPin size={14} /> {product.city}
+                </p>
               )}
-            </div>
-
-          {/* Кнопки действий */}
-          <div className="actions">
-            {isOwner ? (
-              <>
-                <button
-                  className="btn btn-secondary"
-                  onClick={() => navigate(`/products/${product.id}/edit`)}
-                >
-                  <IconEdit /> Редактировать
-                </button>
-                <button
-                  className="btn btn-secondary"
-                  onClick={() => navigate('/my-products')}
-                >
-                  <IconBox /> Мои товары
-                </button>
-              </>
-            ) : canOrder ? (
-              <button
-                className="btn btn-primary btn-large"
-                onClick={() => setShowOrderForm(!showOrderForm)}
-              >
-                <IconPurchases /> Купить
-              </button>
-            ) : !user ? (
-              <button
-                className="btn btn-primary btn-large"
-                onClick={() => navigate('/login')}
-              >
-                Войдите, чтобы купить
-              </button>
-            ) : null}
-          </div>
-
-          {/* Форма заказа */}
-          {showOrderForm && canOrder && (
-            <div className="order-form">
-              <h3>Оформление заказа</h3>
-
-              <div className="form-group">
-                <label>Количество</label>
-                <input
-                  type="number"
-                  min="1"
-                  max={product.stock}
-                  value={quantity}
-                  onChange={(e) => setQuantity(parseInt(e.target.value) || 1)}
-                />
-              </div>
-
-              <div className="form-group">
-                <label>Способ получения</label>
-                <div className="radio-group">
-                  {(product.delivery_options === 'both' || product.delivery_options === 'pickup') && (
-                    <label className="radio-label">
-                      <input
-                        type="radio"
-                        name="delivery"
-                        value="pickup"
-                        checked={deliveryMethod === 'pickup'}
-                        onChange={(e) => setDeliveryMethod(e.target.value)}
-                      />
-                      <IconPin /> Самовывоз
-                    </label>
-                  )}
-                  {(product.delivery_options === 'both' || product.delivery_options === 'delivery') && (
-                    <label className="radio-label">
-                      <input
-                        type="radio"
-                        name="delivery"
-                        value="delivery"
-                        checked={deliveryMethod === 'delivery'}
-                        onChange={(e) => setDeliveryMethod(e.target.value)}
-                      />
-                      <IconDelivery /> Доставка
-                    </label>
-                  )}
-                </div>
-              </div>
-
-              {deliveryMethod === 'delivery' && (
-                <div className="form-group">
-                  <label>Адрес доставки</label>
-                  <textarea
-                    value={deliveryAddress}
-                    onChange={(e) => setDeliveryAddress(e.target.value)}
-                    placeholder="Город, улица, дом, квартира"
-                    rows="3"
-                  />
-                </div>
-              )}
-
-              <div className="order-summary">
-                <div className="summary-row">
-                  <span>Товар ({quantity} шт.)</span>
-                  <span>{formatPrice(totalPrice)}</span>
-                </div>
-                <div className="summary-row total">
-                  <span>Итого</span>
-                  <span>{formatPrice(totalPrice)}</span>
-                </div>
-                <div className="summary-note">
-                  Деньги будут заморожены в эскроу до получения товара
-                </div>
-              </div>
-
-              <button
-                className="btn btn-primary btn-large"
-                onClick={handleOrder}
-                disabled={ordering}
-              >
-                {ordering ? 'Оформление...' : `Купить за ${formatPrice(totalPrice)}`}
-              </button>
-            </div>
-          )}
+            </section>
           </div>
         </div>
-      </div>
-
-      {/* Описание */}
-      <div className="description-section">
-        <h3>Описание</h3>
-        <p className="product-detail-description">{product.description}</p>
-      </div>
-    </div>
+      </PageBody>
+    </>
   );
 }
