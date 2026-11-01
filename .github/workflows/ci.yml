@@ -218,7 +218,9 @@ jobs:
             security/check_celery_tasks \
             security/check_payment_amount_credit \
             security/check_audit_fixes \
-            security/check_admin_access
+            security/check_admin_access \
+            security/check_task_address_privacy \
+            security/check_sentry_privacy
           do
             echo "::group::$suite"
             python "tests/${suite}.py"
@@ -659,7 +661,29 @@ jobs:
         run: |
           docker run --rm --add-host backend:127.0.0.1 \
             -v "$PWD/nginx.conf:/etc/nginx/conf.d/default.conf:ro" \
+            -v "$PWD/nginx-security-headers.conf:/etc/nginx/snippets/delo-security-headers.conf:ro" \
             nginx:alpine nginx -t
+
+      # Заголовки безопасности (CSP, HSTS, X-Frame-Options) и сжатие — на
+      # настоящем образе фронтенда, собранном тем же Dockerfile, что и на VPS.
+      # Именно образ, а не конфиг рядом со статикой: путь, по которому
+      # Dockerfile кладёт файл с заголовками, тоже часть проверки.
+      #
+      # Набор шлёт запросы так, как их шлёт Caddy (с заголовком Via): без
+      # gzip_proxied nginx такие ответы не сжимал, и в проде главная страница
+      # весила вчетверо больше, хотя прямой запрос к nginx сжимался.
+      # Он же сверяет хэш встроенного скрипта темы в index.html с CSP —
+      # правка скрипта без правки хэша здесь и упадёт, с подсказкой.
+      - name: Check security headers and compression (frontend image)
+        run: |
+          docker build -q -t delo-frontend-ci .
+          docker run -d --name delo-frontend-ci --add-host backend:127.0.0.1 -p 8088:80 delo-frontend-ci
+          for i in $(seq 1 30); do
+            curl -fsS -o /dev/null http://127.0.0.1:8088/ && break
+            sleep 1
+          done
+          python3 ../tests/security/check_frontend_headers.py http://127.0.0.1:8088 \
+            || { docker logs delo-frontend-ci; exit 1; }
 
   # ---------------------------------------------------------------------------
   # Форма смены пароля — через настоящий браузер, а не через API.
@@ -853,3 +877,57 @@ jobs:
           name: password-form-screenshots
           path: visual-check/*.png
           if-no-files-found: ignore
+
+  # ---------------------------------------------------------------------------
+  # Скрипты обслуживания VPS: резервные копии, восстановление, мониторинг,
+  # обновление и откат. Docker здесь не нужен: tests/ops/fake-bin/docker
+  # выполняет команды compose на Postgres этой джобы. Проверяются сценарии,
+  # которые на сервере случаются раз в год и должны сработать с первого раза:
+  # восстановление с возвратом при сбое, откат через миграцию, сборка упала,
+  # копия повреждена, Telegram недоступен.
+  # ---------------------------------------------------------------------------
+  ops-scripts:
+    name: VPS scripts (backup, restore, monitor, update)
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: marketplace
+          POSTGRES_PASSWORD: ci_password
+          POSTGRES_DB: marketplace_ops
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U marketplace -d marketplace_ops"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r backend/requirements.txt
+
+      - name: ShellCheck
+        run: |
+          shellcheck --version | head -n 2
+          shellcheck -x scripts/ops_common.sh scripts/backup.sh scripts/restore.sh \
+            scripts/monitor.sh scripts/vps_update.sh \
+            tests/ops/run_ops_tests.sh tests/ops/fake-bin/docker
+
+      - name: Backup, restore, monitor, update and rollback
+        env:
+          FAKE_PGHOST: localhost
+          FAKE_PGPORT: "5432"
+          FAKE_PGPASSWORD: ci_password
+          FAKE_PGTCP: localhost
+        run: bash tests/ops/run_ops_tests.sh
