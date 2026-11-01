@@ -93,11 +93,24 @@ class UserCreate(BaseModel):
     # выдаётся сервером (customer по умолчанию) и меняется через
     # POST /users/me/switch-role — там же, где остальные проверки.
     name: Optional[str] = None
+    # Две отдельные отметки, а не одна: с 1 сентября 2025 года согласие на
+    # обработку персональных данных оформляется отдельно от других документов
+    # (ст. 9 152-ФЗ в ред. 156-ФЗ). По умолчанию False — без обеих отметок
+    # регистрация отклоняется с понятным сообщением, а не с ошибкой схемы.
+    accept_terms: bool = False
+    pd_consent: bool = False
 
     @field_validator("password")
     @classmethod
     def _password_policy(cls, v: str) -> str:
         return _check_password(v)
+
+
+class LegalConsentRequest(BaseModel):
+    """Согласие уже зарегистрированного пользователя: аккаунты, созданные до
+    появления документов, и пользователи со старой редакцией."""
+    accept_terms: bool = False
+    pd_consent: bool = False
 
 class UserOut(BaseModel):
     id: int
@@ -130,6 +143,13 @@ class ProfileUpdate(BaseModel):
 
 class ForgotPasswordRequest(BaseModel):
     email: EmailStr
+
+class RefreshTokenRequest(BaseModel):
+    """Refresh-токен в теле запроса: /auth/refresh и /auth/logout.
+
+    Длина ограничена: настоящий токен — около 250 символов, а без предела
+    сюда можно было бы прислать мегабайты на разбор подписи."""
+    refresh_token: str = Field(..., min_length=1, max_length=4096)
 
 class ResetPasswordRequest(BaseModel):
     token: str

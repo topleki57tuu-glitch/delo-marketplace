@@ -5,6 +5,7 @@ import secrets
 from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
+from jose import JWTError, jwt
 from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.config import settings
@@ -17,9 +18,10 @@ from app.core.security import (
 from app.core.csrf import verify_csrf
 from app.core.money import claim
 from app.core.email import EmailNotConfigured, send_email_sync
+from app.core.legal import CONSENT_REQUIRED_MESSAGE, LEGAL_VERSION
 from app.models import User, PasswordResetToken, RefreshToken, UserRole
 from app.schemas import (
-    UserCreate, ForgotPasswordRequest, ResetPasswordRequest
+    UserCreate, ForgotPasswordRequest, ResetPasswordRequest, RefreshTokenRequest
 )
 
 router = APIRouter(tags=["Authentication"])
@@ -29,15 +31,24 @@ logger = logging.getLogger(__name__)
 @router.post("/register/")
 def register(user: UserCreate, request: Request, db: Session = Depends(get_db), _csrf: None = Depends(verify_csrf)):
     rate_limit(request, "register", limit=5, window_sec=3600)
+    # Без согласия аккаунт не создаём: иначе мы начали бы обрабатывать
+    # персональные данные (email, имя) без правового основания. Проверка
+    # здесь, а не только в форме, — API доступен и в обход фронтенда.
+    if not (user.accept_terms and user.pd_consent):
+        raise HTTPException(400, CONSENT_REQUIRED_MESSAGE)
     if db.query(User).filter(User.email == user.email).first():
         raise HTTPException(400, "Email уже зарегистрирован в системе")
     # Роль задаём сами: в схеме её больше нет, иначе клиент мог бы сразу
     # зарегистрироваться специалистом в обход обычного переключения роли.
+    now = datetime.utcnow()
     new_user = User(
         email=user.email,
         hashed_password=hash_password(user.password),
         role=UserRole.customer,
-        name=user.name
+        name=user.name,
+        terms_accepted_at=now,
+        pd_consent_at=now,
+        legal_version=LEGAL_VERSION,
     )
     db.add(new_user)
     db.commit()
@@ -106,13 +117,7 @@ def login(request: Request, form: OAuth2PasswordRequestForm = Depends(), db: Ses
     }
 
 
-@router.post("/refresh")
-def refresh_access_token(refresh_token: str, db: Session = Depends(get_db)):
-    """Обновляет access токен используя refresh токен.
-
-    Access токены живут 15 минут, refresh токены — 7 дней.
-    При компрометации access токена достаточно дождаться его истечения.
-    """
+def _access_token_from_refresh(refresh_token: str, db: Session) -> dict:
     payload = verify_refresh_token(refresh_token, db)
     if not payload:
         raise HTTPException(
@@ -133,8 +138,68 @@ def refresh_access_token(refresh_token: str, db: Session = Depends(get_db)):
 
     return {
         "access_token": access_token,
-        "token_type": "bearer"
+        "token_type": "bearer",
+        "role": enum_value(user.role),
     }
+
+
+@router.post("/refresh")
+def refresh_access_token(refresh_token: str, db: Session = Depends(get_db)):
+    """Обновляет access токен используя refresh токен.
+
+    Access токены живут 15 минут, refresh токены — 7 дней.
+    При компрометации access токена достаточно дождаться его истечения.
+
+    Старый вход: токен в строке запроса. Оставлен для API-клиентов и тестов,
+    фронтенд ходит в /auth/refresh.
+    """
+    return _access_token_from_refresh(refresh_token, db)
+
+
+@router.post("/auth/refresh")
+def refresh_access_token_from_body(req: RefreshTokenRequest, db: Session = Depends(get_db)):
+    """Обновить access-токен; refresh-токен — в теле запроса.
+
+    Фронтенд продлевает сессию сам, когда access-токен истёк (15 минут).
+    Раньше продления не было вовсе: через 15 минут после входа все запросы
+    получали 401, а интерфейс продолжал показывать пользователя вошедшим.
+
+    Отдельный путь, а не /refresh, по двум причинам. /refresh не проксирует
+    production-nginx: POST уходил в SPA и получал 405. /auth/* nginx и Vite
+    уже отправляют на бэкенд. И токен в теле, а не в адресе: адрес запроса
+    пишется в журналы прокси, а refresh-токен — это 7 дней доступа.
+
+    CSRF здесь не нужен: запрос ничего не берёт из cookie, право на него
+    даёт только сам refresh-токен.
+    """
+    return _access_token_from_refresh(req.refresh_token, db)
+
+
+@router.post("/auth/logout")
+def logout_this_device(req: RefreshTokenRequest, db: Session = Depends(get_db)):
+    """Выход на этом устройстве: отзывает переданный refresh-токен.
+
+    /logout ниже отзывает токены на всех устройствах и требует живой
+    access-токен — а при выходе он мог уже истечь. Здесь достаточно самого
+    refresh-токена. Отвечаем 200 и на просроченный или уже отозванный
+    токен: выйти должно получаться всегда, а мёртвый токен отзывать незачем.
+    """
+    try:
+        payload = jwt.decode(req.refresh_token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+    except JWTError:
+        payload = None
+    jti = payload.get("jti") if payload and payload.get("type") == "refresh" else None
+    if jti:
+        db.query(RefreshToken).filter(
+            RefreshToken.token == jti,
+            RefreshToken.user_id == int(payload.get("sub")),
+            RefreshToken.revoked == False,  # noqa: E712
+        ).update({
+            "revoked": True,
+            "revoked_at": datetime.now(timezone.utc),
+        })
+        db.commit()
+    return {"message": "Вы вышли из аккаунта"}
 
 
 @router.post("/logout")
