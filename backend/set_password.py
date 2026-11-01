@@ -30,7 +30,7 @@ from datetime import datetime, timezone
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from app.core.database import SessionLocal
-from app.core.security import generate_strong_password, hash_password
+from app.core.security import find_user_by_email, generate_strong_password, hash_password
 from app.models import User, RefreshToken
 from app.schemas import _check_password
 
@@ -107,7 +107,7 @@ def main() -> int:
 
     db = SessionLocal()
     try:
-        user = db.query(User).filter(User.email == args.email).first()
+        user = find_user_by_email(db, args.email)
         if not user:
             print(f"Аккаунт {args.email} не найден.")
             # Подсказываем, если почта просто не в списке существующих

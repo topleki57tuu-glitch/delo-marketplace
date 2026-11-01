@@ -390,9 +390,11 @@ docker compose -f docker-compose.prod.yml exec postgres \
 ### Остальное, требуется вручную
 
 - **`TELEGRAM_BOT_TOKEN`** — пустой, бот не функционирует.
-- **`ADMIN_EMAILS=admin@delo.ru`** — почта при регистрации не подтверждается,
-  поэтому первый, кто займёт этот адрес, станет модератором. Либо займи
-  адрес сам, либо смени на свой.
+- **Вход в админ-панель** — `bash scripts/admin_access.sh` из
+  `/opt/delo-marketplace`. Спросит почту и пароль (ввод скрыт), заведёт
+  аккаунт или сменит ему пароль, впишет почту в `ADMIN_EMAILS` и перезапустит
+  backend. `--check` — кто сейчас модератор и нет ли «двойников» вроде
+  `Admin@delo.ru`. С сайта адреса модераторов не регистрируются.
 - **`www.`** — не обслуживается. Нужен:
   `sed -i 's/^{\$DOMAIN}/{$DOMAIN}, www.{$DOMAIN}/' deploy/Caddyfile && docker compose -f docker-compose.prod.yml restart caddy`
 - **`YOOMONEY_CLIENT_ID`** — нужен только для OAuth-сценария. Коду
