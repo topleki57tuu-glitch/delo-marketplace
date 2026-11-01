@@ -43,11 +43,24 @@ chmod +x "$WORK/bin/"*
 
 PASS=0
 FAIL=0
+SECTION=""
+# В GitHub Actions журнал шага открыт не всем, а аннотации видны в PR и
+# через API: непрошедшая проверка — аннотация с концом вывода скрипта.
+ci_annotate() {
+    [ "${GITHUB_ACTIONS:-}" = "true" ] || return 0
+    local level="$1" msg="$2"
+    msg="${msg//'%'/'%25'}"
+    msg="${msg//$'\r'/}"
+    msg="${msg//$'\n'/'%0A'}"
+    echo "::$level title=ops tests::$msg"
+}
+out_tail() { [ -s "$OUT" ] && tail -n "${1:-25}" "$OUT"; }
 pass() { PASS=$((PASS + 1)); echo "  ✓ $1"; }
 fail() {
     FAIL=$((FAIL + 1))
     echo "  ✗ $1"
     if [ -s "$OUT" ]; then sed 's/^/      | /' "$OUT" | tail -n 25; fi
+    ci_annotate error "[$SECTION] $1"$'\n'"$(out_tail)"
 }
 expect() {
     local desc="$1"
@@ -59,7 +72,7 @@ expect_not() {
     shift
     if "$@" > /dev/null 2>&1; then fail "$desc"; else pass "$desc"; fi
 }
-section() { echo ""; echo "== $1"; }
+section() { SECTION="$1"; echo ""; echo "== $1"; }
 has() { grep -qF -- "$1" "$OUT"; }
 
 psql_() {
@@ -104,7 +117,12 @@ env_put() {
 newest() { find "$BACKUP_DIR" -mindepth 1 -maxdepth 1 -type d -name "$1" -printf '%f\n' 2> /dev/null | sort | tail -n 1; }
 
 FAKE_PID=""
+FINISHED=0
 cleanup() {
+    local rc=$?
+    if [ "$FINISHED" != 1 ]; then
+        ci_annotate error "Проверка прервана в разделе «$SECTION» (код $rc)"$'\n'"$(out_tail)"
+    fi
     [ -n "$FAKE_PID" ] && kill "$FAKE_PID" 2> /dev/null
     for d in $(dbs_like "${DB}%" 2> /dev/null) $(dbs_like 'delo_verify_%' 2> /dev/null); do
         psql_ -d postgres -c "DROP DATABASE IF EXISTS \"$d\"" > /dev/null 2>&1
@@ -119,6 +137,9 @@ section "Подготовка"
 python3 "$REPO/tests/ops/fake_services.py" "$PORT" "$FAKE" &
 FAKE_PID=$!
 for _ in $(seq 1 50); do curl -fsS -o /dev/null "http://127.0.0.1:$PORT/health/db" 2> /dev/null && break; sleep 0.1; done
+ci_annotate notice "$(. /etc/os-release 2> /dev/null && echo "$PRETTY_NAME"); bash $BASH_VERSION; $(psql --version); \
+сервер $(psql_ -d postgres -tAc 'SHOW server_version' 2>&1); $(pg_dump --version); $(git --version); \
+$(script --version 2>&1 | head -n 1); $(python3 --version)"
 
 # «GitHub»: репозиторий с историей C0 (снимок рабочей копии) -> C1.
 git init -q -b main "$SRC"
@@ -589,4 +610,6 @@ expect "второй запуск одновременно — отказ" [ "$R
 
 echo ""
 echo "Итого: $PASS прошло, $FAIL не прошло"
+FINISHED=1
+[ "$FAIL" -eq 0 ] || ci_annotate error "Итого: $PASS прошло, $FAIL не прошло"
 [ "$FAIL" -eq 0 ]
