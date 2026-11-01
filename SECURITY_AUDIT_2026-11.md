@@ -61,3 +61,8 @@ login-throttle, vitest) прогнаны локально на Postgres 16 + Red
 - WebSocket-чат при нескольких воркерах (нужен Redis pub/sub).
 - Токен в `localStorage` (XSS → кража сессии) — перейти на httpOnly-cookie.
 - Ограничение длины промпта в AI-эндпоинтах; `noopener` у `window.open`.
+
+> `docker-compose.infra.yml` и `docker-compose.yml`: пароль Postgres больше не хранится
+> в репозитории (ни захардкоженный, ни дефолтный `marketplace_secret`) — без
+> `POSTGRES_PASSWORD` в `.env` compose не стартует. Старый пароль остался в истории git —
+> если база где-то запущена с ним, смените его.
