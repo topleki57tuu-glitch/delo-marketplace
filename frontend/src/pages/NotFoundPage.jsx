@@ -1,8 +1,10 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { LogoMark } from '../components/Logo.jsx';
+import { useDocumentTitle } from '../components/RouteMeta.jsx';
 
 export default function NotFoundPage() {
+  useDocumentTitle('Страница не найдена');
   return (
     <div className="min-h-[70vh] flex items-center justify-center px-4 py-16">
       <div className="text-center max-w-md">

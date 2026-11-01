@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useToast } from '../components/Toast';
 import { taskCategoryLabel } from '../constants/categories.js';
+import { useDocumentTitle } from '../components/RouteMeta.jsx';
 import { IconCheck, IconOnline, IconStarEmpty, IconCalendar, IconJustice, IconMessages, IconPin, IconQuestion, IconStar, IconUser, IconWarning } from '../components/icons.jsx';
 
 export default function TaskDetailPage({ user, token, onOpenAuth, onOpenChat, onOpenPublicProfile }) {
@@ -12,6 +13,9 @@ export default function TaskDetailPage({ user, token, onOpenAuth, onOpenChat, on
   const [task, setTask] = useState(null);
   const [responses, setResponses] = useState([]);
   const [loading, setLoading] = useState(true);
+  // Пока грузится новое задание, в state ещё лежит предыдущее — его
+  // название во вкладку не ставим.
+  useDocumentTitle(task && String(task.id) === String(taskId) ? task.title : null);
   const [responseText, setResponseText] = useState('');
   const [proposedPrice, setProposedPrice] = useState('');
   const [estimatedDays, setEstimatedDays] = useState('');
