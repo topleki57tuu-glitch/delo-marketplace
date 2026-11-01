@@ -216,7 +216,8 @@ jobs:
             security/check_private_attachment_access \
             security/check_withdrawal_review \
             security/check_celery_tasks \
-            security/check_payment_amount_credit
+            security/check_payment_amount_credit \
+            security/check_audit_fixes
           do
             echo "::group::$suite"
             python "tests/${suite}.py"
@@ -665,7 +666,9 @@ jobs:
   # ---------------------------------------------------------------------------
   password-form:
     name: Profile password form (browser)
-    runs-on: ubuntu-latest
+    # Закреплено: с 19.10.2026 ubuntu-latest переезжает на Ubuntu 26, а
+    # `playwright install --with-deps` (1.55) не знает её пакетов и падает.
+    runs-on: ubuntu-24.04
 
     services:
       postgres:
