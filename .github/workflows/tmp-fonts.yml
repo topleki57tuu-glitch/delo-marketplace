@@ -1,0 +1,80 @@
+# Временный workflow, удаляется следующим коммитом.
+#
+# MCP-инструмент, которым пушится ветка, умеет только текст и не берёт файлы
+# больше ~60 КБ. Поэтому здесь: (1) скачиваются woff2-файлы шрифтов с Google
+# Fonts и сверяются по sha256 с файлами, проверенными локально; unbounded-rub
+# (880 байт, подмножество с одним знаком ₽) лежит прямо здесь в base64;
+# (2) применяется патч к ProfilePage.jsx (файл 70 КБ) и сверяется хэш
+# результата. Коммит делает github-actions[bot].
+name: Fonts and ProfilePage (one-off)
+
+on:
+  push:
+    branches: [product/legal-trust]
+    paths: ['.github/workflows/tmp-fonts.yml']
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: product/legal-trust
+
+      - name: Download and verify fonts
+        working-directory: frontend/public/fonts
+        run: |
+          set -euo pipefail
+          UA='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36'
+          get() { curl -fsSL --retry 3 -A "$UA" -o "$1" "$2"; }
+          get manrope-cyrillic.woff2 'https://fonts.gstatic.com/l/font?kit=xn7KYHE41ni1AdIRqAuZuw1Bx9mbZk79FI3O0Ugp5H3HH7exiUyFpFRh&skey=c397ded15edc0853&v=v23'
+          get manrope-latin.woff2 'https://fonts.gstatic.com/l/font?kit=xn7KYHE41ni1AdIRqAuZuw1Bx9mbZk79FI3O0Ugp5H3HH7exiUyFoFRh&skey=c397ded15edc0853&v=v23'
+          get manrope-latin-ext.woff2 'https://fonts.gstatic.com/l/font?kit=xn7KYHE41ni1AdIRqAuZuw1Bx9mbZk79FI3O0Ugp5H3HH7exiUyFrlRh&skey=c397ded15edc0853&v=v23'
+          get unbounded-cyrillic.woff2 'https://fonts.gstatic.com/l/font?kit=Yq64-LOTXCb04q32xlpat-6uR42XTqtG68b2sYblcCYX5EAwbLdgxRld6HY&skey=85bdc4c30fbe73fc&v=v12'
+          get unbounded-latin.woff2 'https://fonts.gstatic.com/l/font?kit=Yq64-LOTXCb04q32xlpat-6uR42XTqtG68b2sYblcCYX5EAwbLdgxRlZ6HY&skey=85bdc4c30fbe73fc&v=v12'
+          base64 -d > unbounded-rub.woff2 <<'B64'
+          d09GMgABAAAAAANwABUAAAAABzgAAAMEAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAGhQbIBwwP0hW
+          QVI6P01WQVI8BmA/U1RBVEYnGgA0LzwRCApcbDBeATYCJAMICwYABCAFhFIHIAwHG9YFIB6FTdns
+          FDHC08yXfyGEk+lQWh7+fx10359ZkAlgc5KjoLw+3ahbFUGPQXN6A+LIYYk5Sfm79FOwZsJPuUkS
+          ekUO2U1OWnNxqj5mWi4gyXsGWEgjMjoXj0mxUqyDFljFegXsptKYvi1WK2BAewWsbpMd2WMgKa40
+          iskagfKAkMsoq757S4M8oRQ25VAUABShFYmVz51Omwt93M+o0yHu6cEj/weqg04ACJQXqGlJ0I8N
+          EoKK9UASApSW1J9PBQKw5DwFxCUrUibPSqXRWCNtk4PB48REKGIkjE0cwxYBbjS+OtyUPSnKkb+P
+          hiAg9Ujv0diKEEoLVLeC+pYX8226tIqSqrq3BFEmjQaEWDZdAb5c1vgiIb/hBmhU3PRtsAEJWYlY
+          uJJVjUEOwm58tSiI6sEgS2BXtiyORUu3VFnOAZsjawxEjiyzEmXRepSjmatHUTgACeRIqAeaAcgB
+          qVa+eDe7ul2iwva7d625c6ds+YheezvW3loQB8pP30ymPq++XzFypnfwHo+Dn+ky32vvtarZtl2N
+          0qXnNt8BCASoa9ndB2i6JpTVfQ0b1M+qtGjx61epijVqm6RGxVJFkf1+F/6N5TXO3KxNz5//2nBQ
+          /Pn1/ctnQHk3xK9Pz//W+ltvCXF6YctvcWj1wPStdJa9hAd9d20AHo5vFl9cX9xcP5pfBSUlEHx9
+          uuRjAvF/aYgl5rWUjYK/PsgsIRluwwjr1M1ygXK2WRF5GRyDEENzH5hUdAsz3Xx15zQsYWQuxZKa
+          xyyIfPnYByyjchzEskrHsfcsp2qc40SMzAk6eG0UQ0FGQYGR0sZipA01EKKhFlYLI0ZAdLGaKIad
+          iGojBGOMR20UNTJmICXF6+gkUYNEEzFIeJ0geH0sDjFEjUmJZQc/tfL9klgDHQ5EX0sCiyfqqxPI
+          SWjJyBlF2EUYL9J+g4zvKaM7iCFmGQAuh5B/+7EiGQk9CQUdiRbWhNoLHqtFQU9Lr6VcHLLB7+ic
+          DrrNbjOUoK65FaZX7KfQeCGKjSfynQAAAA==
+          B64
+          sha256sum -c <<'SUMS'
+          062d015f86684cce73271788a862db73e61dbf6e59a7b29f94f0f1db2caef3b1  manrope-cyrillic.woff2
+          e421c136864dcf946a6f3818658c5d1c26e3d0dba5f49f8642d0f74d67a606d8  manrope-latin.woff2
+          4db76190464b6c766181a9bec87ac1b45a67397c91357575c930e60f2ae57c6a  manrope-latin-ext.woff2
+          c532163a202947ae97614d3e4089d6eee08759b0524c9ec06ee854be16d6b3dc  unbounded-cyrillic.woff2
+          16527bb8a9c134f45e58cef47b29b334fb621d40328212724a784d73e6cf84b4  unbounded-latin.woff2
+          971072e6c9c3f019f2f17278524bf05b7858f00c242ae085ade3558a174ab6e4  unbounded-rub.woff2
+          SUMS
+
+      - name: Apply ProfilePage.jsx patch
+        run: |
+          set -euo pipefail
+          git apply .github/tmp/profilepage.patch
+          test "$(git hash-object frontend/src/pages/ProfilePage.jsx)" = "f49d0f8f8423ee0622619fbe999e4a42dccdbf0c"
+          git rm -q .github/tmp/profilepage.patch
+
+      - name: Commit
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add frontend/public/fonts frontend/src/pages/ProfilePage.jsx
+          git commit -m "Шрифты woff2 и смена пароля в профиле (через временный workflow)" \
+            -m "Шрифты Manrope и Unbounded раздаются с нашего сервера вместо Google Fonts. После смены пароля профиль сохраняет новую пару токенов: устройство остаётся в аккаунте, остальные выходят."
+          git push
