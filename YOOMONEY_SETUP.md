@@ -26,7 +26,7 @@
    - Запросите права (scope):
      - `account-info` - информация о счете
      - `operation-history` - история операций
-     - `payment-p2p` - прием платежей
+     - `payment-p2p` **не запрашивайте**: это право на переводы С кошелька, для приёма оплаты через форму оно не нужно, а утёкший токен с ним позволяет вывести все деньги
 
 3. **Получите Client ID**:
    - После создания приложения скопируйте `client_id`
@@ -42,7 +42,7 @@ Access Token нужен для работы с API. Получить его мо
 1. Откройте URL (замените YOUR_CLIENT_ID и YOUR_REDIRECT_URI):
 
 ```
-https://yoomoney.ru/oauth/authorize?client_id=YOUR_CLIENT_ID&response_type=code&redirect_uri=YOUR_REDIRECT_URI&scope=account-info operation-history payment-p2p
+https://yoomoney.ru/oauth/authorize?client_id=YOUR_CLIENT_ID&response_type=code&redirect_uri=YOUR_REDIRECT_URI&scope=account-info operation-history
 ```
 
 2. Авторизуйтесь и разрешите доступ

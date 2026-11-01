@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func, or_
 from app.core.database import get_db
 from app.core.security import oauth2_scheme, decode_token, is_admin
-from app.core.money import credit_balance, debit_balance
+from app.core.money import credit_balance, debit_balance, claim
 from app.core.csrf import verify_csrf
 from app.core.logging import logger, log_escrow_operation
 from app.core.cache import cache
@@ -53,7 +53,8 @@ def _serialize_product(p: Product, seller: Optional[User] = None) -> dict:
         "delivery_options": p.delivery_options,
         "status": p.status,
         "created_at": p.created_at.isoformat() if p.created_at else None,
-        "seller_name": (seller.name or seller.email) if seller else None,
+        # Каталог публичный: email продавца без имени сюда не подставляем.
+        "seller_name": (seller.name or "Продавец") if seller else None,
         "seller_avatar": seller.avatar if seller else None,
         "seller_verified": bool(seller.verified) if seller else False,
     }
@@ -168,8 +169,11 @@ def get_products(
     # Сортировка (до пагинации!)
     query = query.order_by(Product.id.desc())
 
-    # Пагинация
+    # Пагинация. per_page ограничен: раньше ?per_page=1000000 выгружал весь
+    # каталог с продавцами одним запросом — дешёвый способ нагрузить базу.
+    per_page = min(max(1, per_page), 50)
     if page:
+        page = max(1, page)
         offset = (page - 1) * per_page
         query = query.offset(offset).limit(per_page)
     else:
@@ -254,9 +258,12 @@ def create_order(
             400,
             f"Недостаточно средств. Требуется {total_price} ₽, доступно {buyer.balance or 0} ₽",
         )
+    # Сумма со знаком минус — как у заморозки по заданиям (payments.assign_task)
+    # и как у любого списания: история кошелька показывает знак как есть, и
+    # положительная заморозка выглядела у покупателя как поступление денег.
     escrow_tx = Transaction(
         user_id=buyer_id,
-        amount=total_price,
+        amount=-total_price,
         type=TransactionType.escrow_hold,
         task_id=None,  # для товаров используем order
         fee=0
@@ -445,7 +452,12 @@ def confirm_order(
     if order.status != OrderStatus.pending:
         raise HTTPException(400, f"Нельзя подтвердить заказ со статусом {order.status}")
 
-    order.status = OrderStatus.confirmed
+    # Переход статуса — условным UPDATE (money.claim): with_for_update выше
+    # на SQLite игнорируется, и одновременные запросы проходили проверку оба.
+    if not claim(db, Order, [Order.id == order.id, Order.status == OrderStatus.pending],
+                 {"status": OrderStatus.confirmed}):
+        db.rollback()
+        raise HTTPException(409, "Статус заказа изменился, обновите страницу")
 
     db.add(Notification(
         user_id=order.buyer_id,
@@ -482,8 +494,12 @@ def ship_order(
     if order.status != OrderStatus.confirmed:
         raise HTTPException(400, "Заказ должен быть подтверждён")
 
-    order.status = OrderStatus.shipped
-    order.tracking_number = req.tracking_number
+    # Переход статуса — условным UPDATE (money.claim): with_for_update выше
+    # на SQLite игнорируется, и одновременные запросы проходили проверку оба.
+    if not claim(db, Order, [Order.id == order.id, Order.status == OrderStatus.confirmed],
+                 {"status": OrderStatus.shipped, "tracking_number": req.tracking_number}):
+        db.rollback()
+        raise HTTPException(409, "Статус заказа изменился, обновите страницу")
 
     db.add(Notification(
         user_id=order.buyer_id,
@@ -529,7 +545,16 @@ def complete_order(
             409, "Продавец заказа не найден — завершение невозможно, обратитесь в поддержку"
         )
 
-    order.status = OrderStatus.completed
+    # Переход статуса — условным UPDATE (money.claim): with_for_update выше
+    # на SQLite игнорируется, и одновременные запросы проходили проверку оба.
+    # Без этого одновременные «получил» и «отменить»/«спор» давали и выплату
+    # продавцу, и возврат покупателю.
+    if not claim(db, Order,
+                 [Order.id == order.id,
+                  Order.status.in_([OrderStatus.pending, OrderStatus.confirmed, OrderStatus.shipped])],
+                 {"status": OrderStatus.completed}):
+        db.rollback()
+        raise HTTPException(409, "Статус заказа изменился, обновите страницу")
 
     # Перевести деньги продавцу. Начисление делает сам UPDATE, а не Python:
     # при конкурентной записи баланса инкремент в приложении потерялся бы.
@@ -597,7 +622,14 @@ def cancel_order(
             409, "Покупатель заказа не найден — отмена невозможна, обратитесь в поддержку"
         )
 
-    order.status = OrderStatus.cancelled
+    # Переход статуса — условным UPDATE (money.claim): with_for_update выше
+    # на SQLite игнорируется, и одновременные запросы проходили проверку оба.
+    if not claim(db, Order,
+                 [Order.id == order.id,
+                  Order.status.in_([OrderStatus.pending, OrderStatus.confirmed])],
+                 {"status": OrderStatus.cancelled}):
+        db.rollback()
+        raise HTTPException(409, "Статус заказа изменился, обновите страницу")
 
     # Вернуть деньги покупателю (начисление — атомарным UPDATE)
     credit_balance(db, buyer.id, order.total_price)
@@ -685,9 +717,16 @@ def open_order_dispute(
     if len(reason) < 5:
         raise HTTPException(400, "Опишите причину спора (минимум 5 символов)")
 
+    # Переход статуса — условным UPDATE (money.claim): with_for_update выше
+    # на SQLite игнорируется, и одновременные запросы проходили проверку оба.
+    if not claim(db, Order,
+                 [Order.id == order.id,
+                  Order.status.in_([OrderStatus.confirmed, OrderStatus.shipped])],
+                 {"status": OrderStatus.disputed}):
+        db.rollback()
+        raise HTTPException(409, "Статус заказа изменился, обновите страницу")
     dispute = Dispute(order_id=order.id, opened_by=user_id, reason=reason)
     db.add(dispute)
-    order.status = OrderStatus.disputed
 
     other_id = order.seller_id if user_id == order.buyer_id else order.buyer_id
     db.add(Notification(
@@ -703,7 +742,7 @@ def open_order_dispute(
     return {
         "message": "Спор открыт. Средства заморожены до решения арбитража.",
         "dispute_id": dispute.id,
-        "status": order.status.value,
+        "status": OrderStatus.disputed.value,
     }
 
 
