@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.enums import enum_value
 from app.core.security import oauth2_scheme, decode_token, is_admin
-from app.core.money import credit_balance
+from app.core.money import credit_balance, claim
 from app.core.csrf import verify_csrf
 from app.core.logging import logger, log_escrow_operation
 from app.models import (
@@ -49,9 +49,15 @@ def open_dispute(task_id: int, req: DisputeCreate, token: str = Depends(oauth2_s
     if not req.reason.strip():
         raise HTTPException(400, "Укажите причину спора")
 
+    # Условный переход in_progress -> disputed: иначе спор, открытый в тот же
+    # момент, когда заказчик жмёт «завершить», оставлял бы выплату и спор по
+    # уже закрытой сделке (а при двойном клике — два открытых спора).
+    if not claim(db, Task, [Task.id == task.id, Task.status == TaskStatus.in_progress],
+                 {"status": TaskStatus.disputed}):
+        db.rollback()
+        raise HTTPException(409, "Статус заказа изменился, обновите страницу")
     dispute = Dispute(task_id=task_id, opened_by=user_id, reason=req.reason.strip())
     db.add(dispute)
-    task.status = TaskStatus.disputed
 
     opener = db.query(User).filter(User.id == user_id).first()
     other_id = task.executor_id if user_id == task.customer_id else task.customer_id
@@ -63,61 +69,106 @@ def open_dispute(task_id: int, req: DisputeCreate, token: str = Depends(oauth2_s
     return {"message": "Спор открыт. Средства заморожены до решения арбитража.", "dispute_id": dispute.id}
 
 # ---------- Отмена назначения / отзыв спора ----------
+#
+# Кто и что может отменить. Раньше в статусе «в работе» отменить заказ с
+# возвратом эскроу мог ЛЮБОЙ участник, включая заказчика. Это обнуляло
+# защиту исполнителя: получить работу, нажать «отменить» — и деньги вернулись.
+# Теперь:
+#
+#   open         — заказчик (денег ещё нет в эскроу, возвращать нечего);
+#   in_progress  — только исполнитель (отказ от заказа, эскроу заказчику).
+#                  Заказчику, недовольному работой, — спор и арбитраж;
+#   disputed     — только инициатор спора может его отозвать:
+#                  * заказчик — заказ возвращается в работу, деньги остаются
+#                    в эскроу (иначе «открыть спор → отозвать» снова было бы
+#                    обходом арбитража);
+#                  * исполнитель — равносильно отказу: заказ отменяется,
+#                    эскроу возвращается заказчику.
+#
+# Каждый переход — условный UPDATE по текущему статусу (money.claim):
+# `with_for_update()` на SQLite игнорируется, и одновременные «отменить» и
+# «завершить» давали и возврат, и выплату.
 @router.post("/tasks/{task_id}/cancel")
 def cancel_task(task_id: int, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db), _csrf: None = Depends(verify_csrf)):
+    from datetime import datetime
+
     payload = decode_token_or_401(token)
     user_id = int(payload.get("sub"))
 
-    # Блокируем заказ для предотвращения race condition с завершением
-    task = db.query(Task).filter(Task.id == task_id).with_for_update().first()
+    task = db.query(Task).filter(Task.id == task_id).first()
     if not task:
         raise HTTPException(404, "Заказ не найден")
 
     if task.status not in (TaskStatus.open, TaskStatus.in_progress, TaskStatus.disputed):
         raise HTTPException(400, "Отменить можно только открытый заказ, заказ в работе или на арбитраже")
 
-    dispute = _active_dispute(db, task_id)
     is_customer = user_id == task.customer_id
-    is_executor = user_id == task.executor_id
-
-    if dispute:
-        # По заказу открыт спор — отмена недоступна, но инициатор может отозвать спор
-        if dispute.opened_by != user_id:
-            raise HTTPException(403, "По заказу открыт спор — дождитесь решения арбитража")
-        dispute.status = DisputeStatus.closed
-        from datetime import datetime
-        dispute.resolved_at = datetime.utcnow()
-        dispute.resolution_comment = "Спор отозван инициатором, заказ отменён"
-    elif not (is_customer or is_executor):
+    is_executor = task.executor_id is not None and user_id == task.executor_id
+    if not (is_customer or is_executor):
         raise HTTPException(403, "Отменить заказ могут только участники сделки")
+
+    dispute = _active_dispute(db, task_id) if task.status == TaskStatus.disputed else None
+    from_status = task.status
+
+    if from_status == TaskStatus.disputed:
+        if not dispute or dispute.opened_by != user_id:
+            raise HTTPException(403, "По заказу открыт спор — дождитесь решения арбитража")
+        if not claim(db, Dispute,
+                     [Dispute.id == dispute.id, Dispute.status == DisputeStatus.open],
+                     {"status": DisputeStatus.closed, "resolved_at": datetime.utcnow(),
+                      "resolution_comment": (
+                          "Спор отозван заказчиком, заказ возвращён в работу" if is_customer
+                          else "Спор отозван исполнителем, заказ отменён")}):
+            db.rollback()
+            raise HTTPException(409, "Спор уже рассмотрен или отозван")
+        if is_customer:
+            if not claim(db, Task, [Task.id == task.id, Task.status == TaskStatus.disputed],
+                         {"status": TaskStatus.in_progress}):
+                db.rollback()
+                raise HTTPException(409, "Статус заказа изменился, обновите страницу")
+            if task.executor_id:
+                _notify(db, task.executor_id, "dispute", "Спор отозван",
+                        f"Заказчик отозвал спор по заказу «{task.title}». Заказ снова в работе.",
+                        task.id)
+            db.commit()
+            return {"message": "Спор отозван, заказ снова в работе", "refunded": 0}
+    elif from_status == TaskStatus.in_progress:
+        if not is_executor:
+            raise HTTPException(
+                403,
+                "Заказ уже в работе: отменить его может только исполнитель. "
+                "Если работа не выполнена — откройте спор, решение примет арбитраж.",
+            )
+    else:  # open
+        if not is_customer:
+            raise HTTPException(403, "Отменить открытый заказ может только заказчик")
+
+    if not claim(db, Task, [Task.id == task.id, Task.status == from_status],
+                 {"status": TaskStatus.cancelled}):
+        db.rollback()
+        raise HTTPException(409, "Статус заказа изменился, обновите страницу")
 
     # Возврат эскроу заказчику. Деньги замораживаются только при назначении
     # исполнителя (assign_task списывает бюджет), поэтому у открытого заказа
     # возвращать нечего — иначе баланс пополнился бы суммой, которая не списывалась.
     budget = task.budget or 0
     refunded = 0
-    if budget > 0 and task.executor_id is not None:
-        # Начисление атомарным UPDATE (см. app/core/money.py)
-        customer = db.query(User).filter(User.id == task.customer_id).first()
-        if customer:
-            credit_balance(db, customer.id, budget)
-            refunded = budget
-            db.add(Transaction(
-                user_id=customer.id, amount=budget,
-                type=TransactionType.escrow_refund, task_id=task.id
-            ))
+    if budget > 0 and task.executor_id is not None and from_status != TaskStatus.open:
+        credit_balance(db, task.customer_id, budget)
+        refunded = budget
+        db.add(Transaction(
+            user_id=task.customer_id, amount=budget,
+            type=TransactionType.escrow_refund, task_id=task.id
+        ))
+        log_escrow_operation(
+            operation="escrow_refund_cancel",
+            task_id=task.id,
+            user_id=task.customer_id,
+            amount=budget,
+            cancelled_by=user_id
+        )
 
-            # Логируем возврат эскроу
-            log_escrow_operation(
-                operation="escrow_refund_cancel",
-                task_id=task.id,
-                user_id=customer.id,
-                amount=budget,
-                cancelled_by=user_id
-            )
-
-    task.status = TaskStatus.cancelled
-    cancelled_by = "заказчиком" if is_customer else ("исполнителем" if is_executor else "инициатором спора")
+    cancelled_by = "заказчиком" if is_customer else "исполнителем"
     refund_note = " Эскроу возвращён заказчику." if refunded else ""
     for uid in {task.customer_id, task.executor_id} - {user_id, None}:
         _notify(db, uid, "cancelled", "Заказ отменён",
@@ -223,12 +274,16 @@ def _resolve_order_dispute(db: Session, dispute: Dispute, req, admin) -> dict:
         raise HTTPException(404, "Заказ не найден")
     if order.status != OrderStatus.disputed:
         raise HTTPException(400, "Заказ не находится в статусе спора")
+    new_status = OrderStatus.cancelled if req.decision == "refund_customer" else OrderStatus.completed
+    if not claim(db, Order, [Order.id == order.id, Order.status == OrderStatus.disputed],
+                 {"status": new_status}):
+        db.rollback()
+        raise HTTPException(409, "Заказ не находится в статусе спора")
 
     amount = order.total_price or 0
 
     if req.decision == "refund_customer":
         dispute.status = DisputeStatus.resolved_customer
-        order.status = OrderStatus.cancelled
         if amount > 0:
             credit_balance(db, order.buyer_id, amount)
             db.add(Transaction(user_id=order.buyer_id, amount=amount,
@@ -251,7 +306,6 @@ def _resolve_order_dispute(db: Session, dispute: Dispute, req, admin) -> dict:
         verdict = "Средства возвращены покупателю"
     elif req.decision == "pay_specialist":
         dispute.status = DisputeStatus.resolved_specialist
-        order.status = OrderStatus.completed
         fee = order.platform_fee or 0
         payout = amount - fee
         if payout > 0:
@@ -296,6 +350,18 @@ def resolve_dispute(dispute_id: int, req: DisputeResolve, token: str = Depends(o
         raise HTTPException(404, "Спор не найден")
     if dispute.status != DisputeStatus.open:
         raise HTTPException(400, "Спор уже закрыт")
+    if req.decision not in ("refund_customer", "pay_specialist"):
+        raise HTTPException(400, "decision должен быть refund_customer или pay_specialist")
+
+    # Спор «забирает» тот арбитр, чей UPDATE перевёл его из open. Раньше
+    # статус проверялся обычным чтением, и двойной клик или два арбитра
+    # одновременно выплачивали деньги дважды — или и возвращали покупателю,
+    # и платили продавцу. Итоговый статус проставляется ниже.
+    if not claim(db, Dispute,
+                 [Dispute.id == dispute.id, Dispute.status == DisputeStatus.open],
+                 {"status": DisputeStatus.closed}):
+        db.rollback()
+        raise HTTPException(400, "Спор уже закрыт")
 
     # Одна очередь арбитра на два вида сделок: задание или заказ товара
     if dispute.order_id:
@@ -303,11 +369,15 @@ def resolve_dispute(dispute_id: int, req: DisputeResolve, token: str = Depends(o
 
     task = _get_task_or_404(db, dispute.task_id)
     budget = task.budget or 0
+    new_task_status = TaskStatus.cancelled if req.decision == "refund_customer" else TaskStatus.completed
+    if not claim(db, Task, [Task.id == task.id, Task.status == TaskStatus.disputed],
+                 {"status": new_task_status}):
+        db.rollback()
+        raise HTTPException(409, "Заказ не находится в статусе спора")
 
     from datetime import datetime
     if req.decision == "refund_customer":
         dispute.status = DisputeStatus.resolved_customer
-        task.status = TaskStatus.cancelled
         if budget > 0:
             customer = db.query(User).filter(User.id == task.customer_id).first()
             if customer:
@@ -329,7 +399,6 @@ def resolve_dispute(dispute_id: int, req: DisputeResolve, token: str = Depends(o
         verdict = "Средства возвращены заказчику"
     elif req.decision == "pay_specialist":
         dispute.status = DisputeStatus.resolved_specialist
-        task.status = TaskStatus.completed
         if budget > 0 and task.executor_id:
             executor = db.query(User).filter(User.id == task.executor_id).first()
             if executor:

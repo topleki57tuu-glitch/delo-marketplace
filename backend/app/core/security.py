@@ -130,15 +130,24 @@ def verify_refresh_token(token: str, db) -> Optional[dict]:
         return None
 
 def decode_token(token: str) -> dict:
+    """Проверить ACCESS-токен и вернуть его payload.
+
+    Тип проверяется обязательно. Refresh-токен подписан тем же ключом и несёт
+    тот же `sub`, поэтому без этой проверки он принимался как access: семь
+    дней доступа ко всем API вместо 15 минут, и выход из аккаунта (отзыв
+    refresh-строки в базе) на это никак не влиял — сюда база не заглядывает.
+    """
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
-        return payload
     except JWTError:
+        payload = None
+    if not payload or payload.get("type") != "access":
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Неверный или просроченный токен авторизации",
             headers={"WWW-Authenticate": "Bearer"},
         )
+    return payload
 
 
 # ---------------------------------------------------------------------------
@@ -227,29 +236,67 @@ def mask_requisites(value: Optional[str]) -> Optional[str]:
 # перестают работать — на dev это приемлемо, в production ключ фиксирован.
 # ---------------------------------------------------------------------------
 
-_FILE_TOKEN_PREFIX = "f1"
+_FILE_TOKEN_PREFIX = "f1"          # бессрочная подпись (только для обратной совместимости)
+_FILE_TOKEN_PREFIX_V2 = "f2."      # подпись со сроком действия
 
 
-def sign_file_token(file_id: int) -> str:
-    """Подпись для доступа к приватному файлу."""
+def _file_token_ttl() -> int:
+    try:
+        return max(60, int(os.environ.get("FILE_TOKEN_TTL_SEC", "21600")))
+    except ValueError:
+        return 21600
+
+
+def _file_token_allow_legacy() -> bool:
+    return os.environ.get("FILE_TOKEN_ALLOW_LEGACY", "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def _file_digest(message: str) -> str:
     import hashlib
     import hmac
 
-    digest = hmac.new(
+    return hmac.new(
         settings.SECRET_KEY.encode("utf-8"),
-        f"file:{file_id}".encode("utf-8"),
+        message.encode("utf-8"),
         hashlib.sha256,
     ).hexdigest()
-    return f"{_FILE_TOKEN_PREFIX}{digest}"
+
+
+def sign_file_token(file_id: int, ttl_sec: Optional[int] = None) -> str:
+    """Подпись для доступа к приватному файлу — со сроком действия.
+
+    Раньше подпись была бессрочной и зависела только от file_id: однажды
+    попавшая в лог прокси, историю браузера или пересланная ссылка открывала
+    файл (паспорт, вложение из переписки) навсегда, а отозвать её можно было
+    только сменой SECRET_KEY. Теперь в подписи есть срок (FILE_TOKEN_TTL_SEC,
+    по умолчанию 6 часов); ссылки выдаются заново при каждой отдаче сообщения
+    или заявки, так что легитимный пользователь разницы не замечает.
+    """
+    import time
+
+    expires = int(time.time()) + (ttl_sec if ttl_sec is not None else _file_token_ttl())
+    return f"{_FILE_TOKEN_PREFIX_V2}{expires}.{_file_digest(f'file:{file_id}:{expires}')}"
 
 
 def verify_file_token(file_id: int, token: Optional[str]) -> bool:
     """Проверяет подпись файла. Сравнение постоянного времени."""
     import hmac
+    import time
 
     if not token:
         return False
-    return hmac.compare_digest(sign_file_token(file_id), token)
+    if token.startswith(_FILE_TOKEN_PREFIX_V2):
+        exp_part, _, digest = token[len(_FILE_TOKEN_PREFIX_V2):].partition(".")
+        if not exp_part.isdigit() or not digest:
+            return False
+        if int(exp_part) < int(time.time()):
+            return False
+        return hmac.compare_digest(_file_digest(f"file:{file_id}:{exp_part}"), digest)
+    # Бессрочные ссылки старого формата принимаются только на время выката
+    # (FILE_TOKEN_ALLOW_LEGACY=1), чтобы уже открытые вкладки не сломались.
+    if _file_token_allow_legacy():
+        return hmac.compare_digest(f"{_FILE_TOKEN_PREFIX}{_file_digest(f'file:{file_id}')}", token)
+    return False
 
 
 def file_url_with_token(url: Optional[str]) -> Optional[str]:
@@ -346,7 +393,13 @@ def client_ip(request: Request) -> str:
         is_private = ipaddress.ip_address(client_host).is_private
     except ValueError:
         is_private = False
-    if forwarded and is_private:
+    if not is_private:
+        # Запрос пришёл не от нашего прокси — любые заголовки об адресе
+        # сочинил сам клиент. Раньше здесь в конце стоял безусловный
+        # `X-Real-IP`, и подделка одного заголовка обходила лимиты и
+        # подменяла адрес в журнале безопасности.
+        return client_host
+    if forwarded:
         return forwarded.split(",")[-1].strip()
     return request.headers.get("x-real-ip") or client_host
 
