@@ -13,7 +13,7 @@ Setup:
    - YOOMONEY_ACCESS_TOKEN (получить через OAuth)
 
 Для получения ACCESS_TOKEN:
-1. Авторизуйте приложение: https://yoomoney.ru/oauth/authorize?client_id=YOUR_CLIENT_ID&response_type=code&redirect_uri=YOUR_REDIRECT_URI&scope=account-info operation-history payment-p2p
+1. Авторизуйте приложение: https://yoomoney.ru/oauth/authorize?client_id=YOUR_CLIENT_ID&response_type=code&redirect_uri=YOUR_REDIRECT_URI&scope=account-info operation-history
 2. Обменяйте code на token через POST https://yoomoney.ru/oauth/token
 """
 
