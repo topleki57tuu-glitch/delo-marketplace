@@ -7,7 +7,7 @@ from sqlalchemy import func
 from app.core.database import get_db
 from app.core.enums import enum_value
 from app.core.security import oauth2_scheme, decode_token
-from app.core.money import credit_balance
+from app.core.money import credit_balance, claim
 from app.core.csrf import verify_csrf
 from app.core.logging import logger, log_escrow_operation
 from app.core.cache import cache
@@ -71,6 +71,9 @@ def create_task(task: TaskCreate, request: Request, token: str = Depends(oauth2_
 
     return {"message": "Задание создано", "task_id": new_task.id}
 
+TASKS_LIST_MAX = 200
+
+
 @router.get("/")
 def get_tasks(
     category: Optional[TaskCategory] = None,
@@ -133,7 +136,10 @@ def get_tasks(
             "pages": (total + per_page - 1) // per_page,
         }
 
-    result = query.all()
+    # Без page — не больше TASKS_LIST_MAX записей. Раньше здесь отдавалась вся
+    # таблица (в том числе Telegram-боту каждую секунду), и с ростом базы
+    # каждый заход на главную тянул бы тысячи строк.
+    result = query.limit(TASKS_LIST_MAX).all()
 
     # Сохраняем в кеш если это кешируемый запрос
     #
@@ -331,7 +337,14 @@ def complete_task(task_id: int, token: str = Depends(oauth2_scheme), db: Session
     if not task.executor_id:
         raise HTTPException(400, "Нельзя завершить заказ без исполнителя — отмените его, если он больше не нужен")
 
-    task.status = TaskStatus.completed
+    # Переход in_progress -> completed условным UPDATE (money.claim).
+    # `with_for_update()` выше на SQLite игнорируется, и одновременные
+    # «завершить» и «отменить»/«открыть спор» давали и выплату исполнителю,
+    # и возврат заказчику. Здесь выигрывает ровно один запрос.
+    if not claim(db, Task, [Task.id == task.id, Task.status == TaskStatus.in_progress],
+                 {"status": TaskStatus.completed}):
+        db.rollback()
+        raise HTTPException(409, "Статус заказа изменился, обновите страницу")
 
     # Безопасная сделка (эскроу): переводим средства исполнителю с учётом комиссии платформы
     budget = task.budget or 0
