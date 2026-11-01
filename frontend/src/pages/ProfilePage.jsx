@@ -482,12 +482,14 @@ export default function ProfilePage({ user, token, onUpdateUser, onLogout, onOpe
       setPwNew('');
       setPwRepeat('');
       setShowPasswordForm(false);
+      // Бэкенд закрыл все сессии и выдал этой вкладке новую пару токенов:
+      // здесь вход продолжается, на других устройствах нужно войти заново.
+      if (data.refresh_token) {
+        const { login, role: currentRole } = useAuthStore.getState();
+        login(data.access_token || token, currentRole, data.refresh_token);
+      }
       addToast('Пароль изменён', 'success');
-      // Бэкенд гасит все refresh-токены, включая выданный этой вкладке.
-      // Текущий вход доживёт до конца access-токена (15 минут), а дальше
-      // сессию продлить будет нечем — поэтому предупреждаем заранее, а не
-      // молча выкидываем в окно входа через четверть часа.
-      addToast('Все сессии закрыты. На других устройствах войдите заново.', 'info');
+      addToast('На других устройствах нужно войти заново', 'info');
     } catch (err) {
       addToast(err.message, 'error');
     } finally {
@@ -1078,9 +1080,9 @@ export default function ProfilePage({ user, token, onUpdateUser, onLogout, onOpe
         ) : (
           <div className="bg-white dark:bg-slate-800 p-6 sm:p-8 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm space-y-4">
             <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Безопасная сделка</span>
-            <h4 className="text-lg font-bold text-slate-900 dark:text-white">100% гарантия сохранности</h4>
+            <h4 className="text-lg font-bold text-slate-900 dark:text-white">Оплата под защитой сделки</h4>
             <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-              При назначении специалиста средства депонируются на эскроу-счете заказа. Исполнитель получает деньги только после того, как вы лично подтвердите выполнение задачи или через арбитраж.
+              При назначении специалиста сумма заказа резервируется на вашем балансе. Исполнитель получает деньги только после того, как вы подтвердите выполнение задачи, или по решению арбитража.
             </p>
           </div>
         )}
