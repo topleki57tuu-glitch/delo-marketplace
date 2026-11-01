@@ -4,7 +4,9 @@ import CityInput from '../components/CityInput';
 import { ImageUploader } from '../components/ImageUploader';
 import { AITaskAssistant } from '../components/AITaskAssistant';
 import { useToast } from '../components/Toast';
-import { IconCatBeauty, IconCatBusiness, IconCatCleaning, IconCatDelivery, IconCatDesign, IconCatDevelopment, IconCatEvents, IconCatOther, IconCatPhotoVideo, IconCatRepairs, IconCatTutoring, IconCatWriting, IconLock, IconSparkles } from '../components/icons.jsx';
+import PageHero, { PageBody } from '../components/PageHero.jsx';
+import { AuthRequired } from '../components/PageState.jsx';
+import { IconCatBeauty, IconCatBusiness, IconCatCleaning, IconCatDelivery, IconCatDesign, IconCatDevelopment, IconCatEvents, IconCatOther, IconCatPhotoVideo, IconCatRepairs, IconCatTutoring, IconCatWriting, IconBriefcase, IconLock, IconSparkles } from '../components/icons.jsx';
 
 const CATEGORIES = [
   { id: 'development', label: 'Разработка сайтов и IT', icon: <IconCatDevelopment /> },
@@ -32,32 +34,12 @@ export default function CreateTaskPage({ user, token, onOpenAuth, onTaskCreated 
   const [category, setCategory] = useState('development');
   const [budget, setBudget] = useState('');
   const [isRemote, setIsRemote] = useState(false);
-  const [selectedCity, setSelectedCity] = useState(null);
+  const [selectedCity, setSelectedCity] = useState('');
   const [address, setAddress] = useState('');
   const [deadline, setDeadline] = useState('');
   const [images, setImages] = useState([]);
   const [loading, setLoading] = useState(false);
   const [showAiModal, setShowAiModal] = useState(false);
-
-  if (!user) {
-    return (
-      <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex items-center justify-center p-4">
-        <div className="bg-white dark:bg-slate-800 max-w-md w-full p-8 rounded-2xl border border-slate-200 dark:border-slate-700 text-center space-y-4 shadow-xl">
-          <div className="text-4xl"><IconLock /></div>
-          <h2 className="text-xl font-bold text-slate-800 dark:text-white">Требуется авторизация</h2>
-          <p className="text-sm text-slate-500 dark:text-slate-400">
-            Чтобы опубликовать задание, войдите в аккаунт заказчика или зарегистрируйтесь.
-          </p>
-          <button
-            onClick={() => onOpenAuth('login')}
-            className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl transition-all shadow-md shadow-indigo-600/20"
-          >
-            Войти в аккаунт
-          </button>
-        </div>
-      </div>
-    );
-  }
 
   const handleApplyAiSuggestion = (suggestion) => {
     // Поля ответа бэкенда — suggested_* (см. backend/app/api/ai.py)
@@ -84,7 +66,7 @@ export default function CreateTaskPage({ user, token, onOpenAuth, onTaskCreated 
         category,
         budget: budget ? parseInt(budget, 10) : null,
         is_remote: isRemote,
-        city: isRemote ? null : selectedCity ? selectedCity.name : null,
+        city: isRemote ? null : selectedCity.trim() || null,
         address: isRemote ? null : address.trim() || null,
         deadline: deadline || null,
         images: images.length > 0 ? JSON.stringify(images) : null,
@@ -114,181 +96,201 @@ export default function CreateTaskPage({ user, token, onOpenAuth, onTaskCreated 
     }
   };
 
-  return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 py-10 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-3xl mx-auto">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
-          <div>
-            <h1 className="text-3xl font-extrabold tracking-tight text-slate-900 dark:text-white">
-              Создать новое задание
-            </h1>
-            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-              Опишите, что нужно сделать, и специалисты предложат свои услуги
-            </p>
-          </div>
-
-          <button
-            type="button"
-            onClick={() => setShowAiModal(true)}
-            className="px-4 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold rounded-xl text-sm shadow-md shadow-indigo-500/20 flex items-center gap-2 transition-all"
-          >
-            <span><IconSparkles /></span>
-            <span>Помощь AI-ассистента</span>
+  const hero = (
+    <PageHero
+      width="medium"
+      size="sm"
+      back={{ to: '/tasks', label: 'Все задания' }}
+      eyebrow="Новое задание"
+      icon={IconBriefcase}
+      title="Создать задание"
+      subtitle="Опишите, что нужно сделать, — специалисты сами предложат цену и сроки."
+      actions={
+        user ? (
+          <button type="button" onClick={() => setShowAiModal(true)} className="btn btn-glass">
+            <IconSparkles className="text-amber-300" /> Помощь AI-ассистента
           </button>
-        </div>
+        ) : null
+      }
+    />
+  );
 
-        {/* Task Form */}
-        <form onSubmit={handleSubmit} className="bg-white dark:bg-slate-800 p-6 sm:p-8 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm space-y-6">
-          {/* Category */}
-          <div>
-            <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">
-              Категория задания
-            </label>
-            <select
-              value={category}
-              onChange={(e) => setCategory(e.target.value)}
-              className="w-full p-3.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-medium focus:ring-2 focus:ring-indigo-500 outline-none"
-            >
-              {CATEGORIES.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.label}
-                </option>
-              ))}
-            </select>
-          </div>
+  if (!user) {
+    return (
+      <>
+        {hero}
+        <PageBody width="medium">
+          <AuthRequired
+            onOpenAuth={onOpenAuth}
+            text="Чтобы опубликовать задание, войдите в аккаунт заказчика или зарегистрируйтесь."
+          />
+        </PageBody>
+      </>
+    );
+  }
 
-          {/* Title */}
-          <div>
-            <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">
-              Название задания *
-            </label>
-            <input
-              type="text"
-              placeholder="Например: Разработать адаптивный лендинг для кофейни"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              className="w-full p-3.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
-              required
-            />
-          </div>
+  const section = 'rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-5 sm:p-6';
+  const label = 'block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1.5';
 
-          {/* Description */}
-          <div>
-            <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">
-              Подробное описание задачи *
-            </label>
-            <textarea
-              rows={5}
-              placeholder="Опишите все детали, требования, желаемый результат и условия..."
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              className="w-full p-3.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
-              required
-            />
-          </div>
-
-          {/* Budget & Deadline Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">
-                Бюджет (₽)
-              </label>
-              <input
-                type="number"
-                placeholder="Оставьте пустым для договорной цены"
-                value={budget}
-                onChange={(e) => setBudget(e.target.value)}
-                className="w-full p-3.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">
-                Срок выполнения (дата)
-              </label>
-              <input
-                type="date"
-                value={deadline}
-                onChange={(e) => setDeadline(e.target.value)}
-                className="w-full p-3.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
-              />
-            </div>
-          </div>
-
-          {/* Location & Remote */}
-          <div className="p-4 bg-slate-50 dark:bg-slate-900/50 rounded-2xl border border-slate-200 dark:border-slate-700/60 space-y-4">
-            <label className="flex items-center gap-3 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={isRemote}
-                onChange={(e) => setIsRemote(e.target.checked)}
-                className="w-5 h-5 rounded text-indigo-600 focus:ring-indigo-500"
-              />
-              <span className="font-semibold text-sm">Удаленная работа (онлайн по всей стране)</span>
-            </label>
-
-            {!isRemote && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+  return (
+    <>
+      {hero}
+      <PageBody width="medium">
+        <form onSubmit={handleSubmit} className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_17rem] items-start">
+          <div className="space-y-6 min-w-0">
+            <section className={section}>
+              <h2 className="section-title">Что нужно сделать</h2>
+              <div className="mt-5 space-y-5">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1">Город</label>
-                  <CityInput
-                    selectedCity={selectedCity}
-                    onSelectCity={(city) => setSelectedCity(city)}
-                    placeholder="Выберите город"
+                  <label htmlFor="task-category" className={label}>Категория задания</label>
+                  <select id="task-category" value={category} onChange={(e) => setCategory(e.target.value)} className="select">
+                    {CATEGORIES.map((c) => (
+                      <option key={c.id} value={c.id}>{c.label}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label htmlFor="task-title" className={label}>
+                    Название задания <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    id="task-title"
+                    type="text"
+                    placeholder="Например: Разработать адаптивный лендинг для кофейни"
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    maxLength={200}
+                    className="input"
+                    required
                   />
                 </div>
+
                 <div>
-                  <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1">Улица, дом (необязательно)</label>
-                  <input
-                    type="text"
-                    placeholder="ул. Ленина, д. 10"
-                    value={address}
-                    onChange={(e) => setAddress(e.target.value)}
-                    className="w-full p-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm outline-none"
+                  <label htmlFor="task-description" className={label}>
+                    Подробное описание задачи <span className="text-red-500">*</span>
+                  </label>
+                  <textarea
+                    id="task-description"
+                    rows={6}
+                    placeholder="Опишите все детали, требования, желаемый результат и условия..."
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    className="textarea"
+                    required
                   />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                  <div>
+                    <label htmlFor="task-budget" className={label}>Бюджет, ₽</label>
+                    <input
+                      id="task-budget"
+                      type="number"
+                      inputMode="numeric"
+                      min="0"
+                      placeholder="Оставьте пустым для договорной цены"
+                      value={budget}
+                      onChange={(e) => setBudget(e.target.value)}
+                      className="input"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="task-deadline" className={label}>Срок выполнения</label>
+                    <input
+                      id="task-deadline"
+                      type="date"
+                      value={deadline}
+                      onChange={(e) => setDeadline(e.target.value)}
+                      className="input"
+                    />
+                  </div>
                 </div>
               </div>
-            )}
-          </div>
+            </section>
 
-          {/* Photos / Images */}
-          <div>
-            <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">
-              Фотографии и материалы (до 5 шт.)
-            </label>
-            <ImageUploader
-              images={images}
-              token={token}
-              onChange={(newImgs) => setImages(newImgs)}
-            />
-          </div>
+            <section className={section}>
+              <h2 className="section-title">Где выполнить</h2>
+              <label className="mt-4 flex items-center gap-3 cursor-pointer select-none rounded-xl border border-slate-200 dark:border-slate-700 px-4 py-3">
+                <input
+                  type="checkbox"
+                  checked={isRemote}
+                  onChange={(e) => setIsRemote(e.target.checked)}
+                  className="w-5 h-5 rounded accent-indigo-600"
+                />
+                <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">Удалённая работа — онлайн, по всей стране</span>
+              </label>
 
-          {/* Submit Button */}
-          <div className="pt-4 border-t border-slate-100 dark:border-slate-700 flex items-center justify-end gap-3">
-            <button
-              type="button"
-              onClick={() => navigate('/tasks')}
-              className="px-5 py-3 text-sm font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-xl transition-all"
-            >
-              Отмена
-            </button>
-            <button
-              type="submit"
-              disabled={loading}
-              className="px-8 py-3.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-xl text-sm shadow-lg shadow-amber-500/20 transition-all flex items-center gap-2 disabled:opacity-50"
-            >
-              {loading ? (
-                <>
-                  <div className="w-4 h-4 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
-                  <span>Публикация...</span>
-                </>
-              ) : (
-                <span>Опубликовать задание</span>
+              {!isRemote && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 mt-5">
+                  <div>
+                    <span className={label}>Город</span>
+                    <CityInput
+                      value={selectedCity}
+                      onChange={setSelectedCity}
+                      placeholder="Выберите город"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="task-address" className={label}>Улица, дом (необязательно)</label>
+                    <input
+                      id="task-address"
+                      type="text"
+                      placeholder="ул. Ленина, д. 10"
+                      value={address}
+                      onChange={(e) => setAddress(e.target.value)}
+                      className="input"
+                    />
+                  </div>
+                </div>
               )}
-            </button>
+            </section>
+
+            <section className={section}>
+              <h2 className="section-title">Фотографии и материалы</h2>
+              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">До 5 файлов: фото места работ, пример, техническое задание.</p>
+              <div className="mt-4">
+                <ImageUploader images={images} token={token} onChange={(newImgs) => setImages(newImgs)} maxImages={5} />
+              </div>
+            </section>
+
+            <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
+              <button type="button" onClick={() => navigate('/tasks')} className="btn btn-secondary">
+                Отмена
+              </button>
+              <button type="submit" disabled={loading} className="btn btn-cta !px-7 !py-3">
+                {loading ? (
+                  <>
+                    <span className="w-4 h-4 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
+                    Публикация...
+                  </>
+                ) : (
+                  'Опубликовать задание'
+                )}
+              </button>
+            </div>
           </div>
+
+          <aside className="rounded-2xl border border-indigo-100 dark:border-indigo-500/25 bg-indigo-50/60 dark:bg-indigo-500/10 p-5 lg:sticky lg:top-24">
+            <p className="flex items-center gap-2 font-bold text-slate-900 dark:text-white">
+              <IconLock size={16} className="text-indigo-600 dark:text-indigo-300" /> Безопасная сделка
+            </p>
+            <ol className="mt-4 space-y-3">
+              {[
+                'Специалисты откликаются со своей ценой и сроками',
+                'Вы выбираете исполнителя — бюджет резервируется на эскроу',
+                'Исполнитель сдаёт работу',
+                'Деньги переходят ему только после вашего подтверждения',
+              ].map((step, i) => (
+                <li key={step} className="flex gap-3 text-sm text-slate-600 dark:text-slate-300">
+                  <span className="w-6 h-6 shrink-0 rounded-full bg-indigo-600 text-white text-[11px] font-bold flex items-center justify-center">{i + 1}</span>
+                  {step}
+                </li>
+              ))}
+            </ol>
+          </aside>
         </form>
-      </div>
+      </PageBody>
 
       {/* AI Assistant Modal */}
       {showAiModal && (
@@ -298,6 +300,6 @@ export default function CreateTaskPage({ user, token, onOpenAuth, onTaskCreated 
           currentTask={{ budget }}
         />
       )}
-    </div>
+    </>
   );
 }
