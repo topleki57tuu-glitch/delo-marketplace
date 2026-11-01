@@ -10,6 +10,22 @@
     <link rel="manifest" href="/manifest.webmanifest" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
+    <!-- Тема до первой отрисовки: без этого при тёмной теме страница
+         на мгновение вспыхивала бы светлой, пока грузится приложение.
+         Ключ и логика — те же, что в src/utils/theme.js. -->
+    <script>
+      (function () {
+        var dark = false;
+        try {
+          var t = localStorage.getItem('delo-theme');
+          dark = t === 'dark' || (t !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        } catch (e) {}
+        var root = document.documentElement;
+        if (dark) root.classList.add('dark');
+        root.style.colorScheme = dark ? 'dark' : 'light';
+      })();
+    </script>
+
     <!-- Шрифты темы раздаются с нашего сервера (@font-face в src/index.css),
          без Google Fonts. Предзагружаем то, что нужно любой странице сразу:
          кириллицу и латиницу (цифры, пробелы) основного шрифта и кириллицу

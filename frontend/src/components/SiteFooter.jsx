@@ -2,6 +2,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import Logo from './Logo.jsx';
 import { IconAdmin, IconCheck, IconLock } from './icons.jsx';
+import { ThemeSwitch } from './ThemeToggle.jsx';
 import { COMPANY, hasRequisites, registrationLabel } from '../constants/company.js';
 import { LEGAL_DOCS, legalHref } from '../constants/legal.js';
 
@@ -86,13 +87,16 @@ export default function SiteFooter() {
       </div>
       <div className="border-t border-white/10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5 space-y-3 text-xs">
-          <nav aria-label="Документы" className="flex flex-wrap justify-center sm:justify-start gap-x-5 gap-y-2">
-            {LEGAL_DOCS.map((d) => (
-              <Link key={d.slug} to={legalHref(d.slug)} className="hover:text-white transition-colors">
-                {d.title}
-              </Link>
-            ))}
-          </nav>
+          <div className="flex flex-col-reverse sm:flex-row items-center sm:justify-between gap-3">
+            <nav aria-label="Документы" className="flex flex-wrap justify-center sm:justify-start gap-x-5 gap-y-2">
+              {LEGAL_DOCS.map((d) => (
+                <Link key={d.slug} to={legalHref(d.slug)} className="hover:text-white transition-colors">
+                  {d.title}
+                </Link>
+              ))}
+            </nav>
+            <ThemeSwitch tone="dark" />
+          </div>
           <div className="flex flex-col sm:flex-row items-center justify-between gap-2 text-center sm:text-left">
             <span>
               © {year} ДЕЛО.{' '}

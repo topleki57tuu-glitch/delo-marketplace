@@ -1,352 +1,125 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useProductsStore } from '../store/productsStore';
 import { useAuthStore } from '../store/authStore';
-import { ImageUploader } from '../components/ImageUploader';
-import './CreateProductPage.css';
-import { IconCatAuto, IconCatClothing, IconCatElectronics, IconCatHobby, IconCatHome, IconCatKids, IconCatOther, IconDelivery, IconPin, IconRecycle } from '../components/icons.jsx';
+import { useToast } from '../components/Toast';
+import PageHero, { PageBody } from '../components/PageHero.jsx';
+import { AuthRequired, Spinner, StateCard } from '../components/PageState.jsx';
+import ProductForm, { EMPTY_PRODUCT_FORM, formToPayload, validateProductForm } from '../components/ProductForm.jsx';
+import { IconProducts, IconUser } from '../components/icons.jsx';
 
-const PRODUCT_CATEGORIES = [
-  { id: 'electronics', label: 'Электроника' },
-  { id: 'clothing', label: 'Одежда и обувь' },
-  { id: 'home', label: 'Товары для дома' },
-  { id: 'hobby', label: 'Хобби и развлечения' },
-  { id: 'auto', label: 'Авто и мото' },
-  { id: 'kids', label: 'Детские товары' },
-  { id: 'other', label: 'Другое' },
-];
-
-export default function CreateProductPage() {
+export default function CreateProductPage({ onOpenAuth }) {
   const navigate = useNavigate();
+  const { addToast } = useToast();
   const { createProduct } = useProductsStore();
   const { token, user } = useAuthStore();
 
-  const [formData, setFormData] = useState({
-    title: '',
-    description: '',
-    category: 'other',
-    condition: 'new',
-    price: '',
-    stock: '1',
-    city: '',
-    delivery_options: 'both',
-  });
-
+  const [formData, setFormData] = useState(EMPTY_PRODUCT_FORM);
   const [images, setImages] = useState([]);
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState({});
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
-    // Очистить ошибку для этого поля
-    if (errors[name]) {
-      setErrors(prev => ({ ...prev, [name]: null }));
-    }
-  };
-
-  const validate = () => {
-    const newErrors = {};
-
-    if (!formData.title.trim() || formData.title.length < 3) {
-      newErrors.title = 'Название должно содержать минимум 3 символа';
-    }
-
-    if (!formData.description.trim() || formData.description.length < 10) {
-      newErrors.description = 'Описание должно содержать минимум 10 символов';
-    }
-
-    const price = parseInt(formData.price);
-    if (!price || price <= 0) {
-      newErrors.price = 'Укажите корректную цену';
-    }
-
-    const stock = parseInt(formData.stock);
-    if (!stock || stock < 1) {
-      newErrors.stock = 'Количество должно быть минимум 1';
-    }
-
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
+    setFormData((prev) => ({ ...prev, [name]: value }));
+    if (errors[name]) setErrors((prev) => ({ ...prev, [name]: null }));
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-
     if (!token) {
-      alert('Войдите в систему');
-      navigate('/login');
+      onOpenAuth?.('login');
       return;
     }
-
-    if (!validate()) {
-      return;
-    }
+    const found = validateProductForm(formData);
+    setErrors(found);
+    if (Object.keys(found).length) return;
 
     setLoading(true);
-
     try {
-      const productData = {
-        title: formData.title.trim(),
-        description: formData.description.trim(),
-        category: formData.category,
-        condition: formData.condition,
-        price: parseInt(formData.price), // в рублях
-        stock: parseInt(formData.stock),
-        city: formData.city.trim() || null,
-        delivery_options: formData.delivery_options,
-        images: images.length > 0 ? JSON.stringify(images) : null,
-      };
-
-      const result = await createProduct(productData, token);
-      alert('Товар успешно создан!');
+      const result = await createProduct(formToPayload(formData, images), token);
+      addToast('Товар опубликован', 'success');
       navigate(`/products/${result.product_id}`);
     } catch (error) {
-      alert(error.message || 'Ошибка при создании товара');
+      addToast(error.message || 'Ошибка при создании товара', 'error');
     } finally {
       setLoading(false);
     }
   };
 
+  const hero = (
+    <PageHero
+      width="medium"
+      size="sm"
+      back={{ to: '/products', label: 'Все товары' }}
+      eyebrow="Новое объявление"
+      icon={IconProducts}
+      title="Продать товар"
+      subtitle="Опишите товар, добавьте фото и цену. Деньги покупателя резервируются до того, как он подтвердит получение."
+    />
+  );
+
+  // Профиль ещё грузится: без этой ветки на долю секунды мелькало
+  // «Требуется авторизация», хотя пользователь вошёл.
+  if (token && !user) {
+    return (
+      <>
+        {hero}
+        <PageBody width="medium"><Spinner /></PageBody>
+      </>
+    );
+  }
+
+  if (!user) {
+    return (
+      <>
+        {hero}
+        <PageBody width="medium">
+          <AuthRequired onOpenAuth={onOpenAuth} text="Войдите, чтобы продавать товары." />
+        </PageBody>
+      </>
+    );
+  }
+
   // Проверка была только на «вошёл ли» — роль не проверялась. Покупатель
   // видел полную форму, заполнял её и получал 403 «Размещать товары могут
-  // только специалисты» уже на отправке. Блок .auth-required для этого и
-  // существовал, но до него дело не доходило.
-  if (!user || user.role !== 'specialist') {
-    const isLoggedIn = !!user;
+  // только специалисты» уже на отправке.
+  if (user.role !== 'specialist') {
     return (
-      <div className="create-product-page">
-        <div className="auth-required">
-          <h2>{isLoggedIn ? 'Только для специалистов' : 'Требуется авторизация'}</h2>
-          <p>
-            {isLoggedIn
-              ? 'Размещать товары могут только специалисты. Роль переключается в профиле — бесплатно и в любой момент.'
-              : 'Войдите в систему, чтобы продавать товары'}
-          </p>
-          <button
-            className="btn btn-primary"
-            onClick={() => navigate(isLoggedIn ? '/profile' : '/login')}
+      <>
+        {hero}
+        <PageBody width="medium">
+          <StateCard
+            icon={IconUser}
+            tone="warning"
+            title="Только для специалистов"
+            text="Размещать товары могут только специалисты. Роль переключается в профиле — бесплатно и в любой момент."
+            className="max-w-xl mx-auto"
           >
-            {isLoggedIn ? 'Перейти в профиль' : 'Войти'}
-          </button>
-        </div>
-      </div>
+            <Link to="/profile" className="btn btn-primary">Перейти в профиль</Link>
+          </StateCard>
+        </PageBody>
+      </>
     );
   }
 
   return (
-    <div className="create-product-page">
-      <div className="page-header">
-        <button className="btn-back" onClick={() => navigate('/products')}>
-          ← Назад
-        </button>
-        <h1>Продать товар</h1>
-      </div>
-
-      <form className="product-form" onSubmit={handleSubmit}>
-        {/* Основная информация */}
-        <div className="form-section">
-          <h2>Основная информация</h2>
-
-          <div className="form-group">
-            <label>
-              Название товара <span className="required">*</span>
-            </label>
-            <input
-              type="text"
-              name="title"
-              value={formData.title}
-              onChange={handleChange}
-              placeholder="Например: iPhone 14 Pro 256GB Space Black"
-              maxLength="200"
-              className={errors.title ? 'error' : ''}
-            />
-            {errors.title && <div className="error-message">{errors.title}</div>}
-          </div>
-
-          <div className="form-group">
-            <label>
-              Описание <span className="required">*</span>
-            </label>
-            <textarea
-              name="description"
-              value={formData.description}
-              onChange={handleChange}
-              placeholder="Подробное описание товара: состояние, комплектация, особенности..."
-              rows="6"
-              maxLength="5000"
-              className={errors.description ? 'error' : ''}
-            />
-            {errors.description && <div className="error-message">{errors.description}</div>}
-            <div className="char-count">{formData.description.length} / 5000</div>
-          </div>
-
-          <div className="form-row">
-            <div className="form-group">
-              <label>
-                Категория <span className="required">*</span>
-              </label>
-              <select
-                name="category"
-                value={formData.category}
-                onChange={handleChange}
-              >
-                {PRODUCT_CATEGORIES.map(cat => (
-                  <option key={cat.id} value={cat.id}>
-                    {cat.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="form-group">
-              <label>
-                Состояние <span className="required">*</span>
-              </label>
-              <select
-                name="condition"
-                value={formData.condition}
-                onChange={handleChange}
-              >
-                <option value="new">🆕 Новое</option>
-                <option value="used"><IconRecycle /> Б/У</option>
-              </select>
-            </div>
-          </div>
-
-          <div className="form-row">
-            <div className="form-group">
-              <label>
-                Цена (₽) <span className="required">*</span>
-              </label>
-              <input
-                type="number"
-                name="price"
-                value={formData.price}
-                onChange={handleChange}
-                placeholder="10000"
-                min="1"
-                className={errors.price ? 'error' : ''}
-              />
-              {errors.price && <div className="error-message">{errors.price}</div>}
-            </div>
-
-            <div className="form-group">
-              <label>
-                Количество <span className="required">*</span>
-              </label>
-              <input
-                type="number"
-                name="stock"
-                value={formData.stock}
-                onChange={handleChange}
-                placeholder="1"
-                min="1"
-                className={errors.stock ? 'error' : ''}
-              />
-              {errors.stock && <div className="error-message">{errors.stock}</div>}
-            </div>
-          </div>
-        </div>
-
-        {/* Фотографии */}
-        <div className="form-section">
-          <h2>Фотографии</h2>
-          <p className="section-description">
-            Загрузите до 10 фотографий товара. Первое фото будет главным.
-          </p>
-          <ImageUploader
-            images={images}
-            setImages={setImages}
-            maxImages={10}
-          />
-        </div>
-
-        {/* Доставка */}
-        <div className="form-section">
-          <h2>Доставка и местоположение</h2>
-
-          <div className="form-group">
-            <label>Город</label>
-            <input
-              type="text"
-              name="city"
-              value={formData.city}
-              onChange={handleChange}
-              placeholder="Москва"
-            />
-          </div>
-
-          <div className="form-group">
-            <label>
-              Варианты доставки <span className="required">*</span>
-            </label>
-            <div className="radio-group">
-              <label className="radio-label">
-                <input
-                  type="radio"
-                  name="delivery_options"
-                  value="both"
-                  checked={formData.delivery_options === 'both'}
-                  onChange={handleChange}
-                />
-                <span><IconDelivery /><IconPin /> Доставка и самовывоз</span>
-              </label>
-              <label className="radio-label">
-                <input
-                  type="radio"
-                  name="delivery_options"
-                  value="delivery"
-                  checked={formData.delivery_options === 'delivery'}
-                  onChange={handleChange}
-                />
-                <span><IconDelivery /> Только доставка</span>
-              </label>
-              <label className="radio-label">
-                <input
-                  type="radio"
-                  name="delivery_options"
-                  value="pickup"
-                  checked={formData.delivery_options === 'pickup'}
-                  onChange={handleChange}
-                />
-                <span><IconPin /> Только самовывоз</span>
-              </label>
-            </div>
-          </div>
-        </div>
-
-        {/* Информация */}
-        <div className="info-block">
-          <h3>ℹ Как работает продажа</h3>
-          <ul>
-            <li>Покупатель оформляет заказ → деньги замораживаются в эскроу</li>
-            <li>Вы подтверждаете заказ и отправляете товар</li>
-            <li>Покупатель получает товар и подтверждает получение</li>
-            <li>Деньги переводятся на ваш баланс (минус комиссия 5%)</li>
-            <li>При споре решение принимает администрация платформы</li>
-          </ul>
-        </div>
-
-        {/* Кнопки */}
-        <div className="form-actions">
-          <button
-            type="button"
-            className="btn btn-secondary"
-            onClick={() => navigate('/products')}
-            disabled={loading}
-          >
-            Отмена
-          </button>
-          <button
-            type="submit"
-            className="btn btn-primary"
-            disabled={loading}
-          >
-            {loading ? 'Создание...' : 'Опубликовать товар'}
-          </button>
-        </div>
-      </form>
-    </div>
+    <>
+      {hero}
+      <PageBody width="medium">
+        <ProductForm
+          formData={formData}
+          onChange={handleChange}
+          images={images}
+          setImages={setImages}
+          errors={errors}
+          submitting={loading}
+          submitLabel="Опубликовать товар"
+          submittingLabel="Публикация..."
+          onSubmit={handleSubmit}
+          onCancel={() => navigate('/products')}
+        />
+      </PageBody>
+    </>
   );
 }

@@ -5,15 +5,10 @@ import TermsDoc from './legal/TermsDoc.jsx';
 import PrivacyDoc from './legal/PrivacyDoc.jsx';
 import ConsentDoc from './legal/ConsentDoc.jsx';
 import NotFoundPage from './NotFoundPage.jsx';
+import PageHero, { PageBody } from '../components/PageHero.jsx';
+import { IconLock } from '../components/icons.jsx';
 
 const DOCS = { terms: TermsDoc, privacy: PrivacyDoc, consent: ConsentDoc };
-
-const navClass = ({ isActive }) =>
-  `shrink-0 rounded-xl px-3 py-2 text-sm font-semibold transition-colors ${
-    isActive
-      ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300'
-      : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white'
-  }`;
 
 /**
  * Юридические документы: /legal/terms, /legal/privacy, /legal/consent.
@@ -29,41 +24,62 @@ export default function LegalPage() {
   if (!meta || !Doc) return <NotFoundPage />;
 
   return (
-    <div className="container-page py-8 sm:py-12">
-      <div className="grid gap-8 lg:grid-cols-[15rem_minmax(0,1fr)] lg:gap-12">
-        <aside className="lg:sticky lg:top-24 self-start min-w-0">
-          <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
-            Документы
-          </p>
-          <nav
-            aria-label="Юридические документы"
-            className="mt-3 -mx-4 px-4 lg:mx-0 lg:px-0 flex lg:flex-col gap-1 overflow-x-auto no-scrollbar"
-          >
-            {LEGAL_DOCS.map((d) => (
-              <NavLink key={d.slug} to={legalHref(d.slug)} className={navClass}>
-                <span className="lg:hidden">{d.short}</span>
-                <span className="hidden lg:inline">{d.title}</span>
-              </NavLink>
-            ))}
-          </nav>
-          <Link
-            to="/help"
-            className="mt-4 hidden lg:inline-flex text-sm font-semibold text-indigo-600 hover:underline dark:text-indigo-400"
-          >
-            Центр помощи →
-          </Link>
-        </aside>
+    <>
+      <PageHero
+        eyebrow="Документы"
+        icon={IconLock}
+        title={meta.title}
+        subtitle={`Редакция от ${LEGAL_EDITION}`}
+      >
+        <nav aria-label="Юридические документы" className="-mx-4 px-4 sm:mx-0 sm:px-0 flex gap-2 overflow-x-auto no-scrollbar">
+          {LEGAL_DOCS.map((d) => (
+            <NavLink
+              key={d.slug}
+              to={legalHref(d.slug)}
+              className={({ isActive }) => `hero-chip ${isActive ? 'hero-chip-active' : ''}`}
+            >
+              <span className="sm:hidden">{d.short}</span>
+              <span className="hidden sm:inline">{d.title}</span>
+            </NavLink>
+          ))}
+        </nav>
+      </PageHero>
 
-        <article className="min-w-0 max-w-3xl">
-          <header className="pb-6 border-b border-slate-200 dark:border-slate-800">
-            <h1 className="page-title">{meta.title}</h1>
-            <p className="page-subtitle">Редакция от {LEGAL_EDITION}</p>
-          </header>
-          <div className="legal-doc mt-6">
-            <Doc />
-          </div>
-        </article>
-      </div>
-    </div>
+      <PageBody>
+        <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_16rem] lg:gap-12">
+          <article className="min-w-0 max-w-3xl rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/60 px-5 py-6 sm:px-8 sm:py-8">
+            <div className="legal-doc">
+              <Doc />
+            </div>
+          </article>
+
+          <aside className="lg:sticky lg:top-24 self-start space-y-4">
+            <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-5">
+              <p className="section-eyebrow">Все документы</p>
+              <ul className="mt-3 space-y-2 text-sm">
+                {LEGAL_DOCS.map((d) => (
+                  <li key={d.slug}>
+                    <NavLink
+                      to={legalHref(d.slug)}
+                      className={({ isActive }) =>
+                        `font-semibold ${isActive ? 'text-slate-900 dark:text-white' : 'text-indigo-600 hover:underline dark:text-indigo-400'}`
+                      }
+                    >
+                      {d.title}
+                    </NavLink>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <Link
+              to="/help"
+              className="inline-flex text-sm font-semibold text-indigo-600 hover:underline dark:text-indigo-400"
+            >
+              Центр помощи →
+            </Link>
+          </aside>
+        </div>
+      </PageBody>
+    </>
   );
 }
