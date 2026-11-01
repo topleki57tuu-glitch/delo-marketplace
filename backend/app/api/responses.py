@@ -33,6 +33,17 @@ def create_response(task_id: int, response: ResponseCreate, token: str = Depends
     task = db.query(Task).filter(Task.id == task_id).first()
     if not task:
         raise HTTPException(404, "Заказ не найден")
+    # Откликаться можно только на открытый чужой заказ и только один раз.
+    # Раньше платный отклик списывался за отклик на свой заказ (после смены
+    # роли), на уже закрытый и за каждый повтор на тот же заказ.
+    if task.customer_id == specialist_id:
+        raise HTTPException(400, "Нельзя откликнуться на свой заказ")
+    if task.status != TaskStatus.open:
+        raise HTTPException(400, "Заказ уже не принимает отклики")
+    if db.query(Response).filter(
+        Response.task_id == task_id, Response.specialist_id == specialist_id
+    ).first():
+        raise HTTPException(400, "Вы уже откликнулись на этот заказ")
 
     # Монетизация: PRO — безлимит, иначе списываем 1 отклик.
     # Права считаем по is_pro_active, а не по колонке is_pro: флаг снимает
@@ -40,9 +51,15 @@ def create_response(task_id: int, response: ResponseCreate, token: str = Depends
     # запуском истёкшая подписка иначе оставалась бы действующей.
     is_pro = specialist.is_pro_active
     if not is_pro:
-        if (specialist.response_credits or 0) <= 0:
+        # Списание условным UPDATE: «прочитал — уменьшил в Python» при двух
+        # одновременных откликах тратило один кредит на оба (или уводило
+        # счётчик в минус).
+        spent = db.query(User).filter(
+            User.id == specialist_id, User.response_credits > 0
+        ).update({"response_credits": User.response_credits - 1}, synchronize_session=False)
+        if spent != 1:
+            db.rollback()
             raise HTTPException(402, "Отклики закончились. Пополните баланс или оформите PRO в профиле")
-        specialist.response_credits -= 1
 
     new_response = Response(
         task_id=task_id,
@@ -61,16 +78,25 @@ def create_response(task_id: int, response: ResponseCreate, token: str = Depends
         task_id=task_id
     ))
     db.commit()
+    if not is_pro:
+        db.refresh(specialist)
     return {"message": "Отклик отправлен", "credits_left": None if is_pro else specialist.response_credits}
 
 @router.get("/tasks/{task_id}/responses")
 def get_task_responses(task_id: int, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
     payload = decode_token_or_401(token)
+    viewer_id = int(payload.get("sub"))
     task = db.query(Task).filter(Task.id == task_id).first()
     if not task:
         raise HTTPException(404, "Заказ не найден")
 
-    responses = db.query(Response).filter(Response.task_id == task_id).all()
+    # Все отклики видит только автор заказа. Раньше список отдавался любому
+    # вошедшему: конкуренты видели цены и сроки друг друга, а заодно email
+    # каждого откликнувшегося. Остальным — только собственный отклик.
+    query = db.query(Response).filter(Response.task_id == task_id)
+    if viewer_id != task.customer_id:
+        query = query.filter(Response.specialist_id == viewer_id)
+    responses = query.all()
     result = []
     for r in responses:
         spec = db.query(User).filter(User.id == r.specialist_id).first()
@@ -91,7 +117,9 @@ def get_task_responses(task_id: int, token: str = Depends(oauth2_scheme), db: Se
             "specialist_id": r.specialist_id,
             "specialist_name": spec.name if spec else "Аноним",
             "specialist_avatar": spec.avatar if spec else None,
-            "specialist_email": spec.email if spec else "",
+            # Email не отдаём: связь — через чат сделки. Ключ оставлен пустым
+            # ради совместимости со старыми клиентами.
+            "specialist_email": "",
             "specialist_rating": rating,
             "specialist_completed_tasks": completed_tasks,
             "specialist_verified": spec.verified if spec else False,

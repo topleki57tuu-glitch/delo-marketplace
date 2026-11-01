@@ -72,10 +72,12 @@ def get_task_reviews(task_id: int, token: Optional[str] = Depends(oauth2_scheme)
             "comment": r.comment,
             "target": r.target,
             "reviewer_id": r.reviewer_id,
-            "reviewer_name": reviewer.name or reviewer.email if reviewer else "Пользователь",
+            # Без email: список публичный (токен необязателен), а у пользователя без
+            # имени подставлялся адрес почты — любой мог собрать email сторон сделки.
+            "reviewer_name": (reviewer.name or "Пользователь") if reviewer else "Пользователь",
             "reviewer_avatar": reviewer.avatar if reviewer else None,
             "reviewer_role": "Специалист" if (reviewer and reviewer.role == UserRole.specialist) else "Заказчик",
-            "target_user_name": target_user.name or target_user.email if target_user else "Пользователь"
+            "target_user_name": (target_user.name or "Пользователь") if target_user else "Пользователь"
         })
 
     can_review = False
