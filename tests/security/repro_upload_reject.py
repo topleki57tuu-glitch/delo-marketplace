@@ -68,7 +68,7 @@ DOC_ACCEPT = [
 def main():
     client = TestClient(app)
     email = "reject-probe@delo.ru"
-    client.post("/register/", json={"email": email, "password": "TestPass123!", "name": "Probe"})
+    client.post("/register/", json={"email": email, "password": "TestPass123!", "name": "Probe", "accept_terms": True, "pd_consent": True})
     login = client.post("/login", data={"username": email, "password": "TestPass123!"})
     if login.status_code != 200:
         print(f"логин не удался: {login.status_code}")

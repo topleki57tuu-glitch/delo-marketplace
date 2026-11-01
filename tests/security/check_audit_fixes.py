@@ -78,7 +78,7 @@ _seq = [0]
 def register(tag, email=None, password="AuditFix1"):
     _seq[0] += 1
     email = email or f"audit.{tag}.{_seq[0]}.{int(time.time() * 1000)}@delo-test.ru"
-    r = client.post("/register/", json={"email": email, "password": password, "name": f"U {tag}"})
+    r = client.post("/register/", json={"email": email, "password": password, "name": f"U {tag}", "accept_terms": True, "pd_consent": True})
     assert r.status_code in (200, 201), r.text[:200]
     r = client.post("/login", data={"username": email, "password": password})
     assert r.status_code == 200, r.text[:200]
