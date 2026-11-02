@@ -8,7 +8,7 @@ from sqlalchemy import func
 from app.core.database import get_db
 from app.core.enums import enum_value
 from app.core.security import oauth2_scheme, decode_token, is_admin
-from app.core.money import credit_balance, claim
+from app.core.money import credit_balance, debit_balance, claim
 from app.core.csrf import verify_csrf
 from app.core.logging import logger, log_escrow_operation
 from app.core.cache import cache
@@ -388,6 +388,76 @@ def delete_task_images(task_id: int, req: TaskImagesDeleteRequest, token: str = 
     task.images = json.dumps(new_imgs) if new_imgs else None
     db.commit()
     return {"message": "Фото удалено", "images": new_imgs}
+
+# Назначение исполнителя: бюджет заказа замораживается на балансе заказчика
+# (эскроу) и уходит исполнителю при завершении — PUT /tasks/{task_id}/complete.
+@router.put("/{task_id}/assign")
+def assign_task(task_id: int, specialist_id: int, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db), _csrf: None = Depends(verify_csrf)):
+    payload = decode_token_or_401(token)
+    customer_id = int(payload.get("sub"))
+
+    # Блокируем заказчика и заказ для защиты от race condition
+    # (двойное назначение или назначение при недостаточном балансе после его изменения)
+    customer = db.query(User).filter(User.id == customer_id).with_for_update().first()
+    task = db.query(Task).filter(Task.id == task_id, Task.customer_id == customer_id).with_for_update().first()
+    if not task:
+        raise HTTPException(404, "Заказ не найден или вы не его автор")
+    if task.status != TaskStatus.open:
+        raise HTTPException(400, "Назначить исполнителя можно только для открытого заказа")
+
+    # Сам себе исполнитель. Роль переключается в профиле (/users/me/switch-role),
+    # поэтому заказчик мог стать «специалистом» и назначить на свой заказ
+    # самого себя — затем завершить сделку и оставить себе отзыв (накрутка
+    # рейтинга), а с комиссией — ещё и гонять деньги по кругу.
+    if specialist_id == customer_id:
+        raise HTTPException(400, "Нельзя назначить исполнителем самого себя")
+
+    spec = db.query(User).filter(User.id == specialist_id, User.role == UserRole.specialist).first()
+    if not spec:
+        raise HTTPException(400, "Специалист не найден")
+
+    # Заказ «забирается» условным UPDATE до списания денег. Иначе два
+    # одновременных назначения (двойной клик) оба проходили проверку статуса
+    # выше и замораживали бюджет дважды, а вернуть при отмене можно только раз.
+    if not claim(db, Task, [Task.id == task.id, Task.status == TaskStatus.open],
+                 {"status": TaskStatus.in_progress, "executor_id": specialist_id}):
+        db.rollback()
+        raise HTTPException(409, "Исполнитель уже назначен")
+
+    budget = task.budget or 0
+    if budget > 0:
+        # Заморозка эскроу атомарная: проверка баланса входит в сам UPDATE
+        # (см. app/core/money.py).
+        if not debit_balance(db, customer_id, budget):
+            db.rollback()
+            raise HTTPException(400, "Недостаточно средств для безопасной сделки")
+        tx = Transaction(user_id=customer.id, amount=-budget, type=TransactionType.escrow_hold, task_id=task.id)
+        db.add(tx)
+
+        # Логируем холд эскроу
+        log_escrow_operation(
+            operation="escrow_hold",
+            task_id=task.id,
+            user_id=customer.id,
+            amount=budget,
+            specialist_id=specialist_id
+        )
+
+    db.commit()
+
+    # Инвалидация кеша при назначении исполнителя
+    cache.invalidate_pattern("tasks:list:*")
+
+    db.add(Notification(
+        user_id=specialist_id,
+        type="assigned",
+        title="Вас выбрали исполнителем!",
+        text=f"Заказчик назначил вас на задачу \"{task.title}\"",
+        task_id=task.id
+    ))
+    db.commit()
+    return {"message": "Исполнитель назначен"}
+
 
 @router.put("/{task_id}/complete")
 def complete_task(task_id: int, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db), _csrf: None = Depends(verify_csrf)):

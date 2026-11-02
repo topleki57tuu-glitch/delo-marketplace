@@ -88,7 +88,8 @@ open http://localhost:3000
 delo-marketplace/
 ├── backend/                    # FastAPI приложение
 │   ├── app/
-│   │   ├── api/               # API роутеры (auth, tasks, users, chat, ...)
+│   │   ├── api/               # API роутеры (auth, tasks, products, product_orders,
+│   │   │                      #   payments, monetization, chat, ...)
 │   │   ├── core/              # Ядро (config, security, database, container)
 │   │   ├── models/            # SQLAlchemy модели
 │   │   └── schemas.py         # Pydantic схемы
@@ -102,10 +103,15 @@ delo-marketplace/
 │
 ├── frontend/                   # React SPA
 │   ├── src/
-│   │   ├── components/        # React компоненты
-│   │   ├── pages/             # Страницы (TaskList, TaskDetail, Chat, ...)
-│   │   ├── utils/             # Утилиты (api.js, auth.js)
-│   │   └── App.jsx            # Главный компонент
+│   │   ├── components/        # Общие компоненты (NavigationBar, AuthModal, TaskMap, ...)
+│   │   │   └── taskMap/       # Части карты заданий: настройки, кнопки, карточка
+│   │   ├── pages/             # Страницы (TasksPage, TaskDetailPage, ChatsPage, ...)
+│   │   │   ├── profile/       # Вкладки личного кабинета и их хуки
+│   │   │   ├── task/          # Блоки страницы задания: отклики, сделка, отзыв
+│   │   │   └── chats/         # Список чатов, переписка, поле ввода, WebSocket
+│   │   ├── store/             # Zustand-хранилища (auth, tasks, products)
+│   │   ├── utils/             # Утилиты (format.js, csrf.js, apiError.js, ...)
+│   │   └── App.jsx            # Маршруты и каркас приложения
 │   ├── public/                # Статические файлы
 │   ├── package.json           # npm зависимости
 │   └── vite.config.js         # Vite конфигурация
@@ -117,10 +123,11 @@ delo-marketplace/
 ├── docs/                       # Документация
 │   ├── ARCHITECTURE_DIAGRAM.md
 │   ├── TASK_STATES_DIAGRAM.md
-│   ├── SECURITY_IMPROVEMENTS.md
 │   ├── ARCHITECTURE_IMPROVEMENTS.md
+│   ├── DEPLOYMENT.md
 │   ├── FAQ.md
-│   └── CONTRIBUTING.md        # Этот файл
+│   ├── CONTRIBUTING.md        # Этот файл
+│   └── archive/               # Отчёты прошлых этапов (только для истории)
 │
 ├── docker-compose.yml         # Docker orchestration
 ├── README.md                  # Главная документация

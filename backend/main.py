@@ -26,6 +26,7 @@ from app.api import (
     reviews_router,
     chat_router,
     payments_router,
+    monetization_router,
     files_router,
     notifications_router,
     ai_router,
@@ -240,6 +241,7 @@ app.include_router(responses_router)
 app.include_router(reviews_router)
 app.include_router(chat_router)
 app.include_router(payments_router)
+app.include_router(monetization_router)
 app.include_router(files_router)
 app.include_router(notifications_router)
 app.include_router(ai_router)

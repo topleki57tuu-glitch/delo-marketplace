@@ -1,18 +1,16 @@
 from datetime import datetime, timedelta
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, Request, status
-from sqlalchemy import func
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.config import settings
 from app.core.security import oauth2_scheme, decode_token, rate_limit
-from app.core.money import credit_balance, debit_balance, claim
+from app.core.money import credit_balance, claim
 from app.core.csrf import verify_csrf
-from app.core.logging import logger, log_escrow_operation
-from app.core.cache import cache
+from app.core.logging import logger
 from app.models import (
-    User, Transaction, PaymentRecord, PaymentStatus, Task, Notification,
-    UserRole, TaskStatus, TransactionType,
+    User, Transaction, PaymentRecord, PaymentStatus, Notification,
+    TransactionType,
 )
 from app.schemas import DepositRequest
 from pydantic import BaseModel
@@ -146,17 +144,6 @@ def credit_amount(requested: int, paid) -> int:
     return max(0, min(paid_amount, requested))
 
 
-MONETIZATION_PACKAGES = {
-    "resp_10": {"type": "responses", "title": "10 откликов", "credits": 10, "price": 190},
-    "resp_50": {"type": "responses", "title": "50 откликов", "credits": 50, "price": 790},
-    "pro_1": {"type": "pro", "title": "PRO на 1 месяц", "days": 30, "price": 590},
-    "pro_3": {"type": "pro", "title": "PRO на 3 месяца", "days": 90, "price": 1490},
-    "pro_12": {"type": "pro", "title": "PRO на год", "days": 365, "price": 4900},
-}
-
-class BuyPackageRequest(BaseModel):
-    package_id: str
-
 class PaymentProviderRequest(BaseModel):
     provider: str = "yoomoney"  # "yoomoney" или "yookassa"
 
@@ -180,61 +167,6 @@ def deposit_funds(req: DepositRequest, token: str = Depends(oauth2_scheme), db: 
     db.refresh(user)
     return {"message": "Баланс пополнен", "new_balance": user.balance}
 
-@router.get("/monetization/packages")
-def get_packages():
-    return {"packages": [
-        {"id": pid, **pkg} for pid, pkg in MONETIZATION_PACKAGES.items()
-    ]}
-
-@router.post("/monetization/buy")
-def buy_package(req: BuyPackageRequest, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db), _csrf: None = Depends(verify_csrf)):
-    pkg = MONETIZATION_PACKAGES.get(req.package_id)
-    if not pkg:
-        raise HTTPException(404, "Пакет не найден")
-
-    payload = decode_token_or_401(token)
-    user = db.query(User).filter(User.id == int(payload.get("sub"))).first()
-    if user.role != UserRole.specialist:
-        raise HTTPException(403, "Пакеты доступны только специалистам")
-
-    # Списание атомарное: две одновременные покупки иначе обе прошли бы
-    # проверку баланса и увели его в минус.
-    if not debit_balance(db, user.id, pkg["price"]):
-        db.rollback()
-        raise HTTPException(400, f"Недостаточно средств: нужно {pkg['price']} ₽. Пополните баланс.")
-    tx = Transaction(user_id=user.id, amount=-pkg["price"], type=TransactionType.purchase)
-    db.add(tx)
-
-    if pkg["type"] == "responses":
-        # Начисление кредитов тоже атомарным UPDATE, чтобы не потерять
-        # их при параллельной покупке.
-        db.query(User).filter(User.id == user.id).update(
-            {"response_credits": func.coalesce(User.response_credits, 0) + pkg["credits"]},
-            synchronize_session=False,
-        )
-        db.commit()
-        db.refresh(user)
-        msg = f"Пакет «{pkg['title']}» куплен! Откликов: {user.response_credits}"
-    else:
-        from datetime import timedelta
-        base = datetime.utcnow()
-        if user.pro_until and user.pro_until > base:
-            base = user.pro_until
-        user.pro_until = base + timedelta(days=pkg["days"])
-        user.is_pro = True
-        db.commit()
-        db.refresh(user)
-        msg = f"PRO активирован до {user.pro_until.strftime('%Y-%m-%d')}"
-
-    return {
-        "message": msg,
-        "balance": user.balance,
-        "response_credits": user.response_credits,
-        # is_pro_active, а не колонка: клиенту нужен признак действующей
-        # подписки, чтобы рисовать метку PRO.
-        "is_pro": user.is_pro_active,
-        "pro_until": user.pro_until
-    }
 
 @router.get("/payments/status")
 def payments_status():
@@ -659,71 +591,3 @@ def confirm_pending_payments(
         "balance": user.balance,
         "checked": len(pending),
     }
-
-
-@router.put("/tasks/{task_id}/assign")
-def assign_task(task_id: int, specialist_id: int, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db), _csrf: None = Depends(verify_csrf)):
-    payload = decode_token_or_401(token)
-    customer_id = int(payload.get("sub"))
-
-    # Блокируем заказчика и заказ для защиты от race condition
-    # (двойное назначение или назначение при недостаточном балансе после его изменения)
-    customer = db.query(User).filter(User.id == customer_id).with_for_update().first()
-    task = db.query(Task).filter(Task.id == task_id, Task.customer_id == customer_id).with_for_update().first()
-    if not task:
-        raise HTTPException(404, "Заказ не найден или вы не его автор")
-    if task.status != TaskStatus.open:
-        raise HTTPException(400, "Назначить исполнителя можно только для открытого заказа")
-
-    # Сам себе исполнитель. Роль переключается в профиле (/users/me/switch-role),
-    # поэтому заказчик мог стать «специалистом» и назначить на свой заказ
-    # самого себя — затем завершить сделку и оставить себе отзыв (накрутка
-    # рейтинга), а с комиссией — ещё и гонять деньги по кругу.
-    if specialist_id == customer_id:
-        raise HTTPException(400, "Нельзя назначить исполнителем самого себя")
-
-    spec = db.query(User).filter(User.id == specialist_id, User.role == UserRole.specialist).first()
-    if not spec:
-        raise HTTPException(400, "Специалист не найден")
-
-    # Заказ «забирается» условным UPDATE до списания денег. Иначе два
-    # одновременных назначения (двойной клик) оба проходили проверку статуса
-    # выше и замораживали бюджет дважды, а вернуть при отмене можно только раз.
-    if not claim(db, Task, [Task.id == task.id, Task.status == TaskStatus.open],
-                 {"status": TaskStatus.in_progress, "executor_id": specialist_id}):
-        db.rollback()
-        raise HTTPException(409, "Исполнитель уже назначен")
-
-    budget = task.budget or 0
-    if budget > 0:
-        # Заморозка эскроу атомарная: проверка баланса входит в сам UPDATE
-        # (см. app/core/money.py).
-        if not debit_balance(db, customer_id, budget):
-            db.rollback()
-            raise HTTPException(400, "Недостаточно средств для безопасной сделки")
-        tx = Transaction(user_id=customer.id, amount=-budget, type=TransactionType.escrow_hold, task_id=task.id)
-        db.add(tx)
-
-        # Логируем холд эскроу
-        log_escrow_operation(
-            operation="escrow_hold",
-            task_id=task.id,
-            user_id=customer.id,
-            amount=budget,
-            specialist_id=specialist_id
-        )
-
-    db.commit()
-
-    # Инвалидация кеша при назначении исполнителя
-    cache.invalidate_pattern("tasks:list:*")
-
-    db.add(Notification(
-        user_id=specialist_id,
-        type="assigned",
-        title="Вас выбрали исполнителем!",
-        text=f"Заказчик назначил вас на задачу \"{task.title}\"",
-        task_id=task.id
-    ))
-    db.commit()
-    return {"message": "Исполнитель назначен"}
