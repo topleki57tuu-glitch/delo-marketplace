@@ -1,0 +1,143 @@
+#!/usr/bin/env bash
+# ============================================================================
+# Поддельный docker для tests/ops/run_ops_tests.sh: скрипты обслуживания
+# (scripts/backup.sh, restore.sh, monitor.sh, vps_update.sh) проверяются без
+# Docker. Команды compose выполняются на локальном PostgreSQL и в локальном sh:
+#   exec/run postgres КОМАНДА   -> КОМАНДА с PGHOST/PGPORT/PGPASSWORD
+#   exec/run backend sh -c ...  -> sh -c, /app/uploads -> $FAKE_UPLOADS
+#   run backend alembic ...     -> настоящий alembic из backend/ приложения
+#   exec backend python ...     -> «/health»: backend запущен и база читается
+#   up / stop / ps              -> отметки в $FAKE_DOCKER_STATE/running
+#   inspect marketplace_ИМЯ     -> running или exited по тем же отметкам
+# Рычаги для сбоев: FAKE_BUILD_FAIL, FAKE_HEALTH_FAIL, FAKE_PGDUMP_FAIL,
+# FAKE_UP_FAIL (любое непустое значение), FAKE_HEALTH_FAIL_AT=КОММИТ.
+# ============================================================================
+set -uo pipefail
+
+STATE="${FAKE_DOCKER_STATE:?FAKE_DOCKER_STATE не задан}"
+mkdir -p "$STATE/running"
+printf '%s\n' "docker $*" >> "$STATE/calls.log"
+
+ALL_SERVICES=(postgres redis backend worker beat frontend caddy bot)
+PG_ENV=(PGHOST="${FAKE_PGHOST:-/tmp}" PGPORT="${FAKE_PGPORT:-5432}" PGPASSWORD="${FAKE_PGPASSWORD:-ci_password}")
+
+envval() { grep -E "^$1=" "$PWD/.env" 2>/dev/null | tail -n 1 | cut -d= -f2-; }
+
+health_ok() {
+    [ -f "$STATE/running/backend" ] || return 1
+    [ -z "${FAKE_HEALTH_FAIL:-}" ] || return 1
+    # Сбой только на одной версии кода — для отката после неудачного запуска.
+    if [ -n "${FAKE_HEALTH_FAIL_AT:-}" ] && [ "$(git rev-parse HEAD 2>/dev/null)" = "$FAKE_HEALTH_FAIL_AT" ]; then
+        return 1
+    fi
+    env "${PG_ENV[@]}" psql -X -q -U "$(envval POSTGRES_USER)" -d "$(envval POSTGRES_DB)" \
+        -tAc "SELECT count(*) FROM users" >/dev/null 2>&1
+}
+
+service_cmd() {
+    local svc="$1"
+    shift
+    case "$svc" in
+        postgres)
+            if [ "${1:-}" = "pg_dump" ] && [ -n "${FAKE_PGDUMP_FAIL:-}" ]; then
+                echo "pg_dump: error: поддельный сбой" >&2
+                exit 1
+            fi
+            # Через трубу, как у docker exec: pg_dump в трубу пишет архив без
+            # смещений блоков (в файл — с повторным оглавлением в конце).
+            env "${PG_ENV[@]}" "$@" | cat
+            exit "${PIPESTATUS[0]}"
+            ;;
+        backend)
+            local args=() a
+            for a in "$@"; do args+=("${a//\/app\/uploads/$FAKE_UPLOADS}"); done
+            case "${args[0]:-}" in
+                python) health_ok; exit $? ;;
+                alembic)
+                    local url
+                    url="postgresql+psycopg2://$(envval POSTGRES_USER):${FAKE_PGPASSWORD:-ci_password}@${FAKE_PGTCP:-localhost}:${FAKE_PGPORT:-5432}/$(envval POSTGRES_DB)"
+                    cd "$PWD/backend" || exit 1
+                    exec env ENV=development SECRET_KEY=ops-test-secret-key-0123456789abcdef0123 \
+                        DATABASE_URL="$url" "${args[@]}"
+                    ;;
+                *) exec "${args[@]}" ;;
+            esac
+            ;;
+        redis)
+            echo "redis $*" >> "$STATE/redis.log"
+            echo OK
+            ;;
+        *)
+            echo "поддельный docker: нет команд для $svc" >&2
+            exit 1
+            ;;
+    esac
+}
+
+case "${1:-}" in
+    compose)
+        shift
+        while [ "${1:-}" = "-f" ]; do shift 2; done
+        sub="${1:-}"
+        shift
+        case "$sub" in
+            ps)
+                svc="${*: -1}"
+                [ -f "$STATE/running/$svc" ] && echo "fake-$svc"
+                exit 0
+                ;;
+            up)
+                [ -z "${FAKE_UP_FAIL:-}" ] || { echo "поддельный сбой up" >&2; exit 1; }
+                svcs=()
+                for a in "$@"; do case "$a" in -*) ;; *) svcs+=("$a") ;; esac; done
+                [ ${#svcs[@]} -gt 0 ] || svcs=("${ALL_SERVICES[@]}")
+                for s in "${svcs[@]}"; do touch "$STATE/running/$s"; done
+                exit 0
+                ;;
+            stop)
+                echo "stop $* maint=$([ -f "${STATE_DIR:-/nonexistent}/maintenance" ] && echo yes || echo no)" >> "$STATE/stops.log"
+                for s in "$@"; do rm -f "$STATE/running/$s"; done
+                exit 0
+                ;;
+            build)
+                [ -z "${FAKE_BUILD_FAIL:-}" ] || { echo "поддельный сбой сборки" >&2; exit 1; }
+                # Флаг обслуживания при сборке: мониторинг должен молчать.
+                echo "build $(git rev-parse --short=7 HEAD 2>/dev/null) maint=$([ -f "${STATE_DIR:-/nonexistent}/maintenance" ] && echo yes || echo no)" >> "$STATE/builds.log"
+                exit 0
+                ;;
+            logs)
+                echo "(поддельный журнал)"
+                exit 0
+                ;;
+            exec | run)
+                while [ $# -gt 0 ]; do
+                    case "$1" in
+                        -e | -u | -w) shift 2 ;;
+                        -*) shift ;;
+                        *) break ;;
+                    esac
+                done
+                svc="$1"
+                shift
+                if [ "$sub" = "exec" ] && [ ! -f "$STATE/running/$svc" ]; then
+                    echo "service \"$svc\" is not running" >&2
+                    exit 1
+                fi
+                service_cmd "$svc" "$@"
+                ;;
+            *)
+                echo "поддельный docker: compose $sub не поддержан" >&2
+                exit 1
+                ;;
+        esac
+        ;;
+    inspect)
+        name="${*: -1}"
+        if [ -f "$STATE/running/${name#marketplace_}" ]; then echo "running||0"; else echo "exited||1"; fi
+        ;;
+    image) exit 0 ;;
+    *)
+        echo "поддельный docker: $* не поддержан" >&2
+        exit 1
+        ;;
+esac

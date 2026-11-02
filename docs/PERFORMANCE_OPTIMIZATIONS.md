@@ -86,7 +86,7 @@ logging.getLogger('sqlalchemy.engine').setLevel(logging.INFO)
 **Логика кеширования:**
 ```python
 # Кешируются только запросы без фильтров (главная страница)
-GET /tasks/ -> cache:tasks:list:open:all (TTL 60 sec)
+GET /tasks/ -> cache:tasks:list:open:v2 (TTL 60 sec)
 
 # С фильтрами - прямо из БД
 GET /tasks/?category=design -> БД (не кешируется)

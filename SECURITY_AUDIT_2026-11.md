@@ -52,9 +52,10 @@ login-throttle, vitest) прогнаны локально на Postgres 16 + Red
 ## Что не сделано (рекомендации)
 - Отдельный ключ шифрования данных вместо `SECRET_KEY`; ротация refresh-токенов.
 - Выплаты: 2FA и принцип «двух ключей» (maker-checker) для админа.
-- Маскирование персональных данных в админке; скрытие точного адреса до назначения.
-- Политика комиссии/`withdraw_amount`, резервные копии БД (на Render `plan: free`
-  Postgres удаляется через 30 дней).
+- Маскирование персональных данных в админке. (Точный адрес задания до назначения
+  теперь скрыт — `tests/security/check_task_address_privacy.py`.)
+- Политика комиссии/`withdraw_amount`; резервные копии БД на Render (`plan: free`
+  Postgres удаляется через 30 дней). На VPS копии делает `scripts/backup.sh`.
 - В `render.yaml` у backend/worker/beat генерируются **разные** `SECRET_KEY`
   (`generateValue` на каждый сервис) — лучше задать один общий вручную.
 - `alembic upgrade head` в CMD Docker-образа; gitleaks в CI.

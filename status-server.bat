@@ -33,6 +33,10 @@ echo [Disk]
 %SSH% %SERVER% "df -h / | tail -1"
 echo.
 
+echo [Checks: site, containers, disk, certificate, backups]
+%SSH% %SERVER% "cd %APPDIR% && bash scripts/monitor.sh"
+echo.
+
 echo [Version on server]
 %SSH% %SERVER% "cd %APPDIR% && git log --oneline -1"
 echo.

@@ -16,6 +16,7 @@ from app.core.database import engine, Base, SessionLocal
 from app.core.csrf import generate_csrf_token, set_csrf_cookie
 from app.core.logging import logger, log_request
 from app.core.monitoring import setup_query_monitoring, get_connection_pool_status
+from app.core.error_tracking import init_sentry
 from app.models import User, StoredFile
 from app.api import (
     auth_router,
@@ -37,28 +38,9 @@ from app.api import (
 from file_utils import UPLOAD_DIR
 from jose import jwt
 
-# Инициализируем Sentry для мониторинга ошибок в production
-if settings.SENTRY_DSN:
-    import sentry_sdk
-    from sentry_sdk.integrations.fastapi import FastApiIntegration
-    from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
-
-    sentry_sdk.init(
-        dsn=settings.SENTRY_DSN,
-        environment=settings.SENTRY_ENVIRONMENT,
-        traces_sample_rate=settings.SENTRY_TRACES_SAMPLE_RATE,
-        integrations=[
-            FastApiIntegration(),
-            SqlalchemyIntegration(),
-        ],
-        # Персональные данные в Sentry не отправляем: с send_default_pii=True
-        # туда уходят IP, cookies, заголовки (включая Authorization) и тела
-        # запросов — паспортные данные, реквизиты, переписка. Это передача ПДн
-        # третьему лицу (152-ФЗ), а для разбора ошибок хватает user_id, который
-        # можно передать явно через sentry_sdk.set_user({"id": ...}).
-        send_default_pii=False,
-    )
-    logger.info(f"Sentry initialized | environment={settings.SENTRY_ENVIRONMENT} | sample_rate={settings.SENTRY_TRACES_SAMPLE_RATE}")
+# Ошибки — в Sentry, если в окружении задан SENTRY_DSN. Что именно уходит и
+# почему без персональных данных — app/core/error_tracking.py.
+init_sentry("backend")
 
 # Инициализируем логирование при старте
 logger.info(f"Starting DELO Marketplace API | ENV={settings.ENV} | CSRF={settings.CSRF_ENABLED} | RATE_LIMIT={settings.RATE_LIMIT_ENABLED}")

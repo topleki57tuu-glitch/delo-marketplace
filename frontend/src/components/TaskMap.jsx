@@ -3,6 +3,9 @@ import { IconClose, IconPin, IconTarget, IconWarning } from '../components/icons
 import { useToast } from './Toast.jsx';
 
 const YANDEX_API_KEY = import.meta.env.VITE_YANDEX_MAPS_API_KEY || '';
+// csp=true — режим для сайтов с Content-Security-Policy: стили API подключает
+// через blob:, а не встроенными <style>. Политика — frontend/nginx-security-headers.conf.
+const YMAPS_URL = `https://api-maps.yandex.ru/2.1/?apikey=${YANDEX_API_KEY}&lang=ru_RU&csp=true`;
 const MOSCOW_CENTER = [55.751574, 37.573856];
 
 // Haversine formula to calculate distance in km
@@ -143,7 +146,7 @@ export const TaskMap = ({
 
             const script = document.createElement('script');
             script.id = 'ymaps-script';
-            script.src = `https://api-maps.yandex.ru/2.1/?apikey=${YANDEX_API_KEY}&lang=ru_RU`;
+            script.src = YMAPS_URL;
             script.async = true;
             script.onload = () => {
                 if (window.ymaps) {
@@ -576,7 +579,7 @@ export const LocationPicker = ({
                 return;
             }
             const script = document.createElement('script');
-            script.src = `https://api-maps.yandex.ru/2.1/?apikey=${YANDEX_API_KEY}&lang=ru_RU`;
+            script.src = YMAPS_URL;
             script.async = true;
             script.onload = () => {
                 if (window.ymaps) {

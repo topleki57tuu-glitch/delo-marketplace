@@ -59,8 +59,7 @@ import main  # noqa: E402
 from app.core.cache import cache  # noqa: E402
 from app.core.database import Base, engine, SessionLocal  # noqa: E402
 from app.models import Task  # noqa: E402
-
-CACHE_KEY = "tasks:list:open:all"
+from app.api.tasks import TASKS_LIST_CACHE_KEY as CACHE_KEY  # noqa: E402
 
 passed = 0
 failed = 0

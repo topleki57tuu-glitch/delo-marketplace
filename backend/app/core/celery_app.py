@@ -21,6 +21,7 @@ from urllib.parse import urlsplit, urlunsplit
 
 from celery import Celery
 from celery.schedules import crontab
+from celery.signals import beat_init, celeryd_init
 from app.core.logging import logger, redact_url
 
 # Redis URL для broker и backend.
@@ -148,6 +149,24 @@ logger.info(
     f"Celery configured | broker={redact_url(CELERY_BROKER_URL)} | "
     f"backend={redact_url(CELERY_RESULT_BACKEND)}"
 )
+
+
+# Ошибки фоновых задач — в Sentry, если задан SENTRY_DSN
+# (app/core/error_tracking.py). Подключаем по сигналам запуска, а не при
+# импорте модуля: этот модуль импортирует и API (чтобы ставить задачи в
+# очередь), и там Sentry уже подключён с тегом backend. celeryd_init
+# приходит в главном процессе воркера до запуска дочерних — они получают
+# подключённый клиент вместе с памятью процесса.
+@celeryd_init.connect
+def _sentry_for_worker(**_kwargs):
+    from app.core.error_tracking import init_sentry
+    init_sentry("worker")
+
+
+@beat_init.connect
+def _sentry_for_beat(**_kwargs):
+    from app.core.error_tracking import init_sentry
+    init_sentry("beat")
 
 
 # Health check task

@@ -217,6 +217,18 @@ echo "    backend отвечает"
 
 read -rp "Насыпать демо-данные (перезапишет базу!)? [y/N]: " SEED
 if [ "${SEED:-n}" = "y" ]; then
+    # Повторный запуск на работающем сайте: настоящие данные сначала в копию.
+    USERS_NOW="$(docker compose -f docker-compose.prod.yml exec -T postgres psql -U "${POSTGRES_USER:-marketplace}" \
+        -d "${POSTGRES_DB:-marketplace_db}" -tAc 'SELECT count(*) FROM users' 2>/dev/null | tr -d '[:space:]' || true)"
+    if [ -n "$USERS_NOW" ] && [ "$USERS_NOW" != "0" ]; then
+        echo "    В базе уже есть пользователи ($USERS_NOW) — сначала резервная копия"
+        if ! bash scripts/backup.sh --tag pre-seed --quick; then
+            echo "    Копия не удалась — демо-данные не насыпаю."
+            SEED=n
+        fi
+    fi
+fi
+if [ "${SEED:-n}" = "y" ]; then
     # Пароль демо-аккаунтов не хардкодится: seed_demo.py берёт DEMO_PASSWORD
     # из окружения либо генерирует случайный. Не печатаем его в лог деплоя.
     docker compose -f docker-compose.prod.yml exec -T backend python seed_demo.py
@@ -253,10 +265,29 @@ if [ -n "${DOMAIN:-}" ]; then
 fi
 
 echo ""
+echo "==> Резервные копии и мониторинг"
+# Копия каждую ночь (база, файлы, .env — с проверкой восстановлением) и
+# проверки каждые 5 минут. Подробнее — UPDATE_GUIDE.md.
+if [ -f /etc/cron.d/delo-marketplace ]; then
+    echo "    уже включены (список копий: bash scripts/backup.sh --list)"
+else
+    read -rp "Включить ночные резервные копии и проверки сайта каждые 5 минут? [Y/n]: " BACKUPS
+    if [ "${BACKUPS:-y}" != "n" ]; then
+        bash scripts/backup.sh --install \
+            || echo "    ВНИМАНИЕ: первая копия не удалась — повторите: bash scripts/backup.sh --install"
+    else
+        echo "    пропущено. Включить позже: bash scripts/backup.sh --install"
+    fi
+fi
+
+echo ""
 echo "=========================================="
 echo " Готово: $FRONTEND_URL"
 echo " Логи:   docker compose -f docker-compose.prod.yml logs -f backend"
 echo " Апдейт: bash scripts/vps_update.sh   (подтянет код, накатит миграции,"
 echo "         пересоберёт — .env не трогает)"
+echo " Откат:  bash scripts/vps_update.sh --rollback"
+echo " Копии:  bash scripts/backup.sh --list, восстановить: bash scripts/restore.sh ИМЯ"
+echo " Сбои — в Telegram: bash scripts/monitor.sh --setup"
 echo " Админ:  bash scripts/admin_access.sh  (почта и пароль для админ-панели)"
 echo "=========================================="
