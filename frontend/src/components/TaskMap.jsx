@@ -5,7 +5,8 @@ import { IconWarning } from './icons.jsx';
 import { useToast } from './Toast.jsx';
 import MapControls from './taskMap/MapControls.jsx';
 import TaskPreviewCard from './taskMap/TaskPreviewCard.jsx';
-import { YMAPS_URL, MOSCOW_CENTER, CATEGORY_ICONS, calculateDistance } from './taskMap/taskMapConfig.js';
+import { MOSCOW_CENTER, CATEGORY_ICONS, calculateDistance } from './taskMap/taskMapConfig.js';
+import { loadYmaps } from './taskMap/loadYmaps.js';
 
 export const TaskMap = ({
     tasks = [],
@@ -30,6 +31,8 @@ export const TaskMap = ({
     const [activeCategory, setActiveCategory] = useState('');
     const [activePreviewTask, setActivePreviewTask] = useState(null);
     const [isFullscreen, setIsFullscreen] = useState(false);
+    // Номер попытки загрузки API: «Повторить» увеличивает его и запускает загрузку заново.
+    const [loadAttempt, setLoadAttempt] = useState(0);
 
     // Filter tasks with location
     const tasksWithLocation = useMemo(() => {
@@ -70,55 +73,28 @@ export const TaskMap = ({
     useEffect(() => {
         let isMounted = true;
 
-        const loadScript = () => {
-            if (window.ymaps) {
-                window.ymaps.ready(() => {
-                    if (isMounted) initMap();
-                });
-                return;
-            }
-
-            const existingScript = document.getElementById('ymaps-script');
-            if (existingScript) {
-                existingScript.addEventListener('load', () => {
-                    if (window.ymaps) {
-                        window.ymaps.ready(() => {
-                            if (isMounted) initMap();
-                        });
-                    }
-                });
-                return;
-            }
-
-            const script = document.createElement('script');
-            script.id = 'ymaps-script';
-            script.src = YMAPS_URL;
-            script.async = true;
-            script.onload = () => {
-                if (window.ymaps) {
-                    window.ymaps.ready(() => {
-                        if (isMounted) initMap();
-                    });
-                }
-            };
-            script.onerror = () => {
+        loadYmaps()
+            .then(() => {
+                if (isMounted) initMap();
+            })
+            .catch((err) => {
+                // Причина — в консоли браузера: по ней видно, что именно не
+                // загрузилось (скрипт, модули, тайм-аут).
+                console.error('Яндекс Карты не загрузились:', err);
                 if (isMounted) {
-                    setMapError('Не удалось загрузить картографический сервис. Проверьте интернет-соединение.');
+                    setMapError('Не удалось загрузить карту. Проверьте подключение к интернету и нажмите «Повторить».');
                 }
-            };
-            document.head.appendChild(script);
-        };
-
-        loadScript();
+            });
 
         return () => {
             isMounted = false;
             if (mapInstance.current) {
                 mapInstance.current.destroy();
                 mapInstance.current = null;
+                clustererRef.current = null;
             }
         };
-    }, []);
+    }, [loadAttempt]);
 
     const initMap = () => {
         if (!mapContainerRef.current || mapInstance.current || !window.ymaps) return;
@@ -311,7 +287,7 @@ export const TaskMap = ({
                     <div className="text-4xl mb-3"><IconWarning /></div>
                     <p className="font-bold text-ink text-base">{mapError}</p>
                     <button
-                        onClick={() => { setMapError(null); initMap(); }}
+                        onClick={() => { setMapError(null); setMapReady(false); setLoadAttempt((n) => n + 1); }}
                         className="mt-4 px-4 py-2 bg-accent hover:bg-accent-bright text-white rounded-xl text-xs font-bold uppercase tracking-wider transition"
                     >
                         Повторить

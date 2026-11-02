@@ -138,6 +138,10 @@ for h in hashes:
 stale = [t for t in script_src if t.startswith("'sha256-") and t not in hashes]
 check("CSP: нет устаревших хэшей", not stale, " ".join(stale))
 check("CSP: Яндекс.Карты разрешены (script-src)", "https://api-maps.yandex.ru" in script_src)
+# Основной модуль API Карт загрузчик берёт с yastatic.net. Без этого адреса
+# браузер блокирует модуль, и карта заданий бесконечно показывает загрузку.
+check("CSP: модули Яндекс.Карт с yastatic.net разрешены (script-src)", "https://yastatic.net" in script_src,
+      " ".join(script_src))
 check("CSP: object-src 'none'", csp.get("object-src") == ["'none'"], str(csp.get("object-src")))
 check("CSP: frame-ancestors 'none'", csp.get("frame-ancestors") == ["'none'"], str(csp.get("frame-ancestors")))
 check("CSP: base-uri 'self'", csp.get("base-uri") == ["'self'"], str(csp.get("base-uri")))
