@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useAuthStore } from '../store/authStore';
 import { IconClose, IconUpload } from '../components/icons.jsx';
+import { apiErrorMessage } from '../utils/apiError';
 
 // Относительный путь — запросы уходят через Vite-прокси на backend
 //
@@ -67,7 +68,7 @@ export const ImageUploader = ({
                 body: formData,
             });
             const data = await res.json();
-            if (!res.ok) throw new Error(data.detail || 'Ошибка загрузки файла');
+            if (!res.ok) throw new Error(apiErrorMessage(data, 'Ошибка загрузки файла'));
 
             if (isListMode) {
                 update([...list, data.url]);

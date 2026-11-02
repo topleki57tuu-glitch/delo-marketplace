@@ -1,43 +1,39 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
-import compression from 'vite-plugin-compression'
+import { compression } from 'vite-plugin-compression2'
 
 export default defineConfig({
   plugins: [
     react(),
     tailwindcss(),
-    // Gzip compression для production
+    // Сжатые копии .gz и .br рядом с файлами сборки (nginx отдаёт .gz через
+    // gzip_static). Прежний vite-plugin-compression заброшен с 2022 года и в
+    // Vite 8 молча перестал создавать .br: два его экземпляра делят общий кэш.
     compression({
-      algorithm: 'gzip',
-      ext: '.gz',
+      algorithms: ['gzip', 'brotliCompress'],
       threshold: 1024, // Только файлы > 1KB
-    }),
-    // Brotli compression (лучше чем gzip)
-    compression({
-      algorithm: 'brotliCompress',
-      ext: '.br',
-      threshold: 1024,
     }),
   ],
   build: {
-    // FIX: Добавлена оптимизация для production - удаление console.log
-    minify: 'esbuild',
-    // Настройки minification для удаления console.log в production
-    esbuildOptions: {
-      drop: ['console', 'debugger'], // Удалить console.* и debugger в production
-    },
-    // Оптимизация CSS
+    // JS минифицирует Oxc, CSS — Lightning CSS (по умолчанию в Vite 8).
+    // Прежний блок build.esbuildOptions с drop: ['console'] не был опцией Vite
+    // и ни на что не влиял; console.log в коде нет, а console.error/warn
+    // нужны для диагностики, поэтому их сознательно оставляем.
     cssMinify: true,
-    rollupOptions: {
+    rolldownOptions: {
       output: {
-        manualChunks: {
-          // Разделяем vendor библиотеки для лучшего кеширования
-          'react-vendor': ['react', 'react-dom', 'react-router-dom'],
-          'date-vendor': ['date-fns/formatDistanceToNow', 'date-fns/format', 'date-fns/isToday', 'date-fns/isYesterday'],
-          'state-vendor': ['zustand']
-        }
-      }
+        // Вендорные библиотеки — отдельными чанками: они меняются реже кода
+        // приложения и дольше живут в кэше браузера. Объектная форма
+        // manualChunks в Vite 8 не поддерживается, поэтому — codeSplitting.
+        codeSplitting: {
+          groups: [
+            { name: 'react-vendor', test: /node_modules[\\/](react|react-dom|react-router|react-router-dom|scheduler)[\\/]/ },
+            { name: 'date-vendor', test: /node_modules[\\/]date-fns[\\/]/ },
+            { name: 'state-vendor', test: /node_modules[\\/]zustand[\\/]/ },
+          ],
+        },
+      },
     },
     chunkSizeWarningLimit: 600, // Предупреждение если chunk > 600KB
     // Оптимизация для мобильных

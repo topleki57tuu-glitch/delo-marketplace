@@ -7,6 +7,7 @@ import { useToast } from '../components/Toast';
 import PageHero, { PageBody } from '../components/PageHero.jsx';
 import { AuthRequired } from '../components/PageState.jsx';
 import { IconCatBeauty, IconCatBusiness, IconCatCleaning, IconCatDelivery, IconCatDesign, IconCatDevelopment, IconCatEvents, IconCatOther, IconCatPhotoVideo, IconCatRepairs, IconCatTutoring, IconCatWriting, IconBriefcase, IconLock, IconSparkles } from '../components/icons.jsx';
+import { apiErrorMessage } from '../utils/apiError';
 
 const CATEGORIES = [
   { id: 'development', label: 'Разработка сайтов и IT', icon: <IconCatDevelopment /> },
@@ -22,6 +23,13 @@ const CATEGORIES = [
   { id: 'business', label: 'Бизнес и юридические услуги', icon: <IconCatBusiness /> },
   { id: 'other', label: 'Другое', icon: <IconCatOther /> },
 ];
+
+// Сегодняшняя дата по часам пользователя — нижняя граница поля «Срок»
+// (сервер прошедшую дату не примет, app/schemas: TaskCreate).
+function todayISO() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
 
 export default function CreateTaskPage({ user, token, onOpenAuth, onTaskCreated }) {
   const navigate = useNavigate();
@@ -83,7 +91,7 @@ export default function CreateTaskPage({ user, token, onOpenAuth, onTaskCreated 
 
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.detail || 'Ошибка при создании задания');
+        throw new Error(apiErrorMessage(data, 'Ошибка при создании задания'));
       }
 
       addToast('Задание успешно создано!', 'success');
@@ -177,6 +185,7 @@ export default function CreateTaskPage({ user, token, onOpenAuth, onTaskCreated 
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
                     className="textarea"
+                    maxLength={5000}
                     required
                   />
                 </div>
@@ -189,6 +198,7 @@ export default function CreateTaskPage({ user, token, onOpenAuth, onTaskCreated 
                       type="number"
                       inputMode="numeric"
                       min="0"
+                      max="10000000"
                       placeholder="Оставьте пустым для договорной цены"
                       value={budget}
                       onChange={(e) => setBudget(e.target.value)}
@@ -200,6 +210,7 @@ export default function CreateTaskPage({ user, token, onOpenAuth, onTaskCreated 
                     <input
                       id="task-deadline"
                       type="date"
+                      min={todayISO()}
                       value={deadline}
                       onChange={(e) => setDeadline(e.target.value)}
                       className="input"
@@ -237,6 +248,7 @@ export default function CreateTaskPage({ user, token, onOpenAuth, onTaskCreated 
                       id="task-address"
                       type="text"
                       placeholder="ул. Ленина, д. 10"
+                      maxLength={200}
                       value={address}
                       onChange={(e) => setAddress(e.target.value)}
                       aria-describedby="task-address-hint"

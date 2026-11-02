@@ -149,8 +149,12 @@ def get_user_chats(token: str = Depends(oauth2_scheme), db: Session = Depends(ge
     payload = decode_token_or_401(token)
     user_id = int(payload.get("sub"))
 
+    # Диалог есть только у сделки с исполнителем. Раньше сюда попадали и
+    # открытые задания заказчика без исполнителя — «чат» с безымянным
+    # «Собеседником», которому никто не мог ответить.
     tasks = db.query(Task).filter(
-        (Task.customer_id == user_id) | (Task.executor_id == user_id)
+        Task.executor_id.isnot(None),
+        (Task.customer_id == user_id) | (Task.executor_id == user_id),
     ).order_by(Task.id.desc()).all()
 
     dialogs = []

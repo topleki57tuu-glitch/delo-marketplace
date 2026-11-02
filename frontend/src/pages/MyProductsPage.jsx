@@ -26,13 +26,16 @@ export default function MyProductsPage({ onOpenAuth }) {
 
   const [deleting, setDeleting] = useState({});
 
+  // В зависимостях — id, а не весь user: профиль в App перечитывается каждые
+  // 5 секунд, и список товаров перезагружался вместе с ним.
+  const userId = user?.id;
   useEffect(() => {
-    if (token && user) {
+    if (token && userId) {
       // Отдельный эндпоинт: отдаёт все товары продавца, включая распроданные
       // и снятые с продажи. Общий список содержит только активные позиции.
       fetchMyProducts(token).catch(() => {});
     }
-  }, [token, user]);
+  }, [token, userId]);
 
   const total = myProducts.length;
   const active = myProducts.filter((p) => p.status === 'active').length;

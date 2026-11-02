@@ -18,6 +18,7 @@ import {
   IconRefresh,
 } from '../../components/icons.jsx';
 import { EmptyLine, Panel, VERIFICATION_STATUS, WITHDRAWAL_STATUS, dateTime, rub } from './profileShared.jsx';
+import { apiErrorMessage } from '../../utils/apiError';
 
 export default function AdminTab({ token, onUpdateUser }) {
   const { addToast } = useToast();
@@ -80,7 +81,7 @@ export default function AdminTab({ token, onUpdateUser }) {
         body: JSON.stringify({ action, comment: comment ? comment.trim() : null }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.detail || 'Не удалось обработать заявку');
+      if (!res.ok) throw new Error(apiErrorMessage(data, 'Не удалось обработать заявку'));
       addToast(action === 'approve' ? 'Заявка отмечена как выплаченная' : 'Заявка отклонена, деньги возвращены', 'success');
       loadAdminWithdrawals();
       onUpdateUser?.();
@@ -111,7 +112,7 @@ export default function AdminTab({ token, onUpdateUser }) {
         body: JSON.stringify({ action, reason: reason.trim() }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.detail || 'Ошибка рассмотрения');
+      if (!res.ok) throw new Error(apiErrorMessage(data, 'Ошибка рассмотрения'));
 
       addToast(action === 'approve' ? 'Пользователь подтверждён' : 'Заявка отклонена', 'success');
       loadAdminVerifications();
@@ -125,6 +126,11 @@ export default function AdminTab({ token, onUpdateUser }) {
 
   const pendingVerifications = adminVerifications.filter((v) => v.status === 'pending').length;
   const pendingWithdrawals = adminWithdrawals.filter((w) => w.status === 'pending').length;
+  // Сначала то, что ждёт решения: иначе новая заявка терялась среди уже
+  // выплаченных и отклонённых (сервер отдаёт все подряд, от новых к старым).
+  const sortedWithdrawals = [...adminWithdrawals].sort(
+    (a, b) => Number(b.status === 'pending') - Number(a.status === 'pending')
+  );
 
   return (
     <div className="space-y-5">
@@ -213,7 +219,7 @@ export default function AdminTab({ token, onUpdateUser }) {
           <EmptyLine>Заявок на вывод пока нет.</EmptyLine>
         ) : (
           <ul className="-my-3 divide-y divide-slate-100 dark:divide-slate-700/70">
-            {adminWithdrawals.map((w) => {
+            {sortedWithdrawals.map((w) => {
               const meta = WITHDRAWAL_STATUS[w.status] || { label: w.status, cls: WITHDRAWAL_STATUS.cancelled.cls };
               const busy = processingWdId === w.id;
               return (

@@ -4,17 +4,24 @@
 import React, { useState } from 'react';
 import { useFocusTrap, useModal } from '../../utils/a11y.js';
 import { parseServerDate } from '../../utils/format.js';
+import { TRANSACTION_TYPE_LABELS } from '../../utils/transactionTypes.js';
 import { IconBank, IconClose, IconLock, IconPayout, IconPurchases, IconRecycle, IconWallet } from '../../components/icons.jsx';
 
-export const TX_TYPES = {
-  deposit: { label: 'Пополнение', icon: IconWallet },
-  escrow_hold: { label: 'Заморозка по сделке', icon: IconLock },
-  escrow_release: { label: 'Выплата по сделке', icon: IconPayout },
-  escrow_refund: { label: 'Возврат по сделке', icon: IconRecycle },
-  purchase: { label: 'Покупка пакета', icon: IconPurchases },
-  withdraw_hold: { label: 'Вывод средств (заявка)', icon: IconBank },
-  withdraw_refund: { label: 'Возврат заявки на вывод', icon: IconRecycle },
+// Подписи — общие с админ-панелью (utils/transactionTypes.js), здесь к ним
+// добавляются только иконки.
+const TX_ICONS = {
+  deposit: IconWallet,
+  escrow_hold: IconLock,
+  escrow_release: IconPayout,
+  escrow_refund: IconRecycle,
+  purchase: IconPurchases,
+  withdraw_hold: IconBank,
+  withdraw_refund: IconRecycle,
 };
+
+export const TX_TYPES = Object.fromEntries(
+  Object.entries(TX_ICONS).map(([type, icon]) => [type, { label: TRANSACTION_TYPE_LABELS[type], icon }])
+);
 
 export const WITHDRAWAL_STATUS = {
   pending:   { label: 'Ожидает',   cls: 'bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300' },

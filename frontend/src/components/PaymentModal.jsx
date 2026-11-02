@@ -1,16 +1,22 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
+import { useFocusTrap, useModal } from '../utils/a11y.js';
 import { useToast } from './Toast';
 import { IconCard, IconCheck, IconClose, IconLink } from '../components/icons.jsx';
+import { apiErrorMessage } from '../utils/apiError';
 
 /**
  * Модальное окно для пополнения через ЮMoney
  */
-export function PaymentModal({ onClose, onSuccess, token }) {
+export function PaymentModal({ onClose, onSuccess, token, defaultAmount, note }) {
   const { addToast } = useToast();
-  const [amount, setAmount] = useState('1000');
+  const [amount, setAmount] = useState(String(defaultAmount || 1000));
   const [loading, setLoading] = useState(false);
   const [checkingPayment, setCheckingPayment] = useState(false);
   const [paymentData, setPaymentData] = useState(null);
+  const panelRef = useRef(null);
+  // Окно показывается, только пока смонтировано, поэтому «открыто» всегда.
+  useModal(true, onClose);
+  useFocusTrap(true, panelRef);
 
   const handleCreatePayment = async (e) => {
     e.preventDefault();
@@ -54,7 +60,7 @@ export function PaymentModal({ onClose, onSuccess, token }) {
       const data = await res.json();
 
       if (!res.ok) {
-        throw new Error(data.detail || 'Не удалось создать платеж');
+        throw new Error(apiErrorMessage(data, 'Не удалось создать платеж'));
       }
 
       // Сохраняем данные платежа
@@ -117,7 +123,7 @@ export function PaymentModal({ onClose, onSuccess, token }) {
       const data = await res.json();
 
       if (!res.ok) {
-        throw new Error(data.detail || 'Не удалось проверить платеж');
+        throw new Error(apiErrorMessage(data, 'Не удалось проверить платеж'));
       }
 
       if (data.credited) {
@@ -135,17 +141,27 @@ export function PaymentModal({ onClose, onSuccess, token }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-white dark:bg-slate-800 max-w-md w-full p-6 sm:p-8 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-2xl space-y-4">
+    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+      <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="payment-modal-title"
+        className="bg-white dark:bg-slate-800 max-w-md w-full p-6 sm:p-8 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-2xl space-y-4 my-auto"
+      >
         <div className="flex items-center justify-between">
-          <h3 className="text-xl font-bold text-slate-900 dark:text-white">Пополнение баланса</h3>
+          <h3 id="payment-modal-title" className="text-xl font-bold text-slate-900 dark:text-white">Пополнение баланса</h3>
           <button
+            type="button"
             onClick={onClose}
+            aria-label="Закрыть"
             className="text-slate-400 hover:text-slate-600 text-lg"
           >
             <IconClose />
           </button>
         </div>
+
+        {note && <p className="text-sm text-slate-600 dark:text-slate-300">{note}</p>}
 
         {!paymentData ? (
           <form onSubmit={handleCreatePayment} className="space-y-4">
@@ -159,10 +175,11 @@ export function PaymentModal({ onClose, onSuccess, token }) {
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-500 mb-1">
+              <label htmlFor="payment-amount" className="block text-xs font-semibold text-slate-500 mb-1">
                 Сумма пополнения (₽)
               </label>
               <input
+                id="payment-amount"
                 type="number"
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
@@ -231,6 +248,7 @@ export function PaymentModal({ onClose, onSuccess, token }) {
 
             <div className="flex flex-col gap-2">
               <button
+                type="button"
                 onClick={handleCheckPayment}
                 disabled={checkingPayment}
                 className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold rounded-xl shadow-md transition-all"
@@ -239,6 +257,7 @@ export function PaymentModal({ onClose, onSuccess, token }) {
               </button>
 
               <button
+                type="button"
                 onClick={() => window.open(paymentData.confirmation_url, '_blank')}
                 className="w-full py-2.5 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-300 font-semibold rounded-xl text-sm transition-colors"
               >
@@ -246,6 +265,7 @@ export function PaymentModal({ onClose, onSuccess, token }) {
               </button>
 
               <button
+                type="button"
                 onClick={onClose}
                 className="w-full py-2 text-sm text-slate-500 hover:text-slate-700"
               >

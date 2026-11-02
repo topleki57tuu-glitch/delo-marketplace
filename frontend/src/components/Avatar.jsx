@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { useToast } from './Toast';
+import { apiErrorMessage } from '../utils/apiError';
 
 /**
  * Компонент для загрузки и отображения аватара пользователя
@@ -126,7 +127,7 @@ export function AvatarUploader({ currentAvatar, onAvatarUpdate, token }) {
 
       if (!uploadRes.ok) {
         const err = await uploadRes.json().catch(() => ({}));
-        throw new Error(err.detail || 'Не удалось загрузить изображение');
+        throw new Error(apiErrorMessage(err, 'Не удалось загрузить изображение'));
       }
 
       const { url } = await uploadRes.json();
@@ -144,7 +145,7 @@ export function AvatarUploader({ currentAvatar, onAvatarUpdate, token }) {
 
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData.detail || 'Не удалось обновить аватар');
+        throw new Error(apiErrorMessage(errorData, 'Не удалось обновить аватар'));
       }
 
       addToast('Аватар обновлен!', 'success');
@@ -174,7 +175,7 @@ export function AvatarUploader({ currentAvatar, onAvatarUpdate, token }) {
 
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData.detail || 'Не удалось удалить аватар');
+        throw new Error(apiErrorMessage(errorData, 'Не удалось удалить аватар'));
       }
 
       addToast('Аватар удален', 'success');

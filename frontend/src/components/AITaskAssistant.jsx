@@ -1,7 +1,9 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
+import { useFocusTrap, useModal } from '../utils/a11y.js';
 import { useToast } from './Toast';
 import { useAuthStore } from '../store/authStore';
 import { IconCheck, IconClose, IconFolder, IconGlobe, IconIdea, IconPin, IconSparkles, IconWallet } from '../components/icons.jsx';
+import { apiErrorMessage } from '../utils/apiError';
 
 const EXAMPLE_PROMPTS = [
     "Починить стиральную машину Samsung, течет вода снизу, Москва, ул. Тверская 10",
@@ -24,6 +26,9 @@ export const AITaskAssistant = ({ onApplySuggestion, onClose, currentTask }) => 
     const [prompt, setPrompt] = useState('');
     const [loading, setLoading] = useState(false);
     const [result, setResult] = useState(null);
+    const panelRef = useRef(null);
+    useModal(true, onClose);
+    useFocusTrap(true, panelRef);
 
     const handleParse = async (customPrompt) => {
         const textToUse = (customPrompt ?? prompt).trim();
@@ -47,7 +52,7 @@ export const AITaskAssistant = ({ onApplySuggestion, onClose, currentTask }) => 
                 body: JSON.stringify({ prompt: textToUse, current_task: currentTask || null }),
             });
             const data = await res.json();
-            if (!res.ok) throw new Error(data.detail || 'Ошибка AI-помощника. Попробуйте еще раз.');
+            if (!res.ok) throw new Error(apiErrorMessage(data, 'Ошибка AI-помощника. Попробуйте еще раз.'));
 
             setResult(data);
             toast.success('Задание разобрано AI-помощником!');
@@ -77,7 +82,13 @@ export const AITaskAssistant = ({ onApplySuggestion, onClose, currentTask }) => 
 
     return (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-start sm:items-center justify-center p-4 overflow-y-auto">
-            <div className="bg-surface-2 border border-accent/40 rounded-2xl p-5 shadow-glow-sm relative overflow-hidden w-full max-w-2xl my-auto">
+            <div
+                ref={panelRef}
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="ai-assistant-title"
+                className="bg-surface-2 border border-accent/40 rounded-2xl p-5 shadow-glow-sm relative overflow-hidden w-full max-w-2xl my-auto"
+            >
                 {/* Background glowing gradient */}
                 <div className="absolute -top-12 -right-12 w-36 h-36 bg-accent/20 rounded-full blur-2xl pointer-events-none" />
 
@@ -87,7 +98,7 @@ export const AITaskAssistant = ({ onApplySuggestion, onClose, currentTask }) => 
                             <IconSparkles />
                         </span>
                         <div>
-                            <h4 className="font-display font-bold uppercase text-sm text-ink flex items-center gap-2">
+                            <h4 id="ai-assistant-title" className="font-display font-bold uppercase text-sm text-ink flex items-center gap-2">
                                 AI-Помощник создания заказа
                                 <span className="bg-gradient-to-r from-accent to-[#38BDF8] text-white text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-full">
                                     Быстро
@@ -111,6 +122,7 @@ export const AITaskAssistant = ({ onApplySuggestion, onClose, currentTask }) => 
 
                 <div className="relative mt-3">
                     <textarea
+                        aria-label="Описание задачи для AI-помощника"
                         value={prompt}
                         onChange={(e) => setPrompt(e.target.value)}
                         placeholder="Например: Нужно поменять смеситель в ванной и починить сифон под раковиной в Казани, бюджет около 2500..."

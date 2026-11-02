@@ -16,6 +16,7 @@ import {
   IconTools,
 } from '../components/icons.jsx';
 import { plural } from '../utils/format.js';
+import { apiErrorMessage } from '../utils/apiError';
 
 const formatMoney = (value) => (value ? `${Number(value).toLocaleString('ru-RU')} ₽` : '—');
 
@@ -59,9 +60,19 @@ export default function DisputesPage({ user, token, onOpenAuth }) {
     }
   }, [token]);
 
+  // Права арбитра видны по профилю (is_admin). Если профиль уже загружен и
+  // прав нет, сразу показываем «нет доступа» — без запроса, который
+  // заканчивался 403 и ошибкой в консоли.
+  const profileLoaded = !!user;
+  const isAdmin = !!user?.is_admin;
   useEffect(() => {
-    if (token) fetchDisputes();
-  }, [token, fetchDisputes]);
+    if (!token || !profileLoaded) return;
+    if (!isAdmin) {
+      setStatus('forbidden');
+      return;
+    }
+    fetchDisputes();
+  }, [token, profileLoaded, isAdmin, fetchDisputes]);
 
   const handleResolve = async (disputeId, decision) => {
     const ok = await dialogs.confirm({ ...DECISIONS[decision], cancelText: 'Отмена' });
@@ -78,7 +89,7 @@ export default function DisputesPage({ user, token, onOpenAuth }) {
         body: JSON.stringify({ decision, comment: comments[disputeId] || null }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.detail || 'Ошибка при вынесении решения');
+      if (!res.ok) throw new Error(apiErrorMessage(data, 'Ошибка при вынесении решения'));
       addToast(data.message || 'Спор закрыт', 'success');
       fetchDisputes();
     } catch (err) {

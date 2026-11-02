@@ -513,8 +513,8 @@ alias dc='docker compose -f docker-compose.prod.yml'
 
 - **Не запускать `vps_deploy.sh`** на работающем сервере. Он для первой
   установки: перезапишет `.env` и сменит пароль БД.
-- **Не использовать `deploy-manual.txt`, `nginx-delomaster.conf`,
-  `DOMAIN_SETUP_delomaster_online.md`.** Это старая дорога под домен
+- **Не использовать старые инструкции из `docs/archive/`: `legacy/deploy-manual.txt`,
+  `legacy/nginx-delomaster.conf`, `DOMAIN_SETUP_delomaster_online.md`.** Это старая дорога под домен
   `delomaster.online` и IP `92.53.96.169`. Конфликтует с Caddy за порты 80/443.
 - **Не править `.env` без бэкапа.** `cp .env .env.bak.$(date +%s)` перед любой
   правкой — секунда работы.

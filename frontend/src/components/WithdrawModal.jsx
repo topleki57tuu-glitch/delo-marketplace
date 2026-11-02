@@ -1,7 +1,9 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
+import { useFocusTrap, useModal } from '../utils/a11y.js';
 import { useToast } from './Toast';
 import { useAuthStore } from '../store/authStore';
 import { IconCard, IconCatElectronics, IconClose } from '../components/icons.jsx';
+import { apiErrorMessage } from '../utils/apiError';
 
 const MIN_AMOUNT = 500;
 
@@ -24,6 +26,9 @@ export const WithdrawModal = ({ balance = 0, onClose, onCreated }) => {
   const [method, setMethod] = useState('card');
   const [requisites, setRequisites] = useState('');
   const [loading, setLoading] = useState(false);
+  const panelRef = useRef(null);
+  useModal(true, onClose);
+  useFocusTrap(true, panelRef);
 
   const numericAmount = Number(amount) || 0;
   const tooSmall = numericAmount > 0 && numericAmount < MIN_AMOUNT;
@@ -44,7 +49,7 @@ export const WithdrawModal = ({ balance = 0, onClose, onCreated }) => {
         body: JSON.stringify({ amount: numericAmount, method, requisites: requisites.trim() }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || 'Не удалось создать заявку');
+      if (!res.ok) throw new Error(apiErrorMessage(data, 'Не удалось создать заявку'));
 
       toast.success(`Заявка на ${numericAmount.toLocaleString('ru-RU')} ₽ создана`);
       if (onCreated) onCreated(data);
@@ -58,10 +63,16 @@ export const WithdrawModal = ({ balance = 0, onClose, onCreated }) => {
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-      <div className="bg-white dark:bg-slate-800 max-w-md w-full p-6 sm:p-8 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-2xl space-y-5 my-auto">
+      <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="withdraw-modal-title"
+        className="bg-white dark:bg-slate-800 max-w-md w-full p-6 sm:p-8 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-2xl space-y-5 my-auto"
+      >
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h2 className="text-xl font-extrabold text-slate-900 dark:text-white">Вывод средств</h2>
+            <h2 id="withdraw-modal-title" className="text-xl font-extrabold text-slate-900 dark:text-white">Вывод средств</h2>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
               Доступно: <b className="text-slate-800 dark:text-slate-200">{balance.toLocaleString('ru-RU')} ₽</b>
             </p>
@@ -78,11 +89,12 @@ export const WithdrawModal = ({ balance = 0, onClose, onCreated }) => {
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-xs font-semibold text-slate-500 mb-1">
+            <label htmlFor="withdraw-amount" className="block text-xs font-semibold text-slate-500 mb-1">
               Сумма, ₽ <span className="text-slate-400 font-normal">(минимум {MIN_AMOUNT})</span>
             </label>
             <div className="flex gap-2">
               <input
+                id="withdraw-amount"
                 type="number"
                 inputMode="numeric"
                 min={MIN_AMOUNT}
@@ -105,12 +117,13 @@ export const WithdrawModal = ({ balance = 0, onClose, onCreated }) => {
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-slate-500 mb-1">Способ вывода</label>
-            <div className="grid grid-cols-2 gap-2">
+            <span id="withdraw-method-label" className="block text-xs font-semibold text-slate-500 mb-1">Способ вывода</span>
+            <div role="group" aria-labelledby="withdraw-method-label" className="grid grid-cols-2 gap-2">
               {METHODS.map((m) => (
                 <button
                   key={m.id}
                   type="button"
+                  aria-pressed={method === m.id}
                   onClick={() => setMethod(m.id)}
                   className={`py-2.5 rounded-xl text-xs font-bold transition-all ${
                     method === m.id
@@ -125,10 +138,11 @@ export const WithdrawModal = ({ balance = 0, onClose, onCreated }) => {
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-slate-500 mb-1">
+            <label htmlFor="withdraw-requisites" className="block text-xs font-semibold text-slate-500 mb-1">
               {method === 'card' ? 'Номер карты' : 'Номер телефона'}
             </label>
             <input
+              id="withdraw-requisites"
               type="text"
               value={requisites}
               onChange={(e) => setRequisites(e.target.value)}

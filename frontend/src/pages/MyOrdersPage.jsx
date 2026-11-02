@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useProductsStore } from '../store/productsStore';
 import { useAuthStore } from '../store/authStore';
 import { useToast } from '../components/Toast';
@@ -36,7 +36,15 @@ export default function MyOrdersPage({ onOpenAuth }) {
   const { orders, loading, fetchOrders, confirmOrder, shipOrder, completeOrder, cancelOrder, openOrderDispute } = useProductsStore();
   const { token, user } = useAuthStore();
 
-  const [activeTab, setActiveTab] = useState('purchases');
+  // Вкладка — в адресе (?tab=sales): на неё ведут уведомления о новом заказе.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeTab = searchParams.get('tab') === 'sales' ? 'sales' : 'purchases';
+  const setActiveTab = (id) => {
+    const next = new URLSearchParams(searchParams);
+    if (id === 'purchases') next.delete('tab');
+    else next.set('tab', id);
+    setSearchParams(next, { replace: true });
+  };
   const [trackingNumber, setTrackingNumber] = useState({});
   const [actionLoading, setActionLoading] = useState({});
 

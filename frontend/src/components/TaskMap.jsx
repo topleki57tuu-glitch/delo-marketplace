@@ -1,65 +1,11 @@
+// Карта заданий на Яндекс Картах: метки с кластеризацией, «рядом со мной»
+// с фильтром по радиусу, фильтр по категориям и карточка выбранного задания.
 import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
-import { IconClose, IconPin, IconTarget, IconWarning } from '../components/icons.jsx';
+import { IconWarning } from './icons.jsx';
 import { useToast } from './Toast.jsx';
-
-const YANDEX_API_KEY = import.meta.env.VITE_YANDEX_MAPS_API_KEY || '';
-// csp=true — режим для сайтов с Content-Security-Policy: стили API подключает
-// через blob:, а не встроенными <style>. Политика — frontend/nginx-security-headers.conf.
-const YMAPS_URL = `https://api-maps.yandex.ru/2.1/?apikey=${YANDEX_API_KEY}&lang=ru_RU&csp=true`;
-const MOSCOW_CENTER = [55.751574, 37.573856];
-
-// Haversine formula to calculate distance in km
-export function calculateDistance(lat1, lon1, lat2, lon2) {
-    if (!lat1 || !lon1 || !lat2 || !lon2) return null;
-    const R = 6371; // km
-    const dLat = (lat2 - lat1) * (Math.PI / 180);
-    const dLon = (lon2 - lon1) * (Math.PI / 180);
-    const a =
-        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-        Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) *
-        Math.sin(dLon / 2) * Math.sin(dLon / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    const d = R * c;
-    return d < 10 ? Math.round(d * 10) / 10 : Math.round(d);
-}
-
-const CATEGORY_ICONS = {
-    design: '🎨',
-    development: '💻',
-    writing: '✍',
-    repairs: '🔧',
-    cleaning: '🧹',
-    delivery: '🚚',
-    photo_video: '📷',
-    tutoring: '📚',
-    beauty: '💄',
-    events: '🎉',
-    business: '💼',
-    other: '📦'
-};
-
-const CATEGORY_NAMES = {
-    design: 'Дизайн',
-    development: 'Разработка',
-    writing: 'Тексты',
-    repairs: 'Ремонт',
-    cleaning: 'Уборка',
-    delivery: 'Доставка',
-    photo_video: 'Фото/Видео',
-    tutoring: 'Репетиторство',
-    beauty: 'Красота',
-    events: 'Мероприятия',
-    business: 'Бизнес',
-    other: 'Другое'
-};
-
-const RADIUS_OPTIONS = [
-    { label: 'Все', value: 0 },
-    { label: '5 км', value: 5 },
-    { label: '10 км', value: 10 },
-    { label: '25 км', value: 25 },
-    { label: '50 км', value: 50 },
-];
+import MapControls from './taskMap/MapControls.jsx';
+import TaskPreviewCard from './taskMap/TaskPreviewCard.jsx';
+import { YMAPS_URL, MOSCOW_CENTER, CATEGORY_ICONS, calculateDistance } from './taskMap/taskMapConfig.js';
 
 export const TaskMap = ({
     tasks = [],
@@ -296,10 +242,6 @@ export const TaskMap = ({
             const isSelected = task.id === selectedTaskId;
             const emoji = CATEGORY_ICONS[task.category] || '📌';
             const priceText = task.budget ? `${Number(task.budget).toLocaleString('ru-RU')} ₽` : 'Договорная';
-            const distance = userLocation
-                ? calculateDistance(userLocation[0], userLocation[1], task.latitude, task.longitude)
-                : null;
-
             const placemark = new window.ymaps.Placemark(
                 [task.latitude, task.longitude],
                 {
@@ -386,343 +328,31 @@ export const TaskMap = ({
             )}
 
             {/* Top Overlay Controls Bar */}
-            <div className="absolute top-3 left-3 right-3 flex flex-col gap-2 pointer-events-none z-10">
-                <div className="flex items-center justify-between gap-2 flex-wrap">
-                    {/* Left Quick Actions */}
-                    <div className="flex items-center gap-1.5 glass rounded-xl p-1 pointer-events-auto shadow-card">
-                        <button
-                            type="button"
-                            onClick={locateUser}
-                            disabled={geoLocating}
-                            title="Определить мое местоположение"
-                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition ${userLocation ? 'bg-accent text-white glow-accent-sm' : 'bg-surface-2 text-ink hover:bg-elevated'}`}
-                        >
-                            {geoLocating ? (
-                                <span className="animate-spin text-sm">⏳</span>
-                            ) : (
-                                <span className="text-sm"><IconPin /></span>
-                            )}
-                            <span className="hidden sm:inline">Рядом со мной</span>
-                        </button>
-
-                        <button
-                            type="button"
-                            onClick={fitAllMarkers}
-                            title="Показать все заказы на карте"
-                            className="px-2.5 py-1.5 bg-surface-2 hover:bg-elevated text-ink rounded-lg text-xs font-bold transition flex items-center gap-1"
-                        >
-                            <span><IconTarget /></span>
-                            <span className="hidden sm:inline">Все метки ({filteredTasks.length})</span>
-                        </button>
-                    </div>
-
-                    {/* Right View Controls */}
-                    <div className="flex items-center gap-1.5 glass rounded-xl p-1 pointer-events-auto shadow-card">
-                        <button
-                            type="button"
-                            onClick={() => setIsFullscreen(!isFullscreen)}
-                            title={isFullscreen ? "Свернуть" : "На весь экран"}
-                            className="p-1.5 px-2.5 bg-surface-2 hover:bg-elevated text-ink rounded-lg text-xs font-bold transition flex items-center gap-1"
-                        >
-                            <span>{isFullscreen ? '✕' : '⛶'}</span>
-                            <span className="hidden md:inline">{isFullscreen ? 'Закрыть' : 'Во весь экран'}</span>
-                        </button>
-                    </div>
-                </div>
-
-                {/* Radius filter pills (visible when location active) */}
-                {userLocation && (
-                    <div className="flex items-center gap-1.5 overflow-x-auto pb-1 pointer-events-auto no-scrollbar">
-                        <span className="glass rounded-lg px-2.5 py-1 text-[11px] font-bold text-muted uppercase tracking-wider whitespace-nowrap shadow-sm">
-                            Радиус:
-                        </span>
-                        {RADIUS_OPTIONS.map(opt => (
-                            <button
-                                key={opt.value}
-                                type="button"
-                                onClick={() => setSelectedRadius(opt.value)}
-                                className={`px-3 py-1 rounded-lg text-[11px] font-bold uppercase tracking-wider whitespace-nowrap transition shadow-sm ${selectedRadius === opt.value ? 'bg-accent text-white glow-accent-sm' : 'glass text-ink hover:bg-surface-2'}`}
-                            >
-                                {opt.label}
-                            </button>
-                        ))}
-                    </div>
-                )}
-
-                {/* Categories quick bar */}
-                {availableCategories.length > 0 && (
-                    <div className="flex items-center gap-1.5 overflow-x-auto pb-1 pointer-events-auto no-scrollbar">
-                        <button
-                            type="button"
-                            onClick={() => setActiveCategory('')}
-                            className={`px-3 py-1 rounded-lg text-[11px] font-bold uppercase tracking-wider whitespace-nowrap transition shadow-sm ${activeCategory === '' ? 'bg-accent text-white glow-accent-sm' : 'glass text-ink hover:bg-surface-2'}`}
-                        >
-                            Все ({tasksWithLocation.length})
-                        </button>
-                        {availableCategories.map(cat => (
-                            <button
-                                key={cat}
-                                type="button"
-                                onClick={() => setActiveCategory(cat === activeCategory ? '' : cat)}
-                                className={`px-3 py-1 rounded-lg text-[11px] font-bold uppercase tracking-wider whitespace-nowrap transition shadow-sm flex items-center gap-1 ${activeCategory === cat ? 'bg-accent text-white glow-accent-sm' : 'glass text-ink hover:bg-surface-2'}`}
-                            >
-                                <span>{CATEGORY_ICONS[cat] || '📌'}</span>
-                                <span>{CATEGORY_NAMES[cat] || cat}</span>
-                            </button>
-                        ))}
-                    </div>
-                )}
-            </div>
+            <MapControls
+                locateUser={locateUser}
+                geoLocating={geoLocating}
+                userLocation={userLocation}
+                fitAllMarkers={fitAllMarkers}
+                filteredTasks={filteredTasks}
+                tasksWithLocation={tasksWithLocation}
+                isFullscreen={isFullscreen}
+                setIsFullscreen={setIsFullscreen}
+                selectedRadius={selectedRadius}
+                setSelectedRadius={setSelectedRadius}
+                availableCategories={availableCategories}
+                activeCategory={activeCategory}
+                setActiveCategory={setActiveCategory}
+            />
 
             {/* Bottom Floating Task Preview Card / Bottom Sheet */}
             {activePreviewTask && (
-                <div className="absolute bottom-3 left-3 right-3 md:left-auto md:right-3 md:max-w-md z-20 pointer-events-auto animate-in fade-in slide-in-from-bottom-4 duration-200">
-                    <div className="glass rounded-2xl p-4 md:p-5 shadow-pop border border-accent/40 bg-surface/95 backdrop-blur-md">
-                        {/* Header & Close */}
-                        <div className="flex items-start justify-between gap-3 mb-2">
-                            <div className="flex items-center gap-2 flex-wrap">
-                                <span className="rounded-full bg-surface-2 border border-border text-ink text-[10px] font-bold uppercase tracking-widest px-2.5 py-0.5">
-                                    {CATEGORY_ICONS[activePreviewTask.category] || '📌'} {CATEGORY_NAMES[activePreviewTask.category] || activePreviewTask.category}
-                                </span>
-                                {userLocation && (
-                                    <span className="rounded-full bg-accent/20 border border-accent/40 text-accent-bright text-[10px] font-bold px-2 py-0.5">
-                                        <IconPin /> ~{calculateDistance(userLocation[0], userLocation[1], activePreviewTask.latitude, activePreviewTask.longitude)} км от вас
-                                    </span>
-                                )}
-                            </div>
-                            <button
-                                type="button"
-                                onClick={() => setActivePreviewTask(null)}
-                                className="w-7 h-7 rounded-full bg-surface-2 hover:bg-elevated text-muted hover:text-ink flex items-center justify-center text-sm font-bold transition"
-                                title="Закрыть"
-                            >
-                                <IconClose />
-                            </button>
-                        </div>
-
-                        {/* Title & Price */}
-                        <div className="flex justify-between items-baseline gap-2 mb-1.5">
-                            <h4 className="font-extrabold text-base text-ink line-clamp-1">
-                                {activePreviewTask.title}
-                            </h4>
-                            <span className="font-display font-bold text-accent-bright text-base whitespace-nowrap">
-                                {activePreviewTask.budget ? `${Number(activePreviewTask.budget).toLocaleString('ru-RU')} ₽` : 'Договорная'}
-                            </span>
-                        </div>
-
-                        {/* Address & Description */}
-                        <div className="text-xs text-muted mb-2 flex items-center gap-1.5 font-medium">
-                            <span><IconPin /> {activePreviewTask.city}{activePreviewTask.address ? `, ${activePreviewTask.address}` : ''}</span>
-                        </div>
-                        <p className="text-xs text-ink/80 line-clamp-2 mb-3 leading-relaxed">
-                            {activePreviewTask.description}
-                        </p>
-
-                        {/* Actions */}
-                        <div className="flex items-center justify-between gap-2 pt-2 border-t border-border">
-                            <span className="text-[11px] font-bold text-muted">
-                                Статус: <span className={activePreviewTask.status === 'open' ? 'text-success' : 'text-muted'}>{activePreviewTask.status === 'open' ? 'Открыт' : activePreviewTask.status}</span>
-                            </span>
-                            <div className="flex gap-2">
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        if (onTaskClick) {
-                                            onTaskClick(activePreviewTask.id);
-                                        }
-                                    }}
-                                    className="px-4 py-2 bg-accent hover:bg-accent-bright text-white rounded-xl text-xs font-display uppercase tracking-wider transition glow-accent-sm"
-                                >
-                                    {userRole === 'specialist' && activePreviewTask.status === 'open' ? 'Откликнуться' : 'Подробнее'}
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
-        </div>
-    );
-};
-
-export const LocationPicker = ({
-    initialLocation = null,
-    onLocationSelect,
-    city = 'Москва',
-    address = '',
-    onAddressChange = null
-}) => {
-    const mapRef = useRef(null);
-    const mapInstance = useRef(null);
-    const marker = useRef(null);
-    const [mapReady, setMapReady] = useState(false);
-    const [locating, setLocating] = useState(false);
-    const [detectedAddress, setDetectedAddress] = useState(address || '');
-
-    const cityCoords = {
-        'Москва': [55.751574, 37.573856],
-        'Санкт-Петербург': [59.9343, 30.3351],
-        'Новосибирск': [55.0084, 82.9357],
-        'Екатеринбург': [56.8389, 60.6057],
-        'Казань': [55.8304, 49.0661],
-        'Нижний Новгород': [56.3269, 44.0059],
-        'Челябинск': [55.1644, 61.4368],
-        'Самара': [53.1959, 50.1002],
-        'Ростов-на-Дону': [47.2357, 39.7015],
-        'Краснодар': [45.0355, 38.9753]
-    };
-
-    useEffect(() => {
-        let isMounted = true;
-        const loadScript = () => {
-            if (window.ymaps) {
-                window.ymaps.ready(() => { if (isMounted) initMap(); });
-                return;
-            }
-            const script = document.createElement('script');
-            script.src = YMAPS_URL;
-            script.async = true;
-            script.onload = () => {
-                if (window.ymaps) {
-                    window.ymaps.ready(() => { if (isMounted) initMap(); });
-                }
-            };
-            document.head.appendChild(script);
-        };
-        loadScript();
-
-        return () => {
-            isMounted = false;
-            if (mapInstance.current) {
-                mapInstance.current.destroy();
-                mapInstance.current = null;
-            }
-        };
-    }, []);
-
-    const reverseGeocode = (coords) => {
-        if (!window.ymaps) return;
-        window.ymaps.geocode(coords).then(res => {
-            const firstGeoObject = res.geoObjects.get(0);
-            if (firstGeoObject) {
-                const addr = firstGeoObject.getAddressLine();
-                setDetectedAddress(addr);
-                if (onAddressChange) {
-                    onAddressChange(addr);
-                }
-            }
-        }).catch(err => {
-            console.warn("Reverse geocode error:", err);
-        });
-    };
-
-    const initMap = () => {
-        if (!mapRef.current || mapInstance.current || !window.ymaps) return;
-
-        const center = initialLocation || cityCoords[city] || MOSCOW_CENTER;
-
-        const map = new window.ymaps.Map(mapRef.current, {
-            center,
-            zoom: 13,
-            controls: ['zoomControl']
-        }, {
-            suppressMapOpenBlock: true
-        });
-
-        map.behaviors.enable(['drag', 'dblClickZoom', 'multiTouch']);
-
-        map.events.add('click', (e) => {
-            const coords = e.get('coords');
-            setMarker(coords);
-            reverseGeocode(coords);
-            if (onLocationSelect) {
-                onLocationSelect(coords);
-            }
-        });
-
-        mapInstance.current = map;
-        setMapReady(true);
-
-        if (initialLocation) {
-            setMarker(initialLocation);
-        }
-    };
-
-    const setMarker = (coords) => {
-        if (!mapInstance.current || !window.ymaps) return;
-
-        if (marker.current) {
-            mapInstance.current.geoObjects.remove(marker.current);
-        }
-
-        const placemark = new window.ymaps.Placemark(coords, {
-            hintContent: 'Перетащите метку для уточнения адреса'
-        }, {
-            preset: 'islands#redDotIcon',
-            draggable: true
-        });
-
-        placemark.events.add('dragend', () => {
-            const newCoords = placemark.geometry.getCoordinates();
-            reverseGeocode(newCoords);
-            if (onLocationSelect) {
-                onLocationSelect(newCoords);
-            }
-        });
-
-        marker.current = placemark;
-        mapInstance.current.geoObjects.add(placemark);
-    };
-
-    const handleLocateMe = () => {
-        if (!navigator.geolocation) return;
-        setLocating(true);
-        navigator.geolocation.getCurrentPosition(
-            (pos) => {
-                const coords = [pos.coords.latitude, pos.coords.longitude];
-                setLocating(false);
-                if (mapInstance.current) {
-                    mapInstance.current.setCenter(coords, 15);
-                    setMarker(coords);
-                    reverseGeocode(coords);
-                    if (onLocationSelect) {
-                        onLocationSelect(coords);
-                    }
-                }
-            },
-            () => setLocating(false)
-        );
-    };
-
-    return (
-        <div className="w-full relative">
-            <div className="flex items-center justify-between gap-2 mb-2">
-                <span className="text-xs font-bold text-muted uppercase tracking-wider">
-                    <IconPin /> Укажите точку на карте
-                </span>
-                <button
-                    type="button"
-                    onClick={handleLocateMe}
-                    disabled={locating}
-                    className="text-xs text-accent-bright hover:underline font-bold flex items-center gap-1"
-                >
-                    {locating ? '⏳ Поиск...' : '📍 Моё местоположение'}
-                </button>
-            </div>
-
-            <div className="w-full h-60 relative rounded-xl overflow-hidden border border-border">
-                <div ref={mapRef} className="w-full h-full" />
-                {!mapReady && (
-                    <div className="absolute inset-0 flex items-center justify-center bg-surface-2 text-muted text-xs font-semibold">
-                        Загрузка карты...
-                    </div>
-                )}
-            </div>
-
-            {detectedAddress && (
-                <div className="mt-2 text-xs text-ink/80 bg-surface-2 p-2.5 rounded-xl border border-border flex items-center gap-2">
-                    <span className="text-accent-bright font-bold">Адрес:</span>
-                    <span className="truncate">{detectedAddress}</span>
-                </div>
+                <TaskPreviewCard
+                    activePreviewTask={activePreviewTask}
+                    userLocation={userLocation}
+                    userRole={userRole}
+                    onTaskClick={onTaskClick}
+                    onClose={() => setActivePreviewTask(null)}
+                />
             )}
         </div>
     );

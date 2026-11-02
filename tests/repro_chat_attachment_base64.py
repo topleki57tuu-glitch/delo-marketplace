@@ -182,15 +182,28 @@ def main() -> int:
           created and all(isinstance(v, str) for v in created),
           f"типы: {sorted({type(v).__name__ for v in created})}")
 
+    # Бюджет не указан — исполнитель назначается без заморозки эскроу.
     empty = customer.post(
         "/tasks/",
         json={"title": "Задача без переписки", "description": "проверка списка чатов",
-              "budget": 100, "category": "development"},
+              "category": "development"},
         headers=customer.auth(ctok),
     )
     if empty.status_code != 200:
         check("создана задача без переписки", False, f"{empty.status_code}")
     else:
+        empty_id = empty.json()["task_id"]
+        # Диалог появляется вместе с исполнителем: до назначения писать
+        # некому, и раньше в списке висел «чат» с безымянным «Собеседником».
+        r = customer.get("/chats", headers=customer.auth(ctok))
+        check("открытое задание без исполнителя — не диалог",
+              r.status_code == 200 and all(c.get("task_id") != empty_id for c in r.json()),
+              f"{r.status_code}")
+        spec = Session(BASE)
+        stok = spec.login("maria@delo.ru", PASSWORD)
+        spec_id = spec.get("/users/me", headers=spec.auth(stok)).json()["id"]
+        a = customer.put(f"/tasks/{empty_id}/assign?specialist_id={spec_id}", headers=customer.auth(ctok))
+        check("исполнитель назначен", a.status_code == 200, f"{a.status_code} {a.text[:120]}")
         r = customer.get("/chats", headers=customer.auth(ctok))
         check("список чатов не падает при пустом диалоге", r.status_code == 200,
               f"{r.status_code} {r.text[:120]}")

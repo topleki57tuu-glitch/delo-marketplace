@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
     IconBell,
     IconCheck,
@@ -19,7 +20,33 @@ const TYPE_ICONS = {
     review:       <IconStar size={18} />,
 };
 
+// Куда ведёт уведомление. Раньше щелчок только гасил точку «не прочитано»:
+// «Вас выбрали исполнителем» или «Новый заказ» никуда не открывались.
+export function notificationTarget(n) {
+    if (n.type === 'message' && n.task_id) return `/chats?taskId=${n.task_id}`;
+    if (n.task_id) return `/tasks/${n.task_id}`;
+    switch (n.type) {
+        case 'new_order':
+        case 'order_completed':
+            return '/my-orders?tab=sales';
+        case 'order_confirmed':
+        case 'order_shipped':
+            return '/my-orders?tab=purchases';
+        case 'order_cancelled':
+        case 'order_dispute':
+            return '/my-orders';
+        case 'payment':
+        case 'withdrawal':
+            return '/profile?tab=wallet';
+        case 'verification':
+            return '/profile';
+        default:
+            return null;
+    }
+}
+
 export const NotificationBell = ({ token }) => {
+    const navigate = useNavigate();
     const [count, setCount]          = useState(0);
     const [notifications, setNotifs] = useState([]);
     const [open, setOpen]            = useState(false);
@@ -76,6 +103,15 @@ export const NotificationBell = ({ token }) => {
         setCount(c => Math.max(0, c - 1));
     };
 
+    const handleItemClick = (n) => {
+        if (!n.is_read) markRead(n.id).catch(() => {});
+        const to = notificationTarget(n);
+        if (to) {
+            setOpen(false);
+            navigate(to);
+        }
+    };
+
     return (
         <div className="relative" ref={panelRef}>
             <button
@@ -124,34 +160,35 @@ export const NotificationBell = ({ token }) => {
                             </div>
                         ) : (
                             notifications.map(n => (
-                                <div
+                                <button
+                                    type="button"
                                     key={n.id}
-                                    onClick={() => !n.is_read && markRead(n.id)}
-                                    className={`px-4 py-3 border-b border-slate-100 dark:border-slate-700/60 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700/40 transition ${!n.is_read ? 'bg-slate-50 dark:bg-slate-700/30' : ''}`}
+                                    onClick={() => handleItemClick(n)}
+                                    className={`block w-full text-left px-4 py-3 border-b border-slate-100 dark:border-slate-700/60 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700/40 focus-visible:outline-none focus-visible:bg-slate-100 dark:focus-visible:bg-slate-700/60 transition ${!n.is_read ? 'bg-slate-50 dark:bg-slate-700/30' : ''}`}
                                 >
-                                    <div className="flex gap-3 items-start">
+                                    <span className="flex gap-3 items-start">
                                         <span className="text-xl mt-0.5 shrink-0">
                                             {TYPE_ICONS[n.type] || <IconBell size={18} />}
                                         </span>
-                                        <div className="flex-1 min-w-0">
-                                            <p className="font-bold text-sm leading-tight text-slate-900 dark:text-white">
+                                        <span className="flex-1 min-w-0">
+                                            <span className="block font-bold text-sm leading-tight text-slate-900 dark:text-white">
                                                 {n.title}
-                                            </p>
-                                            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 leading-snug font-medium">
+                                            </span>
+                                            <span className="block text-xs text-slate-500 dark:text-slate-400 mt-0.5 leading-snug font-medium">
                                                 {n.text}
-                                            </p>
-                                            <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1 font-semibold uppercase tracking-wide">
+                                            </span>
+                                            <span className="block text-[10px] text-slate-400 dark:text-slate-500 mt-1 font-semibold uppercase tracking-wide">
                                                 {parseServerDate(n.created_at)?.toLocaleString('ru-RU', {
                                                     day: '2-digit', month: 'short',
                                                     hour: '2-digit', minute: '2-digit'
                                                 })}
-                                            </p>
-                                        </div>
+                                            </span>
+                                        </span>
                                         {!n.is_read && (
-                                            <span className="w-2.5 h-2.5 rounded-full bg-indigo-600 dark:bg-indigo-400 shrink-0 mt-1" />
+                                            <span className="w-2.5 h-2.5 rounded-full bg-indigo-600 dark:bg-indigo-400 shrink-0 mt-1" aria-label="Не прочитано" />
                                         )}
-                                    </div>
-                                </div>
+                                    </span>
+                                </button>
                             ))
                         )}
                     </div>

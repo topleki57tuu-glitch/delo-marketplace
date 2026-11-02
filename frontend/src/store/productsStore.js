@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { apiErrorMessage } from '../utils/apiError';
 
 // Относительные пути, как в остальном приложении: запросы идут через прокси
 // (vite в разработке, nginx в проде). Раньше здесь был абсолютный адрес с
@@ -37,7 +38,7 @@ export const useProductsStore = create((set, get) => ({
       });
 
       const response = await fetch(`${API_URL}/products/?${params}`);
-      if (!response.ok) throw new Error('Failed to fetch products');
+      if (!response.ok) throw new Error('Не удалось загрузить товары');
 
       const data = await response.json();
       set({ products: data, loading: false });
@@ -52,7 +53,7 @@ export const useProductsStore = create((set, get) => ({
     set({ loading: true, error: null });
     try {
       const response = await fetch(`${API_URL}/products/${id}`);
-      if (!response.ok) throw new Error('Product not found');
+      if (!response.ok) throw new Error('Товар не найден');
 
       const data = await response.json();
       set({ currentProduct: data, loading: false });
@@ -75,7 +76,7 @@ export const useProductsStore = create((set, get) => ({
         },
       });
 
-      if (!response.ok) throw new Error('Failed to fetch my products');
+      if (!response.ok) throw new Error('Не удалось загрузить ваши товары');
 
       const data = await response.json();
       set({ myProducts: data, loading: false });
@@ -100,7 +101,7 @@ export const useProductsStore = create((set, get) => ({
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.detail || 'Failed to create product');
+        throw new Error(apiErrorMessage(errorData, 'Не удалось создать товар'));
       }
 
       const data = await response.json();
@@ -126,7 +127,7 @@ export const useProductsStore = create((set, get) => ({
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.detail || 'Failed to update product');
+        throw new Error(apiErrorMessage(errorData, 'Не удалось сохранить товар'));
       }
 
       const data = await response.json();
@@ -150,7 +151,7 @@ export const useProductsStore = create((set, get) => ({
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.detail || 'Failed to delete product');
+        throw new Error(apiErrorMessage(errorData, 'Не удалось удалить товар'));
       }
 
       set({ loading: false });
@@ -176,7 +177,7 @@ export const useProductsStore = create((set, get) => ({
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.detail || 'Failed to create order');
+        throw new Error(apiErrorMessage(errorData, 'Не удалось оформить заказ'));
       }
 
       const data = await response.json();
@@ -197,7 +198,7 @@ export const useProductsStore = create((set, get) => ({
         },
       });
 
-      if (!response.ok) throw new Error('Failed to fetch orders');
+      if (!response.ok) throw new Error('Не удалось загрузить заказы');
 
       const data = await response.json();
       set({ orders: data, loading: false });
@@ -220,7 +221,7 @@ export const useProductsStore = create((set, get) => ({
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.detail || 'Failed to confirm order');
+        throw new Error(apiErrorMessage(errorData, 'Не удалось подтвердить заказ'));
       }
 
       set({ loading: false });
@@ -246,7 +247,7 @@ export const useProductsStore = create((set, get) => ({
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.detail || 'Failed to ship order');
+        throw new Error(apiErrorMessage(errorData, 'Не удалось отметить отправку'));
       }
 
       set({ loading: false });
@@ -269,7 +270,7 @@ export const useProductsStore = create((set, get) => ({
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.detail || 'Failed to complete order');
+        throw new Error(apiErrorMessage(errorData, 'Не удалось завершить заказ'));
       }
 
       set({ loading: false });
@@ -292,7 +293,7 @@ export const useProductsStore = create((set, get) => ({
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.detail || 'Failed to cancel order');
+        throw new Error(apiErrorMessage(errorData, 'Не удалось отменить заказ'));
       }
 
       set({ loading: false });
@@ -320,7 +321,7 @@ export const useProductsStore = create((set, get) => ({
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.detail || 'Failed to open dispute');
+        throw new Error(apiErrorMessage(errorData, 'Не удалось открыть спор'));
       }
 
       const data = await response.json();
