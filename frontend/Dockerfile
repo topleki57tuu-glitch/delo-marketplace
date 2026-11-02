@@ -7,6 +7,12 @@ COPY package*.json ./
 RUN npm ci
 
 COPY . .
+# Ключ JavaScript API Яндекс Карт (необязательный). Vite встраивает его в код
+# сайта при сборке, поэтому он нужен здесь, а не при запуске контейнера:
+# docker-compose.prod.yml передаёт его из .env. Пустой — карта работает без
+# ключа (в консоли браузера предупреждение «Invalid API key»).
+ARG VITE_YANDEX_MAPS_API_KEY=""
+ENV VITE_YANDEX_MAPS_API_KEY=$VITE_YANDEX_MAPS_API_KEY
 RUN npm run build
 
 # Stage 2: Serve with Nginx
