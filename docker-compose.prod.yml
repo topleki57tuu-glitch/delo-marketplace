@@ -178,6 +178,9 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        # Необязательный ключ Яндекс Карт для карты заданий (см. .env.example).
+        VITE_YANDEX_MAPS_API_KEY: ${VITE_YANDEX_MAPS_API_KEY:-}
     container_name: marketplace_frontend
     restart: unless-stopped
     logging: *default-logging
