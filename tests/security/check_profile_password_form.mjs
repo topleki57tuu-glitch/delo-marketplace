@@ -239,7 +239,16 @@ if (!tabVisible) {
   process.exit(1);
 }
 await settingsTab.click();
-record('вкладка «Настройки» выбрана', (await settingsTab.getAttribute('aria-selected')) === 'true');
+// Вкладка хранится в адресе (?tab=settings). React Router 7 применяет смену
+// адреса внутри React.startTransition, то есть в следующем рендере, а не
+// синхронно с кликом. Поэтому атрибут не читаем сразу, а ждём, как это делают
+// web-first проверки Playwright: если вкладка так и не станет выбранной, шаг провалится.
+const tabSelected = await page
+  .getByRole('tab', { name: 'Настройки', exact: true, selected: true })
+  .waitFor({ state: 'visible', timeout: 5000 })
+  .then(() => true)
+  .catch(() => false);
+record('вкладка «Настройки» выбрана', tabSelected);
 
 // exact: true — чтобы локатор не стал неоднозначным, если на странице
 // появится другой заголовок со словом «пароль».
