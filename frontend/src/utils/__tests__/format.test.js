@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { countLabel, lastSeenLabel, parseList, parseServerDate, plural } from '../format.js';
+import { countLabel, lastSeenLabel, parseList, parseServerDate, plural, postedAgoLabel } from '../format.js';
 
 /**
  * Помощники для текста интерфейса. Ошибки в них видны сразу всем:
@@ -71,5 +71,26 @@ describe('lastSeenLabel', () => {
     expect(lastSeenLabel('2026-11-01T12:00:00', now)).toBe('был(а) в сети только что');
     expect(lastSeenLabel('2026-08-01T12:00:00', now)).toBe('давно не заходил(а)');
     expect(lastSeenLabel(null, now)).toBeNull();
+  });
+});
+
+describe('postedAgoLabel', () => {
+  // Сервер отдаёт UTC без зоны — подпись не должна «отставать» на часовой пояс.
+  const now = Date.parse('2026-11-02T12:00:00Z');
+
+  it('считает от UTC-времени сервера', () => {
+    expect(postedAgoLabel('2026-11-02T11:59:30', now)).toBe('только что');
+    expect(postedAgoLabel('2026-11-02T11:55:00', now)).toBe('5 минут назад');
+    expect(postedAgoLabel('2026-11-02T11:39:00', now)).toBe('21 минуту назад');
+    expect(postedAgoLabel('2026-11-02T09:30:00', now)).toBe('2 часа назад');
+    expect(postedAgoLabel('2026-11-01T10:00:00', now)).toBe('вчера');
+    expect(postedAgoLabel('2026-10-28T12:00:00', now)).toBe('5 дней назад');
+  });
+
+  it('не показывает старое, пустое и время «из будущего» как отрицательное', () => {
+    expect(postedAgoLabel('2026-09-01T12:00:00', now)).toBeNull();
+    expect(postedAgoLabel(null, now)).toBeNull();
+    expect(postedAgoLabel('не дата', now)).toBeNull();
+    expect(postedAgoLabel('2026-11-02T12:03:00', now)).toBe('только что');
   });
 });

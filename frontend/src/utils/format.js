@@ -65,3 +65,21 @@ export function lastSeenLabel(value, now = Date.now()) {
   if (days < 30) return `был(а) в сети ${countLabel(days, 'день', 'дня', 'дней')} назад`;
   return 'давно не заходил(а)';
 }
+
+/**
+ * «только что», «5 минут назад», «вчера» — когда опубликовано задание.
+ * Старше месяца — null: такая подпись карточке уже ничего не добавляет.
+ */
+export function postedAgoLabel(value, now = Date.now()) {
+  const date = parseServerDate(value);
+  if (!date) return null;
+  const minutes = Math.max(0, Math.floor((now - date.getTime()) / 60000));
+  if (minutes < 2) return 'только что';
+  if (minutes < 60) return `${countLabel(minutes, 'минуту', 'минуты', 'минут')} назад`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${countLabel(hours, 'час', 'часа', 'часов')} назад`;
+  const days = Math.floor(hours / 24);
+  if (days === 1) return 'вчера';
+  if (days < 30) return `${countLabel(days, 'день', 'дня', 'дней')} назад`;
+  return null;
+}

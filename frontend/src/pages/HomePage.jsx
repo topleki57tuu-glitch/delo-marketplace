@@ -1,17 +1,30 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
-  IconAdmin, IconArrowRight, IconCatBeauty, IconCatCleaning, IconCatDelivery, IconCatDesign,
-  IconCatDevelopment, IconCatPhotoVideo, IconCatRepairs, IconCatTutoring, IconCheck, IconGlobe,
-  IconJustice, IconLock, IconMessages, IconPin, IconSearch, IconSparkles, IconStar, IconUsers, IconWallet,
+  IconArrowRight, IconCatBeauty, IconCatCleaning, IconCatDelivery, IconCatDesign, IconCatDevelopment,
+  IconCatPhotoVideo, IconCatRepairs, IconCatTutoring, IconCheck, IconJustice, IconLock, IconMessages,
+  IconShieldCheck, IconSparkles, IconStar, IconUsers, IconWallet,
 } from '../components/icons.jsx';
-import { taskCategoryLabel } from '../constants/categories.js';
+import EscrowDemo from './home/EscrowDemo.jsx';
+import FaqItem from './home/FaqItem.jsx';
+import FreshTasks from './home/FreshTasks.jsx';
+import HeroSearch from './home/HeroSearch.jsx';
+import HowItWorks from './home/HowItWorks.jsx';
+import SectionTitle from './home/SectionTitle.jsx';
+import {
+  delay, onTiltLeave, onTiltMove, revealRef, useDocumentVisible, useInView, usePointerGlow, useReducedMotion,
+} from './home/motion.js';
+import './home/home.css';
 
 /*
  * Главная. Тексты — только про то, что сервис действительно делает:
  * никаких «тысяч исполнителей» и «№1» — непроверяемые заявления в рекламе
  * запрещены (38-ФЗ «О рекламе», ст. 5) и подрывают доверие сильнее, чем
  * их отсутствие. Живые данные — блок «Свежие задания» из API.
+ *
+ * Анимации — в home/: CSS в home.css, помощники в motion.js. Блоки с
+ * data-reveal проявляются при прокрутке (элементы .home-rv внутри),
+ * задержку задаёт delay(). При «уменьшить движение» страница статична.
  */
 
 const CATEGORIES = [
@@ -27,20 +40,26 @@ const CATEGORIES = [
 
 const QUICK = ['Собрать шкаф', 'Уборка квартиры', 'Сайт-визитка', 'Логотип', 'Курьер на день'];
 
-const STEPS = {
-  customer: [
-    { title: 'Опишите задачу', text: 'Что сделать, к какому сроку и за какой бюджет. AI-помощник поможет составить понятное ТЗ.' },
-    { title: 'Выберите исполнителя', text: 'Специалисты откликаются со своей ценой. Сравните отзывы, рейтинг и портфолио.' },
-    { title: 'Оплатите через эскроу', text: 'Бюджет резервируется на вашем балансе — исполнитель видит, что заказ оплачен.' },
-    { title: 'Примите работу', text: 'Деньги переходят исполнителю только после вашего подтверждения.' },
-  ],
-  specialist: [
-    { title: 'Заполните профиль', text: 'Навыки, портфолио, город. Пройдите верификацию — проверенным доверяют чаще.' },
-    { title: 'Откликайтесь на задания', text: 'Предлагайте цену и сроки. Новые заказы — в ленте, на карте и в Telegram-боте.' },
-    { title: 'Работайте спокойно', text: 'Оплата зарезервирована заранее: заказчик не сможет «пропасть» после сдачи работы.' },
-    { title: 'Получайте деньги', text: 'После приёмки сумма зачисляется на баланс, вывод — по заявке из профиля.' },
-  ],
-};
+/* motion — своя микроанимация иконки при наведении (home.css). */
+const TRUST = [
+  { icon: IconLock, motion: 'home-trust-lock', title: 'Эскроу на каждом заказе', text: 'Деньги заморожены до приёмки' },
+  { icon: IconShieldCheck, motion: 'home-trust-shield', title: 'Проверка исполнителей', text: 'Паспорт или статус самозанятого' },
+  { icon: IconJustice, motion: 'home-trust-scale', title: 'Арбитраж споров', text: 'Решение по переписке и файлам' },
+  { icon: IconMessages, motion: 'home-trust-chat', title: 'Чат внутри сделки', text: 'Файлы, фото, история договорённостей' },
+];
+
+const SAFE_DEAL = [
+  ['Оплата при выборе исполнителя', 'Бюджет замораживается на эскроу — исполнитель видит, что заказ оплачен.'],
+  ['Выплата после приёмки', 'Исполнитель получает деньги только после вашего подтверждения.'],
+  ['Спор вместо отмены', 'Если что-то пошло не так, арбитр решит, кому достанутся средства.'],
+  ['Автоматический возврат', 'Если исполнитель откажется от заказа, деньги сразу вернутся заказчику.'],
+];
+
+const FOR_SPECIALISTS = [
+  [IconWallet, 'Оплата зарезервирована до начала работы'],
+  [IconStar, 'Рейтинг и отзывы от реальных заказчиков'],
+  [IconSparkles, 'Новые заказы в ленте, на карте и в Telegram'],
+];
 
 const FAQ = [
   {
@@ -69,97 +88,17 @@ const FAQ = [
   },
 ];
 
-function formatBudget(v) {
-  return v ? `${Number(v).toLocaleString('ru-RU')} ₽` : 'Договорная';
-}
-
-function useLatestTasks() {
-  const [state, setState] = useState({ loading: true, tasks: [] });
-  useEffect(() => {
-    let alive = true;
-    fetch('/tasks/?status_filter=open&page=1&per_page=6')
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => {
-        if (!alive) return;
-        const list = Array.isArray(d) ? d : d?.tasks || [];
-        setState({ loading: false, tasks: list.filter((t) => t.status === 'open').slice(0, 6) });
-      })
-      .catch(() => alive && setState({ loading: false, tasks: [] }));
-    return () => {
-      alive = false;
-    };
-  }, []);
-  return state;
-}
-
-function SectionTitle({ eyebrow, title, text, center = false }) {
-  return (
-    <div className={center ? 'text-center max-w-2xl mx-auto' : 'max-w-2xl'}>
-      {eyebrow && <p className="text-xs font-bold uppercase tracking-[0.16em] text-indigo-600 dark:text-indigo-400">{eyebrow}</p>}
-      <h2 className="mt-2 text-2xl sm:text-[2rem] font-extrabold tracking-tight text-slate-900 dark:text-white">{title}</h2>
-      {text && <p className="mt-3 text-slate-500 dark:text-slate-400">{text}</p>}
-    </div>
-  );
-}
-
-/* Иллюстрация в hero: путь денег в безопасной сделке. Статичная схема,
-   а не «живые» цифры — на ней нечему устаревать. */
-function EscrowCard() {
-  const rows = [
-    { label: 'Задание опубликовано', done: true },
-    { label: 'Исполнитель выбран', done: true },
-    { label: 'Бюджет на эскроу', done: true, lock: true },
-    { label: 'Работа принята', done: false },
-    { label: 'Выплата исполнителю', done: false },
-  ];
-  return (
-    <div className="relative w-full max-w-sm mx-auto">
-      <div className="absolute -inset-6 bg-indigo-500/30 blur-3xl rounded-full" aria-hidden="true" />
-      <div className="relative rounded-3xl bg-white text-slate-800 shadow-2xl shadow-indigo-950/40 p-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-xs text-slate-400 font-semibold">Безопасная сделка</p>
-            <p className="font-bold text-slate-900">Ремонт ванной комнаты</p>
-          </div>
-          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 text-emerald-700 text-xs font-bold px-2.5 py-1">
-            <IconLock size={12} /> Защищено
-          </span>
-        </div>
-        <div className="mt-5 rounded-2xl bg-slate-50 p-4 flex items-end justify-between">
-          <div>
-            <p className="text-xs text-slate-400">Заморожено</p>
-            <p className="font-display text-2xl font-bold text-slate-900">45 000 ₽</p>
-          </div>
-          <IconWallet size={28} className="text-indigo-500" />
-        </div>
-        <ol className="mt-5 space-y-3">
-          {rows.map((r, i) => (
-            <li key={r.label} className="flex items-center gap-3 text-sm">
-              <span
-                className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold ${
-                  r.done ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-400'
-                }`}
-              >
-                {r.done ? <IconCheck size={13} strokeWidth={3} /> : i + 1}
-              </span>
-              <span className={r.done ? 'font-semibold text-slate-800' : 'text-slate-400'}>{r.label}</span>
-              {r.lock && <IconLock size={13} className="ml-auto text-emerald-500" />}
-            </li>
-          ))}
-        </ol>
-      </div>
-    </div>
-  );
-}
-
 export default function HomePage({ user, onOpenAuth }) {
   const navigate = useNavigate();
-  const [query, setQuery] = useState('');
-  const [audience, setAudience] = useState('customer');
-  const latest = useLatestTasks();
+  const reduced = useReducedMotion();
+  const pageVisible = useDocumentVisible();
+  const [heroRef, heroInView, heroNode] = useInView({ initial: true });
+  usePointerGlow(heroNode, !reduced);
+  // Первый экран ушёл за край или вкладка в фоне — его анимации на паузе.
+  const heroLive = heroInView && pageVisible;
 
-  const startTask = (title) => {
-    const t = (title ?? query).trim();
+  const startTask = (title = '') => {
+    const t = title.trim();
     const target = t ? `/create-task?title=${encodeURIComponent(t)}` : '/create-task';
     if (user) navigate(target);
     else onOpenAuth('register');
@@ -168,9 +107,9 @@ export default function HomePage({ user, onOpenAuth }) {
   return (
     <div className="bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100">
       {/* ---------- Hero ---------- */}
-      <section className="relative overflow-hidden bg-slate-950 text-white">
+      <section ref={heroRef} data-paused={heroLive ? undefined : ''} className="home-hero relative overflow-hidden bg-slate-950 text-white">
         <div
-          className="absolute inset-0 opacity-90"
+          className="home-drift absolute -inset-[10%] opacity-90"
           style={{
             background:
               'radial-gradient(60% 60% at 15% 10%, rgba(99,102,241,.45), transparent 70%), radial-gradient(50% 50% at 90% 30%, rgba(14,165,233,.22), transparent 70%), radial-gradient(60% 50% at 60% 110%, rgba(245,158,11,.16), transparent 70%)',
@@ -182,64 +121,58 @@ export default function HomePage({ user, onOpenAuth }) {
           style={{ backgroundImage: 'linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px)', backgroundSize: '44px 44px' }}
           aria-hidden="true"
         />
+        {/* Сетка «загорается» вокруг курсора — только мышь, см. usePointerGlow. */}
+        <div className="home-spot-glow" aria-hidden="true" />
+        <div className="home-spotlight" aria-hidden="true" />
         <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-14 pb-16 sm:pt-20 sm:pb-24 grid lg:grid-cols-[1.15fr_1fr] gap-12 items-center">
           <div className="text-center lg:text-left">
-            <span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-3 py-1 text-xs sm:text-sm font-semibold text-indigo-100">
+            <span
+              className="home-in inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-3 py-1 text-xs sm:text-sm font-semibold text-indigo-100"
+              style={delay(0)}
+            >
               <IconLock size={14} className="text-emerald-400" /> Безопасная сделка на каждом заказе
             </span>
-            <h1 className="mt-6 font-display text-[2.1rem] sm:text-5xl lg:text-[3.25rem] font-bold leading-[1.1] tracking-tight">
+            <h1 className="home-in mt-6 font-display text-[2.1rem] sm:text-5xl lg:text-[3.25rem] font-bold leading-[1.1] tracking-tight" style={delay(1, 90)}>
               Найдите специалиста для{' '}
-              <span className="bg-gradient-to-r from-amber-300 to-orange-400 bg-clip-text text-transparent">любой задачи</span>
+              {/* Блоком — чтобы маркер лёг ровно под словами. Уже 360px фраза
+                  не влезает в строку: там обычный перенос и без маркера. */}
+              <span className="relative min-[360px]:inline-block">
+                <span className="home-shimmer-text bg-gradient-to-r from-amber-300 to-orange-400 bg-clip-text text-transparent">любой задачи</span>
+                <svg className="home-hl-mark hidden min-[360px]:block" viewBox="0 0 300 12" preserveAspectRatio="none" aria-hidden="true" focusable="false">
+                  <path d="M3 9 C 70 3, 170 2, 297 7" pathLength="1" />
+                </svg>
+              </span>
             </h1>
-            <p className="mt-5 text-base sm:text-lg text-slate-300 max-w-xl mx-auto lg:mx-0">
+            <p className="home-in mt-5 text-base sm:text-lg text-slate-300 max-w-xl mx-auto lg:mx-0" style={delay(2, 90)}>
               Опишите, что нужно сделать, — исполнители сами предложат цену и сроки. Оплата
               резервируется и переходит исполнителю только после вашего подтверждения.
             </p>
 
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                startTask();
-              }}
-              className="mt-8 flex flex-col sm:flex-row gap-2 rounded-2xl bg-white p-2 shadow-2xl shadow-indigo-950/40 max-w-xl mx-auto lg:mx-0"
-            >
-              <label className="flex-1 flex items-center gap-2 px-3">
-                <IconSearch size={18} className="text-slate-400" />
-                <span className="sr-only">Что нужно сделать?</span>
-                <input
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Например, собрать шкаф"
-                  className="w-full py-3 bg-transparent text-slate-900 placeholder:text-slate-400 outline-none text-sm sm:text-base"
-                />
-              </label>
-              <button type="submit" className="rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold px-6 py-3 transition-colors">
-                Создать задание
-              </button>
-            </form>
+            <HeroSearch onSubmit={startTask} active={heroLive} className="home-in mt-8" style={delay(3, 90)} />
 
             <div className="mt-4 flex flex-wrap justify-center lg:justify-start gap-2">
-              {QUICK.map((q) => (
+              {QUICK.map((q, i) => (
                 <button
                   key={q}
                   type="button"
                   onClick={() => startTask(q)}
-                  className="rounded-full border border-white/15 bg-white/5 hover:bg-white/10 px-3 py-1.5 text-xs font-semibold text-slate-200 transition-colors"
+                  style={delay(i, 45, 380)}
+                  className="home-in rounded-full border border-white/15 bg-white/5 hover:bg-white/10 hover:border-white/30 motion-safe:hover:-translate-y-0.5 px-3 py-1.5 text-xs font-semibold text-slate-200 transition"
                 >
                   {q}
                 </button>
               ))}
             </div>
 
-            <p className="mt-8 text-sm text-slate-400">
+            <p className="home-in mt-8 text-sm text-slate-400" style={delay(0, 0, 620)}>
               Вы исполнитель?{' '}
               <Link to="/tasks" className="font-semibold text-white underline decoration-white/30 underline-offset-4 hover:decoration-white">
                 Смотреть заказы
               </Link>
             </p>
           </div>
-          <div className="hidden md:block">
-            <EscrowCard />
+          <div className="home-in home-in-card hidden md:block" style={delay(0, 0, 250)}>
+            <EscrowDemo />
           </div>
         </div>
       </section>
@@ -248,15 +181,14 @@ export default function HomePage({ user, onOpenAuth }) {
       <section className="border-b border-slate-100 dark:border-slate-800">
         {/* До 360px — в одну колонку: в две слово «исполнителей» не помещалось
             в ширину колонки и сдвигало страницу вбок. */}
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 grid grid-cols-1 min-[360px]:grid-cols-2 lg:grid-cols-4 gap-6">
-          {[
-            { icon: IconLock, title: 'Эскроу на каждом заказе', text: 'Деньги заморожены до приёмки' },
-            { icon: IconAdmin, title: 'Проверка исполнителей', text: 'Паспорт или статус самозанятого' },
-            { icon: IconJustice, title: 'Арбитраж споров', text: 'Решение по переписке и файлам' },
-            { icon: IconMessages, title: 'Чат внутри сделки', text: 'Файлы, фото, история договорённостей' },
-          ].map(({ icon: I, title, text }) => (
-            <div key={title} className="flex items-start gap-3">
-              <span className="w-10 h-10 shrink-0 rounded-xl bg-indigo-50 dark:bg-indigo-500/15 text-indigo-600 dark:text-indigo-300 flex items-center justify-center">
+        <div
+          data-reveal
+          ref={revealRef}
+          className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 grid grid-cols-1 min-[360px]:grid-cols-2 lg:grid-cols-4 gap-6"
+        >
+          {TRUST.map(({ icon: I, motion, title, text }, i) => (
+            <div key={title} className={`home-rv ${motion} flex items-start gap-3`} style={delay(i, 90)}>
+              <span className="home-trust-ic w-10 h-10 shrink-0 rounded-xl bg-indigo-50 dark:bg-indigo-500/15 text-indigo-600 dark:text-indigo-300 flex items-center justify-center">
                 <I size={20} />
               </span>
               <div className="min-w-0">
@@ -270,20 +202,29 @@ export default function HomePage({ user, onOpenAuth }) {
 
       {/* ---------- Категории ---------- */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 sm:py-20">
-        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
-          <SectionTitle eyebrow="Категории" title="Чем можем помочь" text="От бытовых дел до digital-проектов — выберите направление." />
-          <Link to="/tasks" className="inline-flex items-center gap-1.5 text-sm font-bold text-indigo-600 dark:text-indigo-400 hover:gap-2.5 transition-all">
+        <div data-reveal ref={revealRef} className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+          <SectionTitle className="home-rv" eyebrow="Категории" title="Чем можем помочь" text="От бытовых дел до digital-проектов — выберите направление." />
+          <Link
+            to="/tasks"
+            style={delay(1, 100)}
+            className="home-rv inline-flex items-center gap-1.5 text-sm font-bold text-indigo-600 dark:text-indigo-400 hover:gap-2.5 transition-all"
+          >
             Все категории <IconArrowRight size={16} />
           </Link>
         </div>
         <div className="mt-8 grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-          {CATEGORIES.map(({ id, label, hint, icon: I }) => (
+          {CATEGORIES.map(({ id, label, hint, icon: I }, i) => (
             <Link
               key={id}
+              ref={revealRef}
+              data-reveal
               to={`/tasks?category=${id}`}
-              className="group rounded-2xl border border-slate-200 dark:border-slate-700/70 bg-white dark:bg-slate-800/60 p-4 sm:p-5 hover:border-indigo-300 dark:hover:border-indigo-500/60 hover:shadow-card-hover transition-all"
+              style={delay(i % 4, 70)}
+              onPointerMove={onTiltMove}
+              onPointerLeave={onTiltLeave}
+              className="home-rv home-cat group relative overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-700/70 bg-white dark:bg-slate-800/60 p-4 sm:p-5 hover:border-indigo-300 dark:hover:border-indigo-500/60 hover:shadow-card-hover"
             >
-              <span className="w-11 h-11 rounded-xl bg-slate-50 dark:bg-slate-700/60 text-slate-700 dark:text-slate-200 group-hover:bg-indigo-600 group-hover:text-white flex items-center justify-center transition-colors">
+              <span className="home-cat-ic w-11 h-11 rounded-xl bg-slate-50 dark:bg-slate-700/60 text-slate-700 dark:text-slate-200 group-hover:bg-indigo-600 group-hover:text-white flex items-center justify-center transition-colors">
                 <I size={22} />
               </span>
               <p className="mt-4 font-bold text-sm sm:text-base text-slate-900 dark:text-white">{label}</p>
@@ -294,117 +235,42 @@ export default function HomePage({ user, onOpenAuth }) {
       </section>
 
       {/* ---------- Свежие задания (живые данные) ---------- */}
-      {(latest.loading || latest.tasks.length > 0) && (
-        <section className="bg-slate-50 dark:bg-slate-950/40 border-y border-slate-100 dark:border-slate-800">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 sm:py-20">
-            <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
-              <SectionTitle eyebrow="Прямо сейчас" title="Свежие задания" text="Открытые заказы, на которые можно откликнуться." />
-              <Link to="/tasks" className="inline-flex items-center gap-1.5 text-sm font-bold text-indigo-600 dark:text-indigo-400 hover:gap-2.5 transition-all">
-                Все задания <IconArrowRight size={16} />
-              </Link>
-            </div>
-            <div className="mt-8 grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {latest.loading
-                ? Array.from({ length: 3 }).map((_, i) => (
-                    <div key={i} className="h-40 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 animate-pulse" />
-                  ))
-                : latest.tasks.map((t, i) => (
-                    <Link
-                      key={t.id}
-                      to={`/tasks/${t.id}`}
-                      className={`${i >= 3 ? 'hidden sm:flex' : 'flex'} group flex-col rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-5 hover:border-indigo-300 dark:hover:border-indigo-500/60 hover:shadow-card-hover transition-all`}
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <span className="rounded-full bg-indigo-50 dark:bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 text-[11px] font-bold px-2.5 py-1">
-                          {taskCategoryLabel(t.category)}
-                        </span>
-                        <span className="font-display font-bold text-slate-900 dark:text-white whitespace-nowrap">{formatBudget(t.budget)}</span>
-                      </div>
-                      <p className="mt-3 font-bold text-slate-900 dark:text-white leading-snug line-clamp-2 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
-                        {t.title}
-                      </p>
-                      <p className="mt-2 text-sm text-slate-500 dark:text-slate-400 line-clamp-2">{t.description}</p>
-                      <p className="mt-auto pt-4 text-xs text-slate-400 flex items-center gap-1.5">
-                        {t.is_remote ? <IconGlobe size={13} /> : <IconPin size={13} />}
-                        {t.is_remote ? 'Удалённо' : t.city || 'Город не указан'}
-                      </p>
-                    </Link>
-                  ))}
-            </div>
-          </div>
-        </section>
-      )}
+      <FreshTasks />
 
       {/* ---------- Как это работает ---------- */}
-      <section id="how" className="scroll-mt-20 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 sm:py-20">
-        <SectionTitle center eyebrow="Как это работает" title="Четыре шага до результата" />
-        <div className="mt-8 flex justify-center">
-          <div role="tablist" className="inline-flex rounded-xl bg-slate-100 dark:bg-slate-800 p-1">
-            {[
-              ['customer', 'Заказчикам'],
-              ['specialist', 'Исполнителям'],
-            ].map(([id, label]) => (
-              <button
-                key={id}
-                role="tab"
-                type="button"
-                aria-selected={audience === id}
-                onClick={() => setAudience(id)}
-                className={`px-5 py-2 rounded-lg text-sm font-bold transition-all ${
-                  audience === id
-                    ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm'
-                    : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-        </div>
-        <ol className="mt-10 grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {STEPS[audience].map((s, i) => (
-            <li key={s.title} className="relative rounded-2xl border border-slate-200 dark:border-slate-700/70 p-6 bg-white dark:bg-slate-800/60">
-              <span className="font-display text-4xl font-bold text-indigo-100 dark:text-indigo-500/25">0{i + 1}</span>
-              <p className="mt-3 font-bold text-slate-900 dark:text-white">{s.title}</p>
-              <p className="mt-2 text-sm text-slate-500 dark:text-slate-400 leading-relaxed">{s.text}</p>
-            </li>
-          ))}
-        </ol>
-      </section>
+      <HowItWorks />
 
       {/* ---------- Безопасная сделка ---------- */}
       <section id="safe-deal" className="scroll-mt-20 px-4 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto rounded-[2rem] bg-slate-950 text-white overflow-hidden relative">
           <div
-            className="absolute inset-0"
-            style={{ background: 'radial-gradient(50% 80% at 100% 0%, rgba(99,102,241,.35), transparent 70%)' }}
+            className="home-drift-slow absolute -inset-[10%]"
+            style={{ background: 'radial-gradient(45% 70% at 95% 5%, rgba(99,102,241,.35), transparent 70%)' }}
             aria-hidden="true"
           />
           <div className="relative grid lg:grid-cols-2 gap-10 p-8 sm:p-12 lg:p-16">
-            <div>
-              <p className="text-xs font-bold uppercase tracking-[0.16em] text-indigo-300">Безопасная сделка</p>
-              <h2 className="mt-2 text-2xl sm:text-[2rem] font-extrabold tracking-tight">Деньги защищены на каждом этапе</h2>
-              <p className="mt-4 text-slate-300">
+            <div data-reveal ref={revealRef}>
+              <p className="home-rv text-xs font-bold uppercase tracking-[0.16em] text-indigo-300">Безопасная сделка</p>
+              <h2 className="home-rv mt-2 text-2xl sm:text-[2rem] font-extrabold tracking-tight" style={delay(1)}>
+                Деньги защищены на каждом этапе
+              </h2>
+              <p className="home-rv mt-4 text-slate-300" style={delay(2)}>
                 Сервис держит оплату у себя, пока стороны не выполнят договорённости. Ни заказчик, ни
                 исполнитель не могут забрать деньги в одностороннем порядке.
               </p>
               <button
                 type="button"
                 onClick={() => startTask('')}
-                className="mt-8 inline-flex items-center gap-2 rounded-xl bg-white text-slate-950 font-bold px-6 py-3 hover:bg-indigo-50 transition-colors"
+                style={delay(3)}
+                className="home-rv mt-8 inline-flex items-center gap-2 rounded-xl bg-white text-slate-950 font-bold px-6 py-3 hover:bg-indigo-50 transition motion-safe:active:scale-[0.97]"
               >
                 Создать задание <IconArrowRight size={16} />
               </button>
             </div>
-            <ul className="grid gap-3">
-              {[
-                ['Оплата при выборе исполнителя', 'Бюджет замораживается на эскроу — исполнитель видит, что заказ оплачен.'],
-                ['Выплата после приёмки', 'Исполнитель получает деньги только после вашего подтверждения.'],
-                ['Спор вместо отмены', 'Если что-то пошло не так, арбитр решит, кому достанутся средства.'],
-                ['Автоматический возврат', 'Если исполнитель откажется от заказа, деньги сразу вернутся заказчику.'],
-              ].map(([t, d]) => (
-                <li key={t} className="flex gap-4 rounded-2xl bg-white/5 border border-white/10 p-4">
-                  <span className="w-8 h-8 shrink-0 rounded-lg bg-emerald-400/15 text-emerald-300 flex items-center justify-center">
+            <ul data-reveal ref={revealRef} className="grid gap-3">
+              {SAFE_DEAL.map(([t, d], i) => (
+                <li key={t} className="home-rv home-rv-side flex gap-4 rounded-2xl bg-white/5 border border-white/10 p-4" style={delay(i, 140, 100)}>
+                  <span className="home-check w-8 h-8 shrink-0 rounded-lg bg-emerald-400/15 text-emerald-300 flex items-center justify-center">
                     <IconCheck size={16} strokeWidth={3} />
                   </span>
                   <div>
@@ -420,37 +286,41 @@ export default function HomePage({ user, onOpenAuth }) {
 
       {/* ---------- Исполнителям ---------- */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 sm:py-20">
-        <div className="grid lg:grid-cols-[1fr_auto] gap-8 items-center rounded-[2rem] border border-slate-200 dark:border-slate-700 bg-gradient-to-br from-indigo-50 via-white to-amber-50 dark:from-slate-800 dark:via-slate-800 dark:to-slate-800 p-8 sm:p-12">
-          <div>
-            <p className="text-xs font-bold uppercase tracking-[0.16em] text-indigo-600 dark:text-indigo-400">Для специалистов</p>
-            <h2 className="mt-2 text-2xl sm:text-[2rem] font-extrabold tracking-tight text-slate-900 dark:text-white">
+        <div
+          data-reveal
+          ref={revealRef}
+          className="relative overflow-hidden grid lg:grid-cols-[1fr_auto] gap-8 items-center rounded-[2rem] border border-slate-200 dark:border-slate-700 bg-gradient-to-br from-indigo-50 via-white to-amber-50 dark:from-slate-800 dark:via-slate-800 dark:to-slate-800 p-8 sm:p-12"
+        >
+          <span className="home-blob home-blob-indigo" aria-hidden="true" />
+          <span className="home-blob home-blob-amber" aria-hidden="true" />
+          <div className="relative">
+            <p className="home-rv text-xs font-bold uppercase tracking-[0.16em] text-indigo-600 dark:text-indigo-400">Для специалистов</p>
+            <h2 className="home-rv mt-2 text-2xl sm:text-[2rem] font-extrabold tracking-tight text-slate-900 dark:text-white" style={delay(1)}>
               Зарабатывайте на своих навыках
             </h2>
             <ul className="mt-5 grid sm:grid-cols-3 gap-4 text-sm">
-              {[
-                [IconWallet, 'Оплата зарезервирована до начала работы'],
-                [IconStar, 'Рейтинг и отзывы от реальных заказчиков'],
-                [IconSparkles, 'Новые заказы в ленте, на карте и в Telegram'],
-              ].map(([I, t]) => (
-                <li key={t} className="flex items-start gap-2.5 text-slate-600 dark:text-slate-300">
+              {FOR_SPECIALISTS.map(([I, t], i) => (
+                <li key={t} className="home-rv flex items-start gap-2.5 text-slate-600 dark:text-slate-300" style={delay(i, 110, 220)}>
                   <I size={18} className="mt-0.5 text-indigo-600 dark:text-indigo-400" /> {t}
                 </li>
               ))}
             </ul>
           </div>
-          <div className="flex flex-col sm:flex-row lg:flex-col gap-3">
+          <div className="relative flex flex-col sm:flex-row lg:flex-col gap-3">
             {!user && (
               <button
                 type="button"
                 onClick={() => onOpenAuth('register')}
-                className="rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold px-6 py-3 transition-colors"
+                style={delay(0, 0, 450)}
+                className="home-rv rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold px-6 py-3 transition motion-safe:active:scale-[0.97]"
               >
                 Стать исполнителем
               </button>
             )}
             <Link
               to="/tasks"
-              className="rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-white font-bold px-6 py-3 text-center hover:border-indigo-400 transition-colors"
+              style={delay(0, 0, 530)}
+              className="home-rv rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-white font-bold px-6 py-3 text-center hover:border-indigo-400 transition motion-safe:active:scale-[0.97]"
             >
               Смотреть заказы
             </Link>
@@ -460,42 +330,55 @@ export default function HomePage({ user, onOpenAuth }) {
 
       {/* ---------- FAQ ---------- */}
       <section id="faq" className="scroll-mt-20 max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 pb-20">
-        <SectionTitle center eyebrow="Вопросы и ответы" title="Частые вопросы" />
-        <div className="mt-8 divide-y divide-slate-200 dark:divide-slate-700 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/60">
-          {FAQ.map((f) => (
-            <details key={f.q} className="group px-5 sm:px-6">
-              <summary className="flex cursor-pointer list-none items-center justify-between gap-4 py-5 font-bold text-slate-900 dark:text-white [&::-webkit-details-marker]:hidden">
-                {f.q}
-                <span className="w-7 h-7 shrink-0 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center text-slate-500 transition-transform group-open:rotate-45 text-lg leading-none">
-                  +
-                </span>
-              </summary>
-              <p className="pb-5 -mt-1 text-sm text-slate-600 dark:text-slate-300 leading-relaxed">{f.a}</p>
-            </details>
+        <div data-reveal ref={revealRef}>
+          <SectionTitle center className="home-rv" eyebrow="Вопросы и ответы" title="Частые вопросы" />
+        </div>
+        <div
+          data-reveal
+          ref={revealRef}
+          className="mt-8 divide-y divide-slate-200 dark:divide-slate-700 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/60"
+        >
+          {FAQ.map((f, i) => (
+            <FaqItem key={f.q} q={f.q} a={f.a} className="home-rv" style={delay(i, 70)} />
           ))}
         </div>
       </section>
 
       {/* ---------- Финальный призыв ---------- */}
       <section className="px-4 sm:px-6 lg:px-8 pb-20">
-        <div className="max-w-7xl mx-auto rounded-[2rem] bg-indigo-600 text-white text-center px-6 py-14 sm:py-16 relative overflow-hidden">
+        <div
+          data-reveal
+          ref={revealRef}
+          className="home-rv home-rv-zoom max-w-7xl mx-auto rounded-[2rem] bg-indigo-600 text-white text-center px-6 py-14 sm:py-16 relative overflow-hidden"
+        >
           <div
             className="absolute inset-0"
             style={{ background: 'radial-gradient(40% 80% at 10% 0%, rgba(255,255,255,.18), transparent 70%), radial-gradient(40% 80% at 90% 100%, rgba(245,158,11,.25), transparent 70%)' }}
             aria-hidden="true"
           />
+          <span className="home-orb home-orb-a" aria-hidden="true" />
+          <span className="home-orb home-orb-b" aria-hidden="true" />
           <div className="relative">
-            <h2 className="text-2xl sm:text-4xl font-extrabold tracking-tight">Опишите задачу — остальное возьмём на себя</h2>
-            <p className="mt-3 text-indigo-100 max-w-xl mx-auto">Исполнители сами предложат цену и сроки, а оплата будет под защитой.</p>
+            <h2 className="home-rv text-2xl sm:text-4xl font-extrabold tracking-tight" style={delay(0, 0, 150)}>
+              Опишите задачу — остальное возьмём на себя
+            </h2>
+            <p className="home-rv mt-3 text-indigo-100 max-w-xl mx-auto" style={delay(0, 0, 250)}>
+              Исполнители сами предложат цену и сроки, а оплата будет под защитой.
+            </p>
             <div className="mt-8 flex flex-col sm:flex-row justify-center gap-3">
               <button
                 type="button"
                 onClick={() => startTask('')}
-                className="rounded-xl bg-white text-indigo-700 font-bold px-7 py-3.5 hover:bg-indigo-50 transition-colors"
+                style={delay(0, 0, 350)}
+                className="home-rv home-shine home-shine-indigo rounded-xl bg-white text-indigo-700 font-bold px-7 py-3.5 hover:bg-indigo-50 transition motion-safe:active:scale-[0.97]"
               >
                 Создать задание
               </button>
-              <Link to="/specialists" className="rounded-xl border border-white/30 text-white font-bold px-7 py-3.5 hover:bg-white/10 transition-colors inline-flex items-center justify-center gap-2">
+              <Link
+                to="/specialists"
+                style={delay(0, 0, 430)}
+                className="home-rv rounded-xl border border-white/30 text-white font-bold px-7 py-3.5 hover:bg-white/10 transition motion-safe:active:scale-[0.97] inline-flex items-center justify-center gap-2"
+              >
                 <IconUsers size={18} /> Найти специалиста
               </Link>
             </div>
