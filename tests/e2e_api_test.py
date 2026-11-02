@@ -11,6 +11,7 @@ E2E smoke-тест API маркетплейса «ДЕЛО».
 уведомления, завершение, отзывы, монетизацию (PRO), смену роли.
 """
 import asyncio
+import datetime
 import os
 import json
 import sys
@@ -163,7 +164,8 @@ def main():
         "address": "ул. Тверская, 1",
         "latitude": 55.7558,
         "longitude": 37.6173,
-        "deadline": "2026-09-20",
+        # Срок — относительно сегодняшнего дня: прошедшую дату сервер не примет.
+        "deadline": (datetime.date.today() + datetime.timedelta(days=14)).isoformat(),
         "is_remote": True,
     }
     r = S.post(f"/tasks/", headers=auth(cust_tok), json=task_data, timeout=15)

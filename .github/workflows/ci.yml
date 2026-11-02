@@ -220,7 +220,8 @@ jobs:
             security/check_audit_fixes \
             security/check_admin_access \
             security/check_task_address_privacy \
-            security/check_sentry_privacy
+            security/check_sentry_privacy \
+            security/check_input_limits
           do
             echo "::group::$suite"
             python "tests/${suite}.py"

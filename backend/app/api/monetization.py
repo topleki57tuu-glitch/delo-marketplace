@@ -27,6 +27,17 @@ MONETIZATION_PACKAGES = {
     "pro_12": {"type": "pro", "title": "PRO на год", "days": 365, "price": 4900},
 }
 
+_MONTHS_GENITIVE = (
+    "января", "февраля", "марта", "апреля", "мая", "июня",
+    "июля", "августа", "сентября", "октября", "ноября", "декабря",
+)
+
+
+def _ru_date(value: datetime) -> str:
+    """«2 декабря 2026» — дата для сообщения пользователю (было «2026-12-02»)."""
+    return f"{value.day} {_MONTHS_GENITIVE[value.month - 1]} {value.year}"
+
+
 class BuyPackageRequest(BaseModel):
     package_id: str
 
@@ -75,7 +86,7 @@ def buy_package(req: BuyPackageRequest, token: str = Depends(oauth2_scheme), db:
         user.is_pro = True
         db.commit()
         db.refresh(user)
-        msg = f"PRO активирован до {user.pro_until.strftime('%Y-%m-%d')}"
+        msg = f"PRO активирован до {_ru_date(user.pro_until)}"
 
     return {
         "message": msg,

@@ -2,6 +2,7 @@ from pydantic import BaseModel, EmailStr, field_validator, Field
 from typing import Optional, List
 import json
 import re
+from datetime import date, datetime, timedelta
 
 from app.models import UserRole, TaskStatus, TaskCategory, TransactionType
 
@@ -25,6 +26,67 @@ MAX_MESSAGE_FILE_URL_LEN = 500
 # Ссылка на файл в БД: только наш внутренний путь. Внешние адреса здесь
 # запрещены намеренно — см. _check_file_url.
 FILE_PATH_RE = re.compile(r"^/files/\d+(\?[^\s]*)?$")
+
+# ---------- Границы пользовательского ввода ----------
+#
+# Раньше задания, отклики и профиль принимались без проверок: пустое название
+# и отрицательный бюджет публиковались в ленте, имя в 100 000 символов
+# попадало на страницу специалиста, а бюджет 3 000 000 000 доходил до INSERT
+# и отвечал 500 — колонки сумм INTEGER, в PostgreSQL это до 2 147 483 647.
+# Тексты ошибок — по-русски: фронтенд показывает их как есть (utils/apiError.js).
+MAX_MONEY_RUB = 10_000_000        # бюджет задания, цена в отклике, цена товара
+MAX_TITLE_LEN = 200               # как maxLength полей на фронтенде
+MAX_DESCRIPTION_LEN = 5000
+MAX_PLACE_LEN = 200               # город, адрес
+MAX_RESPONSE_TEXT_LEN = 3000
+MAX_ESTIMATED_DAYS = 365
+MAX_STOCK = 100_000
+MAX_NAME_LEN = 100
+MAX_BIO_LEN = 2000
+MAX_PHONE_LEN = 30
+MAX_SKILLS_LEN = 2000
+
+
+def _rub(amount: int) -> str:
+    return f"{amount:,}".replace(",", " ") + " ₽"
+
+
+def _clean_text(v: Optional[str], *, label: str, max_len: int, min_len: int = 0,
+                required_msg: Optional[str] = None) -> Optional[str]:
+    """Обрезает пробелы по краям и проверяет длину.
+
+    required_msg задан — поле обязательное (пустое и из одних пробелов — ошибка);
+    иначе пустое значение превращается в None.
+    """
+    v = (v or "").strip()
+    if not v:
+        if required_msg:
+            raise ValueError(required_msg)
+        return None
+    if len(v) < min_len:
+        raise ValueError(f"{label} — минимум {min_len} символа")
+    if len(v) > max_len:
+        raise ValueError(f"{label} — не длиннее {max_len} символов")
+    return v
+
+
+def _check_max_len(v: Optional[str], *, label: str, max_len: int) -> Optional[str]:
+    """Только верхняя граница: для полей профиля, где пустая строка — «очистить»."""
+    if v is not None and len(v) > max_len:
+        raise ValueError(f"{label} — не длиннее {max_len} символов")
+    return v
+
+
+def _check_money(v: Optional[int], *, label: str) -> Optional[int]:
+    """Необязательная сумма в рублях: 0 и пусто — «не указана»."""
+    if v is None or v == 0:
+        return None
+    if v < 0:
+        raise ValueError(f"{label} не может быть меньше нуля")
+    if v > MAX_MONEY_RUB:
+        raise ValueError(f"{label} — не больше {_rub(MAX_MONEY_RUB)}")
+    return v
+
 
 
 def _check_file_url(
@@ -141,6 +203,33 @@ class ProfileUpdate(BaseModel):
     skills: Optional[str] = None  # JSON string
     portfolio: Optional[str] = None  # JSON string
 
+    # Только верхние границы: None — «не менять», пустая строка — «очистить».
+    # Аватар и портфолио проверяет app/api/users.py.
+    @field_validator("name")
+    @classmethod
+    def _name_len(cls, v: Optional[str]) -> Optional[str]:
+        return _check_max_len(v, label="Имя", max_len=MAX_NAME_LEN)
+
+    @field_validator("bio")
+    @classmethod
+    def _bio_len(cls, v: Optional[str]) -> Optional[str]:
+        return _check_max_len(v, label="О себе", max_len=MAX_BIO_LEN)
+
+    @field_validator("city")
+    @classmethod
+    def _city_len(cls, v: Optional[str]) -> Optional[str]:
+        return _check_max_len(v, label="Город", max_len=MAX_PLACE_LEN)
+
+    @field_validator("phone")
+    @classmethod
+    def _phone_len(cls, v: Optional[str]) -> Optional[str]:
+        return _check_max_len(v, label="Телефон", max_len=MAX_PHONE_LEN)
+
+    @field_validator("skills")
+    @classmethod
+    def _skills_len(cls, v: Optional[str]) -> Optional[str]:
+        return _check_max_len(v, label="Навыки", max_len=MAX_SKILLS_LEN)
+
 class ForgotPasswordRequest(BaseModel):
     email: EmailStr
 
@@ -206,7 +295,7 @@ class WithdrawalReviewRequest(BaseModel):
     action: str                   # approve | reject
     comment: Optional[str] = None
 
-class TaskCreate(BaseModel):
+class TaskBase(BaseModel):
     title: str
     description: str
     budget: Optional[int] = None
@@ -218,6 +307,72 @@ class TaskCreate(BaseModel):
     deadline: Optional[str] = None
     is_remote: bool = False
     images: Optional[str] = None
+
+
+class TaskCreate(TaskBase):
+    """Новое задание. Проверки — только здесь, а не в TaskBase: схема ответа
+    TaskOut не должна падать на заданиях, созданных до появления проверок."""
+
+    @field_validator("title")
+    @classmethod
+    def _validate_title(cls, v: str) -> str:
+        return _clean_text(v, label="Название задания", min_len=3, max_len=MAX_TITLE_LEN,
+                           required_msg="Укажите название задания")
+
+    @field_validator("description")
+    @classmethod
+    def _validate_description(cls, v: str) -> str:
+        return _clean_text(v, label="Описание", max_len=MAX_DESCRIPTION_LEN,
+                           required_msg="Опишите задание")
+
+    @field_validator("budget")
+    @classmethod
+    def _validate_budget(cls, v: Optional[int]) -> Optional[int]:
+        # 0 — то же, что пустое поле: «цена договорная».
+        return _check_money(v, label="Бюджет")
+
+    @field_validator("city")
+    @classmethod
+    def _validate_city(cls, v: Optional[str]) -> Optional[str]:
+        return _clean_text(v, label="Город", max_len=MAX_PLACE_LEN)
+
+    @field_validator("address")
+    @classmethod
+    def _validate_address(cls, v: Optional[str]) -> Optional[str]:
+        return _clean_text(v, label="Адрес", max_len=MAX_PLACE_LEN)
+
+    @field_validator("latitude")
+    @classmethod
+    def _validate_latitude(cls, v: Optional[float]) -> Optional[float]:
+        if v is not None and not -90 <= v <= 90:
+            raise ValueError("Некорректные координаты точки на карте")
+        return v
+
+    @field_validator("longitude")
+    @classmethod
+    def _validate_longitude(cls, v: Optional[float]) -> Optional[float]:
+        if v is not None and not -180 <= v <= 180:
+            raise ValueError("Некорректные координаты точки на карте")
+        return v
+
+    @field_validator("deadline")
+    @classmethod
+    def _validate_deadline(cls, v: Optional[str]) -> Optional[str]:
+        """Срок — дата из поля type=date (ГГГГ-ММ-ДД) или дата со временем в ISO.
+
+        Прошедшую дату не принимаем; день запаса — на разницу часовых поясов
+        между браузером и сервером.
+        """
+        v = (v or "").strip()
+        if not v:
+            return None
+        try:
+            day = date.fromisoformat(v) if len(v) == 10 else datetime.fromisoformat(v).date()
+        except ValueError:
+            raise ValueError("Срок выполнения — дата в формате ГГГГ-ММ-ДД")
+        if day < date.today() - timedelta(days=1):
+            raise ValueError("Срок выполнения не может быть в прошлом")
+        return v
 
     @field_validator("images")
     @classmethod
@@ -247,7 +402,7 @@ class TaskCreate(BaseModel):
 
         return json.dumps(parsed, ensure_ascii=False)
 
-class TaskOut(TaskCreate):
+class TaskOut(TaskBase):
     id: int
     customer_id: int
     executor_id: Optional[int] = None
@@ -258,12 +413,35 @@ class TaskOut(TaskCreate):
     class Config:
         from_attributes = True
 
-class ResponseCreate(BaseModel):
+class ResponseBase(BaseModel):
     text: str
     proposed_price: Optional[int] = None
     estimated_days: Optional[int] = None
 
-class ResponseOut(ResponseCreate):
+
+class ResponseCreate(ResponseBase):
+    @field_validator("text")
+    @classmethod
+    def _validate_text(cls, v: str) -> str:
+        return _clean_text(v, label="Сообщение заказчику", max_len=MAX_RESPONSE_TEXT_LEN,
+                           required_msg="Напишите сообщение заказчику")
+
+    @field_validator("proposed_price")
+    @classmethod
+    def _validate_price(cls, v: Optional[int]) -> Optional[int]:
+        return _check_money(v, label="Цена")
+
+    @field_validator("estimated_days")
+    @classmethod
+    def _validate_days(cls, v: Optional[int]) -> Optional[int]:
+        if v is None or v == 0:
+            return None
+        if not 1 <= v <= MAX_ESTIMATED_DAYS:
+            raise ValueError(f"Срок — от 1 до {MAX_ESTIMATED_DAYS} дней")
+        return v
+
+
+class ResponseOut(ResponseBase):
     id: int
     task_id: int
     specialist_id: int
@@ -468,6 +646,27 @@ class ProductCreate(BaseModel):
         if v not in ["pickup", "delivery", "both"]:
             raise ValueError("delivery_options: pickup, delivery или both")
         return v
+
+    # Нижние границы цены и количества — в Field выше, верхние — здесь:
+    # без них большое число доходило до INSERT и отвечало 500.
+    @field_validator("price")
+    @classmethod
+    def _validate_price_max(cls, v: int) -> int:
+        if v > MAX_MONEY_RUB:
+            raise ValueError(f"Цена — не больше {_rub(MAX_MONEY_RUB)}")
+        return v
+
+    @field_validator("stock")
+    @classmethod
+    def _validate_stock_max(cls, v: int) -> int:
+        if v > MAX_STOCK:
+            raise ValueError(f"Количество — не больше {MAX_STOCK:,}".replace(",", " "))
+        return v
+
+    @field_validator("city")
+    @classmethod
+    def _validate_city(cls, v: Optional[str]) -> Optional[str]:
+        return _clean_text(v, label="Город", max_len=MAX_PLACE_LEN)
 
 
 class ProductOut(BaseModel):
