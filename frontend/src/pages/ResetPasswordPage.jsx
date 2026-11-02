@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useSearchParams, useNavigate, Link } from 'react-router-dom';
 import { useToast } from '../components/Toast';
 import { IconCheck, IconKey } from '../components/icons.jsx';
+import { apiErrorMessage } from '../utils/apiError';
 
 export default function ResetPasswordPage() {
   const [searchParams] = useSearchParams();
@@ -32,7 +33,7 @@ export default function ResetPasswordPage() {
         body: JSON.stringify({ token, new_password: password }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || 'Не удалось обновить пароль');
+      if (!res.ok) throw new Error(apiErrorMessage(data, 'Не удалось обновить пароль'));
       setDone(true);
       addToast('Пароль обновлён!', 'success');
     } catch (err) {

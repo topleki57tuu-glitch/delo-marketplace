@@ -143,7 +143,8 @@ export default function ChatThread({ activeChat, activeTaskId, user, room, onBac
       </div>
     )}
 
-      <ChatComposer room={room} />
+      {/* Собеседник-исполнитель — значит, я заказчик этой сделки */}
+      <ChatComposer room={room} side={activeChat.other_user_role === 'Исполнитель' ? 'customer' : 'specialist'} />
     </>
   );
 }

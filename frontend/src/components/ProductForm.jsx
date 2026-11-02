@@ -56,9 +56,12 @@ export function validateProductForm(formData) {
     errors.description = 'Описание должно содержать минимум 10 символов';
   }
   const price = parseInt(formData.price, 10);
+  // Верхние границы — те же, что на сервере (backend/app/schemas: ProductCreate).
   if (!price || price <= 0) errors.price = 'Укажите корректную цену';
+  else if (price > 10_000_000) errors.price = 'Цена — не больше 10 000 000 ₽';
   const stock = parseInt(formData.stock, 10);
   if (!stock || stock < 1) errors.stock = 'Количество должно быть минимум 1';
+  else if (stock > 100_000) errors.stock = 'Количество — не больше 100 000';
   return errors;
 }
 

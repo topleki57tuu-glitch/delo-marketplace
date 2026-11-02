@@ -4,6 +4,8 @@ import React, { useState } from 'react';
 import { useToast } from '../../components/Toast';
 import { useDialogs } from '../../components/DialogProvider.jsx';
 import { PACKAGES, Panel, longDate, rub } from './profileShared.jsx';
+import { apiErrorMessage } from '../../utils/apiError';
+import { fetchFreshBalance } from '../../utils/balance.js';
 
 export default function ProTab({ user, token, onUpdateUser, onOpenDeposit }) {
   const { addToast } = useToast();
@@ -13,9 +15,22 @@ export default function ProTab({ user, token, onUpdateUser, onOpenDeposit }) {
 
   const handleBuyPackage = async (packageId) => {
     const pkg = PACKAGES[packageId];
+    let balance = user.balance || 0;
+    // Сервер всё равно откажет — сразу предлагаем пополнить на недостающее.
+    if (balance < pkg.price) balance = await fetchFreshBalance(token, balance);
+    if (balance < pkg.price) {
+      const missing = pkg.price - balance;
+      const topUp = await dialogs.confirm({
+        title: `Не хватает ${rub(missing)}`,
+        message: `«${pkg.title}» стоит ${rub(pkg.price)}, на балансе ${rub(balance)}. Пополните баланс и вернитесь к покупке.`,
+        confirmText: 'Пополнить баланс',
+      });
+      if (topUp) onOpenDeposit?.(missing);
+      return;
+    }
     const ok = await dialogs.confirm({
       title: `Купить «${pkg.title}» за ${rub(pkg.price)}?`,
-      message: `Сумма спишется с баланса — сейчас на нём ${rub(user.balance)}.`,
+      message: `Сумма спишется с баланса — сейчас на нём ${rub(balance)}.`,
       confirmText: 'Купить',
     });
     if (!ok) return;
@@ -27,7 +42,7 @@ export default function ProTab({ user, token, onUpdateUser, onOpenDeposit }) {
         body: JSON.stringify({ package_id: packageId }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.detail || 'Не удалось приобрести пакет');
+      if (!res.ok) throw new Error(apiErrorMessage(data, 'Не удалось приобрести пакет'));
 
       addToast(data.message || 'Пакет активирован', 'success');
       onUpdateUser();
@@ -98,7 +113,7 @@ export default function ProTab({ user, token, onUpdateUser, onOpenDeposit }) {
       </div>
       <p className="text-sm text-slate-500 dark:text-slate-400">
         Пакеты оплачиваются с баланса.{' '}
-        <button type="button" onClick={onOpenDeposit} className="font-semibold text-indigo-600 dark:text-indigo-400 hover:underline">
+        <button type="button" onClick={() => onOpenDeposit?.()} className="font-semibold text-indigo-600 dark:text-indigo-400 hover:underline">
           Пополнить баланс
         </button>
       </p>

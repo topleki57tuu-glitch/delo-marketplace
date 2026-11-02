@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { useToast } from '../../components/Toast';
 import { Card } from './taskDetailShared.jsx';
+import { apiErrorMessage } from '../../utils/apiError';
 
 export default function ResponseForm({ task, taskId, user, token, fieldRef, onOpenAuth, onSent }) {
   const { addToast } = useToast();
@@ -38,7 +39,7 @@ export default function ResponseForm({ task, taskId, user, token, fieldRef, onOp
       });
 
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.detail || 'Не удалось отправить отклик');
+      if (!res.ok) throw new Error(apiErrorMessage(data, 'Не удалось отправить отклик'));
 
       addToast('Отклик отправлен — заказчик получит уведомление', 'success');
       setResponseText('');
@@ -65,6 +66,7 @@ export default function ResponseForm({ task, taskId, user, token, fieldRef, onOp
             value={responseText}
             onChange={(e) => setResponseText(e.target.value)}
             className="textarea"
+            maxLength={3000}
             required
           />
         </div>
@@ -75,6 +77,7 @@ export default function ResponseForm({ task, taskId, user, token, fieldRef, onOp
               id="response-price"
               type="number"
               min="0"
+              max="10000000"
               inputMode="numeric"
               placeholder={task.budget ? String(task.budget) : 'Например: 5000'}
               value={proposedPrice}
@@ -88,6 +91,7 @@ export default function ResponseForm({ task, taskId, user, token, fieldRef, onOp
               id="response-days"
               type="number"
               min="1"
+              max="365"
               inputMode="numeric"
               placeholder="Например: 3"
               value={estimatedDays}

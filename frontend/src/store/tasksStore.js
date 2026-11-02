@@ -20,7 +20,7 @@ export const useTasksStore = create((set, get) => ({
     try {
       const headers = token ? { Authorization: `Bearer ${token}` } : {};
       const res = await fetch('/tasks/', { headers });
-      if (!res.ok) throw new Error('Failed to fetch tasks');
+      if (!res.ok) throw new Error('Не удалось загрузить задания');
       const data = await res.json();
 
       const normalized = {};
@@ -47,7 +47,7 @@ export const useTasksStore = create((set, get) => ({
     try {
       const headers = token ? { Authorization: `Bearer ${token}` } : {};
       const res = await fetch(`/tasks/${taskId}`, { headers });
-      if (!res.ok) throw new Error('Task not found');
+      if (!res.ok) throw new Error('Задание не найдено');
       const task = await res.json();
 
       set(state => ({
@@ -73,7 +73,7 @@ export const useTasksStore = create((set, get) => ({
         headers: { Authorization: `Bearer ${token}` }
       });
 
-      if (!res.ok) throw new Error('Failed to fetch my tasks');
+      if (!res.ok) throw new Error('Не удалось загрузить ваши задания');
       const data = await res.json();
 
       const normalized = {};
@@ -127,7 +127,8 @@ export const useTasksStore = create((set, get) => ({
   // Удалить задачу
   removeTask: (taskId) => {
     set(state => {
-      const { [taskId]: removed, ...remainingTasks } = state.tasks;
+      const remainingTasks = { ...state.tasks };
+      delete remainingTasks[taskId];
       return {
         tasks: remainingTasks,
         allTaskIds: state.allTaskIds.filter(id => id !== taskId),

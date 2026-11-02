@@ -13,6 +13,7 @@ import { parseList } from '../../utils/format.js';
 import { useAuthStore } from '../../store/authStore';
 import { IconAdmin, IconCheck, IconEdit, IconEye, IconRecycle, IconRefresh } from '../../components/icons.jsx';
 import { EmptyLine, Panel } from './profileShared.jsx';
+import { apiErrorMessage } from '../../utils/apiError';
 
 export default function ProfileTab({ user, token, form, verificationData, onOpenVerify, onUpdateUser }) {
   const { addToast } = useToast();
@@ -83,7 +84,7 @@ export default function ProfileTab({ user, token, form, verificationData, onOpen
         headers: auth,
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.detail || 'Не удалось переключить роль');
+      if (!res.ok) throw new Error(apiErrorMessage(data, 'Не удалось переключить роль'));
 
       if (data.token) {
         const { login } = useAuthStore.getState();
@@ -116,7 +117,7 @@ export default function ProfileTab({ user, token, form, verificationData, onOpen
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
                   <label htmlFor="pf-name" className="field-label">Имя</label>
-                  <input id="pf-name" type="text" autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} className="input" />
+                  <input id="pf-name" type="text" autoComplete="name" maxLength={100} value={name} onChange={(e) => setName(e.target.value)} className="input" />
                 </div>
                 <div>
                   <label htmlFor="pf-phone" className="field-label">Телефон</label>
@@ -125,6 +126,7 @@ export default function ProfileTab({ user, token, form, verificationData, onOpen
                     type="tel"
                     inputMode="tel"
                     autoComplete="tel"
+                    maxLength={30}
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
                     placeholder="+7 900 000-00-00"
@@ -146,6 +148,7 @@ export default function ProfileTab({ user, token, form, verificationData, onOpen
                 <textarea
                   id="pf-bio"
                   rows={4}
+                  maxLength={2000}
                   value={bio}
                   onChange={(e) => setBio(e.target.value)}
                   placeholder={isSpecialist ? 'Опыт, чем занимаетесь, в какое время на связи' : 'Пара слов о себе — исполнителям проще откликаться'}
@@ -158,6 +161,7 @@ export default function ProfileTab({ user, token, form, verificationData, onOpen
                   <input
                     id="pf-skills"
                     type="text"
+                    maxLength={500}
                     value={skills}
                     onChange={(e) => setSkills(e.target.value)}
                     placeholder="Например: сантехника, электрика, сборка мебели"

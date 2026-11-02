@@ -246,7 +246,9 @@ export default function HomePage({ user, onOpenAuth }) {
 
       {/* ---------- Ценности ---------- */}
       <section className="border-b border-slate-100 dark:border-slate-800">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 grid grid-cols-2 lg:grid-cols-4 gap-6">
+        {/* До 360px — в одну колонку: в две слово «исполнителей» не помещалось
+            в ширину колонки и сдвигало страницу вбок. */}
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 grid grid-cols-1 min-[360px]:grid-cols-2 lg:grid-cols-4 gap-6">
           {[
             { icon: IconLock, title: 'Эскроу на каждом заказе', text: 'Деньги заморожены до приёмки' },
             { icon: IconAdmin, title: 'Проверка исполнителей', text: 'Паспорт или статус самозанятого' },
@@ -257,7 +259,7 @@ export default function HomePage({ user, onOpenAuth }) {
               <span className="w-10 h-10 shrink-0 rounded-xl bg-indigo-50 dark:bg-indigo-500/15 text-indigo-600 dark:text-indigo-300 flex items-center justify-center">
                 <I size={20} />
               </span>
-              <div>
+              <div className="min-w-0">
                 <p className="font-bold text-sm text-slate-900 dark:text-white">{title}</p>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{text}</p>
               </div>

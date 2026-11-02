@@ -8,7 +8,7 @@ import { IconAdmin, IconBox, IconMessages, IconReceipt, IconTasks, IconUser, Ico
 import Logo from './Logo.jsx';
 import { ThemeSwitch, ThemeToggle } from './ThemeToggle.jsx';
 
-export default function NavigationBar({ user, token, onOpenAuth, onOpenChatsDrawer, onLogout }) {
+export default function NavigationBar({ user, token, onOpenAuth, onLogout }) {
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef(null);
@@ -58,7 +58,7 @@ export default function NavigationBar({ user, token, onOpenAuth, onOpenChatsDraw
           нужно ровно 720px при доступных 720, и ссылке «Все задания» не
           хватало 13px — она переносилась в две строки. 16px дают 11px
           запаса, а с lg возвращается прежние 24px. */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center gap-4 lg:gap-6">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center gap-2 min-[360px]:gap-4 lg:gap-6">
         {/* Логотип */}
         <Link to="/" className="shrink-0" aria-label="ДЕЛО — на главную">
           <Logo size={34} />
@@ -81,10 +81,11 @@ export default function NavigationBar({ user, token, onOpenAuth, onOpenChatsDraw
 
         {/* Действия */}
         <div className="flex items-center gap-2 sm:gap-3">
-          {/* Переключатель темы. Гостю на самых узких экранах (<390px) он не
+          {/* Переключатель темы. Гостю на узких экранах (<400px) он не
               помещается рядом с «Вход» и «Регистрация» — там тема выбирается
-              в подвале. */}
-          <ThemeToggle className={user ? '' : 'max-[389px]:hidden'} />
+              в подвале. Порог был 390px, но ровно на 390 (iPhone 12–15) шапке
+              не хватало пикселя, и страница сдвигалась вбок. */}
+          <ThemeToggle className={user ? '' : 'max-[399px]:hidden'} />
           {token && <NotificationBell token={token} />}
 
           {/* На 768–1023px шапка не вмещает всё сразу: логотип, три ссылки,
@@ -181,15 +182,19 @@ export default function NavigationBar({ user, token, onOpenAuth, onOpenChatsDraw
             </div>
           ) : (
             <div className="flex items-center gap-2">
+              {/* На 320px «Регистрация» обрезалась краем экрана: кнопкам
+                  там уже узкие поля. */}
               <button
+                type="button"
                 onClick={() => onOpenAuth('login')}
-                className="btn btn-secondary !px-4 !py-2 !text-xs sm:!text-sm"
+                className="btn btn-secondary !px-4 max-[359px]:!px-2.5 !py-2 !text-xs sm:!text-sm"
               >
                 Вход
               </button>
               <button
+                type="button"
                 onClick={() => onOpenAuth('register')}
-                className="btn btn-primary !px-4 !py-2 !text-xs sm:!text-sm"
+                className="btn btn-primary !px-4 max-[359px]:!px-2.5 !py-2 !text-xs sm:!text-sm"
               >
                 Регистрация
               </button>

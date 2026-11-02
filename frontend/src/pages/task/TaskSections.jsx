@@ -15,6 +15,12 @@ import {
 import { Card, DetailRow, formatDate } from './taskDetailShared.jsx';
 
 // Плашка над описанием: спор открыт (деньги заморожены) или уже решён.
+const DISPUTE_OUTCOME = {
+  resolved_customer: 'Спор закрыт: деньги возвращены заказчику',
+  resolved_specialist: 'Спор закрыт: деньги выплачены исполнителю',
+  closed: 'Спор отозван',
+};
+
 export function DisputeNotice({ dispute }) {
   if (!dispute) return null;
   return (
@@ -35,14 +41,21 @@ export function DisputeNotice({ dispute }) {
           </div>
         </div>
       )}
-      {dispute.status !== 'open' && dispute.resolution_comment && (
+      {/* Итог спора показываем всегда: без комментария арбитра блок раньше
+          не появлялся, и стороны видели только статус «Отменено» без
+          объяснения, куда ушли деньги. */}
+      {dispute.status !== 'open' && (
         <div className="card p-4 sm:p-5 flex items-start gap-3">
           <span className="w-10 h-10 shrink-0 rounded-xl bg-slate-100 dark:bg-slate-700/60 text-slate-500 dark:text-slate-300 flex items-center justify-center">
             <IconJustice size={20} />
           </span>
           <div className="text-sm">
-            <p className="font-bold text-slate-800 dark:text-slate-100">Спор закрыт</p>
-            <p className="text-slate-500 dark:text-slate-400 mt-1">{dispute.resolution_comment}</p>
+            <p className="font-bold text-slate-800 dark:text-slate-100">
+              {DISPUTE_OUTCOME[dispute.status] || 'Спор закрыт'}
+            </p>
+            {dispute.resolution_comment && (
+              <p className="text-slate-500 dark:text-slate-400 mt-1">{dispute.resolution_comment}</p>
+            )}
           </div>
         </div>
       )}

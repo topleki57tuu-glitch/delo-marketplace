@@ -179,6 +179,24 @@ describe('CreateTaskPage', () => {
     expect(screen.getByRole('button', { name: /Опубликовать задание/ })).toBeEnabled();
   });
 
+  it('ошибка проверки сервера (422) показывается текстом, а не «[object Object]»', async () => {
+    const user = userEvent.setup();
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 422,
+      json: async () => ({
+        detail: [{ loc: ['body', 'budget'], msg: 'Value error, Бюджет — не больше 10 000 000 ₽', type: 'value_error' }],
+      }),
+    });
+
+    renderPage();
+    await fillRequired(user);
+    await user.click(screen.getByRole('button', { name: /Опубликовать задание/ }));
+
+    expect(await screen.findByText('Бюджет — не больше 10 000 000 ₽')).toBeInTheDocument();
+    expect(screen.queryByText('[object Object]')).not.toBeInTheDocument();
+  });
+
   it('категория по умолчанию — «Разработка сайтов и IT»', async () => {
     const user = userEvent.setup();
     global.fetch = vi.fn().mockResolvedValue({

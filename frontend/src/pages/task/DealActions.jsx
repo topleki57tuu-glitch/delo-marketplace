@@ -4,7 +4,8 @@ import React, { useState } from 'react';
 import { useToast } from '../../components/Toast';
 import { useDialogs } from '../../components/DialogProvider.jsx';
 import { IconCheck, IconWarning } from '../../components/icons.jsx';
-import { Card } from './taskDetailShared.jsx';
+import { Card, formatMoney } from './taskDetailShared.jsx';
+import { apiErrorMessage } from '../../utils/apiError';
 
 export default function DealActions({
   task,
@@ -24,11 +25,17 @@ export default function DealActions({
   const [cancelling, setCancelling] = useState(false);
   const [openingDispute, setOpeningDispute] = useState(false);
 
+  // У задания без бюджета при назначении ничего не замораживалось — и
+  // выплачивать при приёмке нечего. Обещать перевод денег в этом случае нельзя.
+  const budget = Number(task.budget) || 0;
+
   const handleCompleteTask = async () => {
     const ok = await dialogs.confirm({
       title: 'Принять работу?',
-      message: 'Замороженный бюджет будет переведён исполнителю. Отменить это действие нельзя.',
-      confirmText: 'Принять и выплатить',
+      message: budget > 0
+        ? `Замороженные ${formatMoney(budget)} перейдут исполнителю. Отменить это действие нельзя.`
+        : 'Заказ будет отмечен выполненным. Деньги через площадку не замораживались — рассчитайтесь с исполнителем, как договорились.',
+      confirmText: budget > 0 ? 'Принять и выплатить' : 'Принять работу',
     });
     if (!ok) return;
 
@@ -39,9 +46,9 @@ export default function DealActions({
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.detail || 'Ошибка при завершении заказа');
+      if (!res.ok) throw new Error(apiErrorMessage(data, 'Ошибка при завершении заказа'));
 
-      addToast('Заказ завершён, деньги переведены исполнителю', 'success');
+      addToast(budget > 0 ? 'Заказ завершён, деньги переведены исполнителю' : 'Заказ завершён', 'success');
       onCompleted();
       onChanged();
     } catch (err) {
@@ -74,7 +81,7 @@ export default function DealActions({
         body: JSON.stringify({ reason: reason.trim() }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.detail || 'Не удалось открыть спор');
+      if (!res.ok) throw new Error(apiErrorMessage(data, 'Не удалось открыть спор'));
       addToast(data.message || 'Спор открыт', 'success');
       onChanged();
     } catch (err) {
@@ -117,7 +124,7 @@ export default function DealActions({
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.detail || 'Не удалось выполнить действие');
+      if (!res.ok) throw new Error(apiErrorMessage(data, 'Не удалось выполнить действие'));
       addToast(data.message || 'Готово', 'success');
       onChanged();
     } catch (err) {
@@ -132,7 +139,7 @@ export default function DealActions({
       <div className="space-y-2">
         {isAuthor && task.status === 'in_progress' && (
           <button type="button" onClick={handleCompleteTask} disabled={completing} className="btn w-full bg-emerald-600 hover:bg-emerald-500 text-white">
-            {completing ? 'Завершение...' : <><IconCheck /> Принять работу и оплатить</>}
+            {completing ? 'Завершение...' : <><IconCheck /> {budget > 0 ? 'Принять работу и оплатить' : 'Принять работу'}</>}
           </button>
         )}
         {task.status === 'in_progress' && !task.has_open_dispute && (

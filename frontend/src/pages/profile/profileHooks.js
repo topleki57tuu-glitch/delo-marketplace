@@ -7,6 +7,7 @@ import { useSearchParams } from 'react-router-dom';
 import { useToast } from '../../components/Toast';
 import { parseList } from '../../utils/format.js';
 import { useAuthStore } from '../../store/authStore';
+import { apiErrorMessage } from '../../utils/apiError';
 
 const authHeaders = (token) => (token ? { Authorization: `Bearer ${token}` } : {});
 
@@ -179,7 +180,7 @@ export function usePendingPayments({ token, onUpdateUser }) {
       const data = await res.json().catch(() => ({}));
 
       if (!res.ok) {
-        if (!quiet) addToast(data.detail || 'Не удалось проверить платежи', 'error');
+        if (!quiet) addToast(apiErrorMessage(data, 'Не удалось проверить платежи'), 'error');
         return;
       }
 

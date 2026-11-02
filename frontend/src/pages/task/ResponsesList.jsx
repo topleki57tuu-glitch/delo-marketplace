@@ -1,23 +1,72 @@
 // Список откликов на задание. Чужие отклики бэкенд отдаёт только автору
 // задания — он же выбирает здесь исполнителя (бюджет при этом замораживается).
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useToast } from '../../components/Toast';
 import { useDialogs } from '../../components/DialogProvider.jsx';
 import { countLabel } from '../../utils/format.js';
 import { IconCheck, IconStar } from '../../components/icons.jsx';
 import { Card, formatMoney } from './taskDetailShared.jsx';
+import { apiErrorMessage } from '../../utils/apiError';
+import { fetchFreshBalance } from '../../utils/balance.js';
 
-export default function ResponsesList({ task, taskId, token, responses, responsesCount, isAuthor, onChanged }) {
+export default function ResponsesList({ task, taskId, token, responses, responsesCount, isAuthor, balance, onChanged }) {
   const { addToast } = useToast();
   const dialogs = useDialogs();
+  const navigate = useNavigate();
   const [assigningId, setAssigningId] = useState(null);
 
-  const handleAssignSpecialist = async (specialistId, name) => {
+  const budget = Number(task.budget) || 0;
+
+  // Денег на балансе меньше бюджета — сервер всё равно откажет. Вместо
+  // ошибки после подтверждения сразу предлагаем пополнить баланс: кошелёк
+  // откроется с нужной суммой и после оплаты вернёт обратно к заданию.
+  const offerTopUp = async (missing, current) => {
+    const known = Number.isFinite(missing) && missing > 0;
+    const goTopUp = await dialogs.confirm({
+      title: 'Не хватает денег для безопасной сделки',
+      message: known
+        ? `При выборе исполнителя с баланса замораживается бюджет задания — ${formatMoney(budget)}. Сейчас на балансе ${formatMoney(current || 0)}, не хватает ${formatMoney(missing)}.\n\nПополните баланс и вернитесь к выбору исполнителя.`
+        : `При выборе исполнителя с баланса замораживается бюджет задания — ${formatMoney(budget)}. Пополните баланс и вернитесь к выбору исполнителя.`,
+      confirmText: 'Пополнить баланс',
+    });
+    if (!goTopUp) return;
+    // Сколько не хватает, известно не всегда (баланс на странице мог
+    // устареть) — тогда предлагаем пополнить на весь бюджет.
+    const amount = Math.max(100, Math.ceil(known ? missing : budget));
+    const params = new URLSearchParams({ tab: 'wallet', topup: String(amount), return: `/tasks/${taskId}` });
+    navigate(`/profile?${params}`);
+  };
+
+  const handleAssignSpecialist = async (resp) => {
+    const specialistId = resp.specialist_id;
+    const name = resp.specialist_name;
+    const price = Number(resp.proposed_price) || 0;
+
+    if (budget > 0 && typeof balance === 'number' && balance < budget) {
+      const actual = await fetchFreshBalance(token, balance);
+      if (actual < budget) {
+        await offerTopUp(budget - actual, actual);
+        return;
+      }
+    }
+
+    // В сделке участвует бюджет задания, а не цена из отклика: изменить
+    // бюджет после публикации нельзя, поэтому говорим об этом заранее.
+    let message;
+    if (budget > 0) {
+      message = `С вашего баланса заморозится ${formatMoney(budget)} — бюджет задания. Деньги перейдут исполнителю, когда вы примете работу.`;
+      if (price > 0 && price !== budget) {
+        message += `\n\nСпециалист предложил ${formatMoney(price)}, но в безопасной сделке участвует бюджет задания.`;
+      }
+      message += '\n\nПосле назначения отменить заказ в одностороннем порядке нельзя: если что-то пойдёт не так, откройте спор — арбитр решит, вернуть ли деньги.';
+    } else {
+      message = 'У задания не указан бюджет, поэтому деньги не замораживаются и безопасная сделка не действует: об оплате договоритесь с исполнителем в чате.';
+    }
+
     const ok = await dialogs.confirm({
       title: `Выбрать исполнителем${name ? ` — ${name}` : ''}?`,
-      message:
-        'Бюджет заморозится на безопасной сделке и перейдёт исполнителю, когда вы примете работу.\n\nПосле назначения отменить заказ в одностороннем порядке нельзя: если что-то пойдёт не так, откройте спор — арбитр решит, вернуть ли деньги.',
+      message,
       confirmText: 'Назначить',
     });
     if (!ok) return;
@@ -29,7 +78,17 @@ export default function ResponsesList({ task, taskId, token, responses, response
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.detail || 'Ошибка при назначении исполнителя');
+      if (!res.ok) {
+        const text = apiErrorMessage(data, 'Ошибка при назначении исполнителя');
+        // Баланс на странице мог устареть (деньги ушли в другой вкладке).
+        if (res.status === 400 && /Недостаточно средств/i.test(text)) {
+          setAssigningId(null);
+          const actual = await fetchFreshBalance(token, NaN);
+          await offerTopUp(budget - actual, actual);
+          return;
+        }
+        throw new Error(text);
+      }
 
       addToast('Исполнитель назначен — заказ в работе', 'success');
       onChanged();
@@ -116,7 +175,7 @@ export default function ResponsesList({ task, taskId, token, responses, response
                   <div className="mt-3 flex flex-wrap items-center gap-2">
                     <button
                       type="button"
-                      onClick={() => handleAssignSpecialist(resp.specialist_id, resp.specialist_name)}
+                      onClick={() => handleAssignSpecialist(resp)}
                       disabled={assigningId === resp.specialist_id}
                       className="btn btn-primary !py-2 !text-xs"
                     >

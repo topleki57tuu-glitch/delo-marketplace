@@ -43,10 +43,10 @@ describe('tasksStore', () => {
 
       const { fetchTasks } = useTasksStore.getState();
 
-      await expect(fetchTasks()).rejects.toThrow('Failed to fetch tasks');
+      await expect(fetchTasks()).rejects.toThrow('Не удалось загрузить задания');
 
       const state = useTasksStore.getState();
-      expect(state.error).toBe('Failed to fetch tasks');
+      expect(state.error).toBe('Не удалось загрузить задания');
       expect(state.loading).toBe(false);
     });
   });

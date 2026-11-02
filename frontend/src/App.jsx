@@ -5,7 +5,6 @@ import { useShallow } from 'zustand/react/shallow';
 import { useTasksStore } from './store/tasksStore';
 import { useToast } from './components/Toast';
 import { BottomNav } from './components/BottomNav';
-import { ChatsDrawer } from './components/ChatsDrawer';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import NavigationBar from './components/NavigationBar.jsx';
 import AuthModal from './components/AuthModal.jsx';
@@ -54,9 +53,6 @@ export default function App() {
 
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authModalMode, setAuthModalMode] = useState('login');
-
-  // Drawer chat state
-  const [drawerChatTaskId, setDrawerChatTaskId] = useState(null);
 
   // Профиль опрашивается каждые 5 секунд, поэтому без логов в консоль:
   // раньше здесь печатался весь профиль — email, телефон, баланс — по три
@@ -184,7 +180,6 @@ export default function App() {
                       user={user}
                       token={token}
                       onOpenAuth={handleOpenAuth}
-                      onOpenChat={(tId) => setDrawerChatTaskId(tId)}
                     />
                   }
                 />
@@ -310,15 +305,6 @@ export default function App() {
 
         {/* Документы для тех, кто ещё не принял действующую редакцию */}
         <ConsentGate />
-
-        {/* Chats Drawer */}
-        {drawerChatTaskId && (
-          <ChatsDrawer
-            isOpen={!!drawerChatTaskId}
-            onClose={() => setDrawerChatTaskId(null)}
-            onOpenAuth={handleOpenAuth}
-          />
-        )}
       </div>
     </BrowserRouter>
   </ErrorBoundary>

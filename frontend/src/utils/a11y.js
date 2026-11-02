@@ -12,15 +12,26 @@ export function useFocusTrap(isOpen, containerRef) {
     const focusableSelector =
       'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
-    const focusableElements = container.querySelectorAll(focusableSelector);
-    const firstElement = focusableElements[0];
-    const lastElement = focusableElements[focusableElements.length - 1];
+    // Список элементов собираем заново при каждом нажатии Tab: содержимое
+    // окна меняется (окно оплаты после создания платежа показывает другие
+    // кнопки), и запомненные при открытии элементы уже не в документе.
+    const focusables = () => container.querySelectorAll(focusableSelector);
 
     // Установить фокус на первый элемент
-    firstElement?.focus();
+    focusables()[0]?.focus();
 
     const handleTab = (e) => {
       if (e.key !== 'Tab') return;
+      const focusableElements = focusables();
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+      if (!firstElement) return;
+
+      if (!container.contains(document.activeElement)) {
+        e.preventDefault();
+        firstElement.focus();
+        return;
+      }
 
       if (e.shiftKey) {
         // Shift + Tab
@@ -82,7 +93,7 @@ export function useEscapeKey(callback, isActive = true) {
     if (!isActive) return;
 
     const handleEscape = (e) => {
-      if (e.key === 'Escape') {
+      if (e.key === 'Escape' && typeof callback === 'function') {
         callback();
       }
     };

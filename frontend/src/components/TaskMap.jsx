@@ -242,10 +242,6 @@ export const TaskMap = ({
             const isSelected = task.id === selectedTaskId;
             const emoji = CATEGORY_ICONS[task.category] || '📌';
             const priceText = task.budget ? `${Number(task.budget).toLocaleString('ru-RU')} ₽` : 'Договорная';
-            const distance = userLocation
-                ? calculateDistance(userLocation[0], userLocation[1], task.latitude, task.longitude)
-                : null;
-
             const placemark = new window.ymaps.Placemark(
                 [task.latitude, task.longitude],
                 {

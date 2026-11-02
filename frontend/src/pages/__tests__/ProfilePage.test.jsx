@@ -146,4 +146,24 @@ describe('ProfilePage', () => {
     expect(JSON.parse(options.body)).toMatchObject({ name: 'Игорь Волков', skills: '["React","Node.js"]' });
     await waitFor(() => expect(onUpdateUser).toHaveBeenCalled());
   });
+
+  it('?topup и ?return: окно пополнения с нужной суммой, чужой адрес возврата игнорируется', async () => {
+    mockApi();
+    renderPage({ url: '/profile?tab=wallet&topup=1500&return=//evil.example' });
+
+    const dialog = await screen.findByRole('dialog', { name: 'Пополнение баланса' });
+    expect(within(dialog).getByLabelText('Сумма пополнения (₽)')).toHaveValue(1500);
+    // Подсказка про возврат к заданию появляется только для своего адреса.
+    expect(within(dialog).queryByText(/вернём вас к заданию/)).not.toBeInTheDocument();
+  });
+
+  it('?return со своим адресом показывает подсказку о возврате к заданию', async () => {
+    mockApi();
+    renderPage({ url: '/profile?tab=wallet&topup=50&return=/tasks/14' });
+
+    const dialog = await screen.findByRole('dialog', { name: 'Пополнение баланса' });
+    // Меньше минимального пополнения не предлагаем.
+    expect(within(dialog).getByLabelText('Сумма пополнения (₽)')).toHaveValue(100);
+    expect(within(dialog).getByText(/вернём вас к заданию/)).toBeInTheDocument();
+  });
 });

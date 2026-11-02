@@ -50,7 +50,7 @@ export default function AuthModal({ isOpen, mode, onClose, onLoginSuccess }) {
         body: JSON.stringify({ email: forgotEmail.trim() }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || 'Не удалось отправить письмо');
+      if (!res.ok) throw new Error(apiErrorMessage(data, 'Не удалось отправить письмо'));
       addToast(data.message || 'Письмо со ссылкой отправлено', 'success');
       // В dev-режиме без SMTP бэкенд возвращает ссылку прямо в ответе
       if (data.dev_reset_link) setForgotLink(data.dev_reset_link);

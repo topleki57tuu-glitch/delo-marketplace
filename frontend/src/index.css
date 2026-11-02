@@ -122,11 +122,8 @@
     --color-accent-bright: #6366f1; /* hover акцентных кнопок и активные ссылки */
     --color-success: #10b981;
     --color-danger: #ef4444;
-    /* Статус «в работе». Токена не было, а ChatsDrawer использует сразу три
-       производных — bg-warning/10, text-warning, border-warning/30. Ни одно
-       не генерировалось: плашка «В работе» оставалась без фона, без рамки и
-       с унаследованным цветом, тогда как соседняя «Завершён» (success)
-       выглядела как задумано. */
+    /* Статус «в работе» (bg-warning/10, text-warning, border-warning/30).
+       Без токена Tailwind эти классы молча не генерирует. */
     --color-warning: #f59e0b;
     --color-accent-glow: rgba(79, 70, 229, 0.35);
 

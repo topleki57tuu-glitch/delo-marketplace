@@ -5,7 +5,7 @@ import { EmojiPicker } from '../../components/EmojiPicker';
 import { IconArrowRight, IconRefresh, IconLink, IconSmile } from '../../components/icons.jsx';
 import { QUICK_TEMPLATES } from './chatUtils.js';
 
-export default function ChatComposer({ room }) {
+export default function ChatComposer({ room, side = 'specialist' }) {
   const { messageText, setMessageText, uploadingFile, fileInputRef, handleSendMessage, handleInputChange, handleFileSelect } = room;
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const emojiPickerRef = useRef(null);
@@ -36,7 +36,7 @@ export default function ChatComposer({ room }) {
     <>
     <div className="px-3 sm:px-4 pt-2.5 border-t border-slate-200 dark:border-slate-700/70">
       <div className="flex gap-2 overflow-x-auto no-scrollbar pb-0.5" role="group" aria-label="Быстрые фразы">
-        {QUICK_TEMPLATES.map((template, idx) => (
+        {(QUICK_TEMPLATES[side] || QUICK_TEMPLATES.specialist).map((template, idx) => (
           <button
             key={idx}
             type="button"

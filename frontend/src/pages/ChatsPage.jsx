@@ -18,12 +18,26 @@ export default function ChatsPage({ user, token, onOpenAuth }) {
   const { addToast } = useToast();
 
   const [activeTaskId, setActiveTaskId] = useState(initialTaskId ? parseInt(initialTaskId, 10) : null);
-  const [chats, setChats] = useState([]);
+  const [rawChats, setChats] = useState([]);
   const [loadingChats, setLoadingChats] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [filter, setFilter] = useState('all'); // all, active, completed
 
   const room = useChatRoom({ activeTaskId, token, user });
+
+  // Список чатов обновляется раз в 30 секунд, а открытую переписку сервер
+  // отмечает прочитанной сразу. Чтобы счётчик и превью последнего сообщения
+  // не отставали от того, что видно на экране, открытый чат берём из комнаты.
+  const lastRoomMessage = room.messages[room.messages.length - 1];
+  const chats = rawChats.map((c) => {
+    if (c.task_id !== activeTaskId) return c;
+    const fresh = { ...c, unread_count: 0 };
+    if (lastRoomMessage && Number(lastRoomMessage.task_id) === Number(activeTaskId)) {
+      fresh.last_message = lastRoomMessage.text;
+      fresh.last_message_time = lastRoomMessage.created_at;
+    }
+    return fresh;
+  });
 
   // Load user's chats with metadata
   useEffect(() => {
@@ -51,10 +65,12 @@ export default function ChatsPage({ user, token, onOpenAuth }) {
 
     loadChats();
 
-    // Refresh chats every 30 seconds for unread count update
+    // Список (и счётчики непрочитанного) обновляем раз в 30 секунд. В
+    // зависимостях — id, а не весь user: App перечитывает профиль каждые
+    // 5 секунд, и эффект перезапускался, запрашивая /chats каждые 5 секунд.
     const interval = setInterval(loadChats, 30000);
     return () => clearInterval(interval);
-  }, [token, user]);
+  }, [token, user?.id]);
 
   const counts = {
     all: chats.length,

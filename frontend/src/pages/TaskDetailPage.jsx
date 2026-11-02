@@ -24,8 +24,9 @@ import ResponsesList from './task/ResponsesList.jsx';
 import ReviewDialog from './task/ReviewDialog.jsx';
 import { DisputeNotice, SafeDealNote, TaskDescription, TaskInfo, TaskReviews } from './task/TaskSections.jsx';
 import { CATEGORY_ICONS, STATUS_META, formatDate, formatMoney } from './task/taskDetailShared.jsx';
+import { apiErrorMessage } from '../utils/apiError';
 
-export default function TaskDetailPage({ user, token, onOpenAuth, onOpenChat }) {
+export default function TaskDetailPage({ user, token, onOpenAuth }) {
   const { taskId } = useParams();
   const { addToast } = useToast();
 
@@ -42,6 +43,12 @@ export default function TaskDetailPage({ user, token, onOpenAuth, onOpenChat }) 
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [taskReviews, setTaskReviews] = useState([]);
   const [canReview, setCanReview] = useState(false);
+
+  // Для запроса спора нужны только id и права зрителя, а не весь объект user:
+  // App перечитывает профиль каждые 5 секунд, и зависимость от user
+  // перезагружала бы страницу задания при каждом опросе.
+  const viewerId = user?.id;
+  const viewerIsAdmin = !!user?.is_admin;
 
   const fetchTaskDetails = useCallback(async () => {
     try {
@@ -63,14 +70,19 @@ export default function TaskDetailPage({ user, token, onOpenAuth, onOpenChat }) 
 
       if (token) {
         const auth = { headers: { Authorization: `Bearer ${token}` } };
+        // Спор бывает только у задания с исполнителем, а смотреть его могут
+        // участники сделки и арбитры (app/api/disputes.py). Остальным запрос
+        // не отправляем: раньше он возвращал 403 и сыпал ошибки в консоль.
+        const canSeeDispute =
+          data.executor_id != null &&
+          (viewerId === data.customer_id || viewerId === data.executor_id || viewerIsAdmin);
         const [respRes, dispRes, revRes] = await Promise.all([
           fetch(`/tasks/${taskId}/responses`, auth),
-          fetch(`/tasks/${taskId}/dispute`, auth),
+          canSeeDispute ? fetch(`/tasks/${taskId}/dispute`, auth) : Promise.resolve(null),
           data.status === 'completed' ? fetch(`/tasks/${taskId}/reviews`, auth) : Promise.resolve(null),
         ]);
         if (respRes.ok) setResponses(await respRes.json());
-        // Информация о споре доступна участникам сделки и арбитрам
-        setDispute(dispRes.ok ? (await dispRes.json()).dispute || null : null);
+        setDispute(dispRes && dispRes.ok ? (await dispRes.json()).dispute || null : null);
         if (revRes && revRes.ok) {
           const revData = await revRes.json();
           setTaskReviews(revData.reviews || []);
@@ -87,7 +99,7 @@ export default function TaskDetailPage({ user, token, onOpenAuth, onOpenChat }) 
       setStatus((s) => (s === 'ready' ? s : 'error'));
       addToast('Не удалось загрузить задание', 'error');
     }
-  }, [taskId, token]);
+  }, [taskId, token, viewerId, viewerIsAdmin]);
 
   useEffect(() => {
     fetchTaskDetails();
@@ -104,7 +116,7 @@ export default function TaskDetailPage({ user, token, onOpenAuth, onOpenChat }) 
         body: JSON.stringify({ rating, comment }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.detail || 'Ошибка при отправке отзыва');
+      if (!res.ok) throw new Error(apiErrorMessage(data, 'Ошибка при отправке отзыва'));
 
       addToast('Спасибо за отзыв!', 'success');
       setShowReviewModal(false);
@@ -163,12 +175,17 @@ export default function TaskDetailPage({ user, token, onOpenAuth, onOpenChat }) 
     window.setTimeout(() => responseFieldRef.current?.focus({ preventScroll: true }), 350);
   };
 
+  // Чат сделки — между заказчиком и назначенным исполнителем. Раньше кнопка
+  // открывала боковую панель со списком ВСЕХ заданий площадки (GET /tasks/)
+  // вместо переписки и показывалась автору ещё до выбора исполнителя.
+  const hasDealChat = isParticipant && task.executor_id != null;
+
   let heroAction = null;
-  if (isParticipant) {
+  if (hasDealChat) {
     heroAction = (
-      <button type="button" className="btn btn-cta w-full" onClick={() => onOpenChat?.(task.id)}>
+      <Link to={`/chats?taskId=${task.id}`} className="btn btn-cta w-full">
         <IconMessages /> Чат сделки
-      </button>
+      </Link>
     );
   } else if (canRespond) {
     heroAction = (
@@ -257,6 +274,7 @@ export default function TaskDetailPage({ user, token, onOpenAuth, onOpenChat }) 
               responses={responses}
               responsesCount={responsesCount}
               isAuthor={isAuthor}
+              balance={user?.balance}
               onChanged={fetchTaskDetails}
             />
 

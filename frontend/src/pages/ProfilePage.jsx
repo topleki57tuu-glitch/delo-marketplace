@@ -4,7 +4,7 @@
 // (пополнение, вывод, проверка личности) и состояние, которое должно
 // переживать переключение вкладок.
 import React, { useState, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useToast } from '../components/Toast';
 import { WithdrawModal } from '../components/WithdrawModal';
 import { PaymentModal } from '../components/PaymentModal';
@@ -31,6 +31,7 @@ import SettingsTab from './profile/SettingsTab.jsx';
 import WalletTab from './profile/WalletTab.jsx';
 import { usePasswordForm, usePendingPayments, useProfileForm } from './profile/profileHooks.js';
 import { VerifyDialog, rub } from './profile/profileShared.jsx';
+import { apiErrorMessage } from '../utils/apiError';
 
 export default function ProfilePage({ user, token, onUpdateUser, onLogout, onOpenAuth }) {
   const { addToast } = useToast();
@@ -40,7 +41,12 @@ export default function ProfilePage({ user, token, onUpdateUser, onLogout, onOpe
   const passwordForm = usePasswordForm({ token });
   const { checkingPayments, checkPendingPayments } = usePendingPayments({ token, onUpdateUser });
 
+  const navigate = useNavigate();
   const [showDepositModal, setShowDepositModal] = useState(false);
+  // Пополнение «по делу»: со страницы задания, когда не хватило денег на
+  // безопасную сделку, приходят ?topup=<сумма>&return=/tasks/<id>. Окно
+  // открывается с этой суммой, а после зачисления возвращает к заданию.
+  const [depositPreset, setDepositPreset] = useState(null);
   const [showWithdrawModal, setShowWithdrawModal] = useState(false);
   // Растёт, когда создана заявка на вывод: по нему вкладка «Кошелёк»
   // перечитывает список заявок (окно вывода открывается и из шапки).
@@ -66,6 +72,31 @@ export default function ProfilePage({ user, token, onUpdateUser, onLogout, onOpe
     if (id === 'profile') next.delete('tab');
     else next.set('tab', id);
     setSearchParams(next, { replace: true });
+  };
+
+  const topupParam = searchParams.get('topup');
+  useEffect(() => {
+    if (!user || topupParam === null) return;
+    const amount = Math.min(Math.max(parseInt(topupParam, 10) || 0, 100), 1000000);
+    const back = searchParams.get('return');
+    // Только свой адрес: «//evil.example» браузер понял бы как чужой сайт.
+    const safeBack = back && back.startsWith('/') && !back.startsWith('//') && !back.startsWith('/\\') ? back : null;
+    setDepositPreset({ amount, returnTo: safeBack });
+    setShowDepositModal(true);
+    const next = new URLSearchParams(searchParams);
+    next.delete('topup');
+    next.delete('return');
+    setSearchParams(next, { replace: true });
+  }, [user?.id, topupParam]);
+
+  const closeDepositModal = () => {
+    setShowDepositModal(false);
+    setDepositPreset(null);
+  };
+
+  const handleDepositSuccess = () => {
+    if (onUpdateUser) onUpdateUser();
+    if (depositPreset?.returnTo) navigate(depositPreset.returnTo);
   };
 
   const auth = token ? { Authorization: `Bearer ${token}` } : {};
@@ -100,7 +131,7 @@ export default function ProfilePage({ user, token, onUpdateUser, onLogout, onOpe
         }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.detail || 'Ошибка отправки заявки');
+      if (!res.ok) throw new Error(apiErrorMessage(data, 'Ошибка отправки заявки'));
 
       addToast('Заявка на проверку отправлена', 'success');
       setShowVerifyModal(false);
@@ -230,7 +261,15 @@ export default function ProfilePage({ user, token, onUpdateUser, onLogout, onOpe
         )}
 
         {tab === 'pro' && isSpecialist && (
-          <ProTab user={user} token={token} onUpdateUser={onUpdateUser} onOpenDeposit={() => setShowDepositModal(true)} />
+          <ProTab
+            user={user}
+            token={token}
+            onUpdateUser={onUpdateUser}
+            onOpenDeposit={(amount) => {
+              setDepositPreset(amount > 0 ? { amount: Math.max(100, Math.ceil(amount)), returnTo: null } : null);
+              setShowDepositModal(true);
+            }}
+          />
         )}
 
         {tab === 'settings' && <SettingsTab user={user} passwordForm={passwordForm} onLogout={onLogout} />}
@@ -246,7 +285,13 @@ export default function ProfilePage({ user, token, onUpdateUser, onLogout, onOpe
       />
 
       {showDepositModal && (
-        <PaymentModal onClose={() => setShowDepositModal(false)} onSuccess={onUpdateUser} token={token} />
+        <PaymentModal
+          onClose={closeDepositModal}
+          onSuccess={handleDepositSuccess}
+          token={token}
+          defaultAmount={depositPreset?.amount}
+          note={depositPreset?.returnTo ? 'После зачисления вернём вас к заданию — останется выбрать исполнителя.' : null}
+        />
       )}
 
       {showWithdrawModal && (

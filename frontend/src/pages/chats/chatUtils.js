@@ -50,29 +50,54 @@ export function formatRelativeTime(dateStr) {
   }
 }
 
-export const QUICK_TEMPLATES = [
-  'Здравствуйте! Готов обсудить детали задачи.',
-  'Подскажите, пожалуйста, какие сроки для вас в приоритете?',
-  'Уточните, пожалуйста, есть ли готовое ТЗ или примеры?',
-  'Всё понятно, приступаю к выполнению работы!',
-  'Отправил предварительные результаты на согласование.'
-];
+// Быстрые фразы — свои у каждой стороны сделки: раньше заказчику предлагались
+// фразы исполнителя («Приступаю к выполнению работы!»).
+export const QUICK_TEMPLATES = {
+  specialist: [
+    'Здравствуйте! Готов обсудить детали задачи.',
+    'Подскажите, пожалуйста, какие сроки для вас в приоритете?',
+    'Уточните, пожалуйста, есть ли готовое ТЗ или примеры?',
+    'Всё понятно, приступаю к выполнению работы!',
+    'Отправил предварительные результаты на согласование.',
+  ],
+  customer: [
+    'Здравствуйте! Когда сможете приступить?',
+    'Сколько времени займёт работа?',
+    'Нужно ли что-то подготовить с моей стороны?',
+    'Пришлите, пожалуйста, промежуточный результат.',
+    'Спасибо, всё отлично! Принимаю работу.',
+  ],
+};
+
+// Один AudioContext на вкладку. Раньше на каждое входящее сообщение
+// создавался новый и не закрывался: браузеры ограничивают их число, и в
+// долгой переписке создание начинало падать (а с ним — обработка сообщения).
+let audioContext = null;
 
 export function playNotificationSound() {
   // Простой beep звук (можно заменить на загрузку audio файла)
-  const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-  const oscillator = audioContext.createOscillator();
-  const gainNode = audioContext.createGain();
+  const AudioCtx = typeof window !== 'undefined' && (window.AudioContext || window.webkitAudioContext);
+  if (!AudioCtx) return;
+  try {
+    if (!audioContext || audioContext.state === 'closed') audioContext = new AudioCtx();
+    // Без жеста пользователя контекст может стартовать «на паузе».
+    if (audioContext.state === 'suspended') audioContext.resume().catch(() => {});
 
-  oscillator.connect(gainNode);
-  gainNode.connect(audioContext.destination);
+    const oscillator = audioContext.createOscillator();
+    const gainNode = audioContext.createGain();
 
-  oscillator.frequency.value = 800;
-  oscillator.type = 'sine';
+    oscillator.connect(gainNode);
+    gainNode.connect(audioContext.destination);
 
-  gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
-  gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
+    oscillator.frequency.value = 800;
+    oscillator.type = 'sine';
 
-  oscillator.start(audioContext.currentTime);
-  oscillator.stop(audioContext.currentTime + 0.3);
+    gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
+
+    oscillator.start(audioContext.currentTime);
+    oscillator.stop(audioContext.currentTime + 0.3);
+  } catch {
+    // Звук — украшение: без него переписка работает так же.
+  }
 }

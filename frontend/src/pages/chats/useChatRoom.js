@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useToast } from '../../components/Toast';
 
 import { playNotificationSound } from './chatUtils.js';
+import { apiErrorMessage } from '../../utils/apiError';
 
 export default function useChatRoom({ activeTaskId, token, user }) {
   const { addToast } = useToast();
@@ -20,27 +21,66 @@ export default function useChatRoom({ activeTaskId, token, user }) {
   const typingTimeoutRef = useRef(null);
   const fileInputRef = useRef(null);
 
+  // Сообщения, пришедшие по WebSocket, сервер считает непрочитанными: он
+  // отмечает прочитанным только то, что отдал в истории при открытии чата.
+  // Поэтому раньше ответ, прочитанный «вживую», висел в счётчике
+  // непрочитанных до следующего открытия переписки.
+  const markReadTimerRef = useRef(null);
+  const pendingReadRef = useRef(false);
+
   // Load messages & setup WebSocket for active task
   useEffect(() => {
     if (!activeTaskId || !token) return;
 
+    // Переписку предыдущего чата не показываем, пока грузится новая.
+    setMessages([]);
+    setTypingUsers({});
+
     let ws = null;
-    const fetchHistory = async () => {
-      setLoadingMessages(true);
+    let disposed = false;
+    let reconnectTimer = null;
+    let attempt = 0;
+
+    const fetchHistory = async ({ silent = false } = {}) => {
+      if (!silent) setLoadingMessages(true);
       try {
         const res = await fetch(`/tasks/${activeTaskId}/messages`, {
           headers: { Authorization: `Bearer ${token}` },
         });
-        if (res.ok) {
+        if (res.ok && !disposed) {
           const data = await res.json();
           setMessages(data);
+          pendingReadRef.current = false;
         }
       } catch (err) {
         console.error(err);
       } finally {
-        setLoadingMessages(false);
+        if (!silent && !disposed) setLoadingMessages(false);
       }
     };
+
+    const markRead = () => {
+      if (disposed) return;
+      pendingReadRef.current = false;
+      fetch(`/tasks/${activeTaskId}/messages/read`, {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${token}` },
+      }).catch(() => {});
+    };
+
+    const scheduleMarkRead = () => {
+      if (document.visibilityState !== 'visible') {
+        pendingReadRef.current = true;
+        return;
+      }
+      clearTimeout(markReadTimerRef.current);
+      markReadTimerRef.current = setTimeout(markRead, 600);
+    };
+
+    const onVisible = () => {
+      if (document.visibilityState === 'visible' && pendingReadRef.current) markRead();
+    };
+    document.addEventListener('visibilitychange', onVisible);
 
     fetchHistory();
 
@@ -49,11 +89,20 @@ export default function useChatRoom({ activeTaskId, token, user }) {
     const host = window.location.host;
     const wsUrl = `${protocol}//${host}/ws/tasks/${activeTaskId}`;
 
-    try {
-      ws = new WebSocket(wsUrl);
+    const connect = () => {
+      try {
+        ws = new WebSocket(wsUrl);
+      } catch (e) {
+        console.error('WS Connection error:', e);
+        return;
+      }
+      wsRef.current = ws;
       ws.onopen = () => {
         setWsConnected(true);
         ws.send(JSON.stringify({ type: 'auth', token }));
+        // После обрыва дочитываем то, что пришло, пока связи не было.
+        if (attempt > 0) fetchHistory({ silent: true });
+        attempt = 0;
       };
 
       ws.onmessage = (event) => {
@@ -79,11 +128,13 @@ export default function useChatRoom({ activeTaskId, token, user }) {
             return;
           }
 
-          // Обработка обычных сообщений
-          setMessages((prev) => [...prev, msg]);
+          // Обработка обычных сообщений. Своё сообщение могло уже попасть
+          // в список из ответа на отправку — дубль по id не добавляем.
+          setMessages((prev) => (msg.id != null && prev.some((m) => m.id === msg.id) ? prev : [...prev, msg]));
 
           // Звуковое уведомление для входящих сообщений
           if (msg.sender_id !== user.id) {
+            scheduleMarkRead();
             playNotificationSound();
           }
         } catch (e) {
@@ -91,13 +142,27 @@ export default function useChatRoom({ activeTaskId, token, user }) {
         }
       };
 
-      ws.onclose = () => setWsConnected(false);
-      wsRef.current = ws;
-    } catch (e) {
-      console.error('WS Connection error:', e);
-    }
+      ws.onclose = (event) => {
+        setWsConnected(false);
+        // 1008 — сервер отказал (нет доступа к сделке или токен устарел):
+        // повтор с тем же токеном ничего не даст. После обновления токена
+        // эффект перезапустится сам — он зависит от `token`.
+        if (disposed || event.code === 1008) return;
+        // Связь рвётся при уходе телефона в сон и перезапуске сервера.
+        // Раньше чат оставался в «подключение...» навсегда, а новые сообщения
+        // переставали приходить до повторного открытия переписки.
+        attempt += 1;
+        reconnectTimer = setTimeout(connect, Math.min(1000 * 2 ** (attempt - 1), 15000));
+      };
+    };
+
+    connect();
 
     return () => {
+      disposed = true;
+      clearTimeout(reconnectTimer);
+      clearTimeout(markReadTimerRef.current);
+      document.removeEventListener('visibilitychange', onVisible);
       if (ws) ws.close();
     };
   }, [activeTaskId, token]);
@@ -148,8 +213,16 @@ export default function useChatRoom({ activeTaskId, token, user }) {
         body: JSON.stringify({ text: textToSend }),
       });
 
-      if (!res.ok) throw new Error('Не удалось отправить сообщение');
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(apiErrorMessage(data, 'Не удалось отправить сообщение'));
+      // Показываем отправленное сразу, не дожидаясь рассылки по WebSocket:
+      // без связи сообщение сохранялось, но в переписке не появлялось.
+      if (data && data.id != null) {
+        setMessages((prev) => (prev.some((m) => m.id === data.id) ? prev : [...prev, data]));
+      }
     } catch (err) {
+      // Текст не теряем: возвращаем его в поле, если там ещё ничего не набрали.
+      setMessageText((current) => current || textToSend);
       addToast(err.message, 'error');
     }
   };
@@ -219,7 +292,7 @@ export default function useChatRoom({ activeTaskId, token, user }) {
       });
       const uploaded = await uploadRes.json().catch(() => ({}));
       if (!uploadRes.ok) {
-        throw new Error(uploaded.detail || 'Не удалось загрузить файл');
+        throw new Error(apiErrorMessage(uploaded, 'Не удалось загрузить файл'));
       }
 
       const res = await fetch(`/tasks/${activeTaskId}/messages`, {
@@ -236,9 +309,12 @@ export default function useChatRoom({ activeTaskId, token, user }) {
         }),
       });
 
+      const sent = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const detail = await res.json().catch(() => ({}));
-        throw new Error(detail.detail || 'Не удалось отправить файл');
+        throw new Error(apiErrorMessage(sent, 'Не удалось отправить файл'));
+      }
+      if (sent && sent.id != null) {
+        setMessages((prev) => (prev.some((m) => m.id === sent.id) ? prev : [...prev, sent]));
       }
 
       setMessageText('');
