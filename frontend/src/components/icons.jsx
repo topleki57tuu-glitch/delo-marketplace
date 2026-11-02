@@ -63,9 +63,11 @@ import {
   Package,
   Palette,
   PartyPopper,
+  Pause,
   Pencil,
   PenLine,
   Pin,
+  Play,
   Plus,
   Receipt,
   Recycle,
@@ -75,6 +77,7 @@ import {
   Search,
   Settings,
   Shield,
+  ShieldCheck,
   ShoppingBag,
   ShoppingCart,
   SlidersHorizontal,
@@ -148,6 +151,8 @@ export const IconLogout = createIcon(LogOut);
 
 /* --- Действия --- */
 export const IconCheck = createIcon(Check);
+export const IconPause = createIcon(Pause);
+export const IconPlay = createIcon(Play);
 export const IconArrowRight = createIcon(ArrowRight);
 export const IconArrowLeft = createIcon(ArrowLeft);
 export const IconClose = createIcon(X);
@@ -211,6 +216,7 @@ export const IconEye = createIcon(Eye);
 export const IconSmile = createIcon(Smile);
 export const IconLock = createIcon(Lock);
 export const IconKey = createIcon(Key);
+export const IconShieldCheck = createIcon(ShieldCheck);
 
 /* --- Связь и файлы --- */
 export const IconBell = createIcon(Bell);

@@ -1,0 +1,593 @@
+/*
+ * Анимации главной (HomePage и home/*).
+ *
+ * Всё движение — только при prefers-reduced-motion: no-preference. При
+ * «уменьшить движение» в настройках системы страница выглядит как раньше,
+ * статично. Анимируются translate/scale/transform и opacity: их браузер
+ * считает на видеокарте, и вёрстка от них не прыгает.
+ *
+ * Файл без @layer — специально: его правила должны перебивать утилиты
+ * Tailwind (они в @layer utilities), например фон переливающегося текста
+ * или transition карточек.
+ *
+ * Появление при прокрутке: у блока атрибут data-reveal, motion.js ставит
+ * ему data-inview, когда до блока докрутили. Анимируются элементы .home-rv
+ * внутри блока (или сам блок, если .home-rv стоит на нём). Задержка — --d.
+ * fill-mode backwards: после анимации действуют обычные стили, поэтому
+ * hover-сдвиги карточек работают без конфликта с появлением.
+ */
+
+:root {
+  --home-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --home-ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+}
+
+/* ---------- Ключевые кадры ---------- */
+@keyframes home-rise {
+  from { opacity: 0; translate: 0 22px; }
+  to { opacity: 1; translate: 0 0; }
+}
+@keyframes home-side {
+  from { opacity: 0; translate: 28px 0; }
+  to { opacity: 1; translate: 0 0; }
+}
+@keyframes home-zoom {
+  from { opacity: 0; scale: 0.96; }
+  to { opacity: 1; scale: 1; }
+}
+@keyframes home-pop {
+  0% { opacity: 0; scale: 0.5; }
+  65% { opacity: 1; scale: 1.12; }
+  100% { opacity: 1; scale: 1; }
+}
+@keyframes home-card-in {
+  from { opacity: 0; translate: 28px 14px; scale: 0.96; }
+  to { opacity: 1; translate: 0 0; scale: 1; }
+}
+@keyframes home-drift {
+  from { transform: translate3d(-2.5%, -1.5%, 0) scale(1); }
+  to { transform: translate3d(2.5%, 2%, 0) scale(1.08); }
+}
+@keyframes home-breathe {
+  from { transform: scale(0.9); opacity: 0.6; }
+  to { transform: scale(1.08); opacity: 1; }
+}
+@keyframes home-float {
+  0%, 100% { translate: 0 0; }
+  50% { translate: 0 -8px; }
+}
+@keyframes home-text-shimmer {
+  from { background-position: 200% 50%; }
+  to { background-position: 0% 50%; }
+}
+@keyframes home-draw-1 {
+  from { stroke-dashoffset: 1; }
+  to { stroke-dashoffset: 0; }
+}
+@keyframes home-draw-10 {
+  from { stroke-dashoffset: 10; }
+  to { stroke-dashoffset: 0; }
+}
+@keyframes home-draw-24 {
+  from { stroke-dashoffset: 24; }
+  to { stroke-dashoffset: 0; }
+}
+@keyframes home-bar {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+@keyframes home-num {
+  0% { color: var(--home-num-dim); }
+  40% { color: var(--home-num-lit); }
+  100% { color: var(--home-num-end); }
+}
+@keyframes home-ring {
+  0% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.45); }
+  70%, 100% { box-shadow: 0 0 0 8px rgba(99, 102, 241, 0); }
+}
+@keyframes home-ring-green {
+  0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.45); }
+  100% { box-shadow: 0 0 0 14px rgba(16, 185, 129, 0); }
+}
+@keyframes home-flash {
+  0% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.5); }
+  100% { box-shadow: 0 0 0 12px rgba(99, 102, 241, 0); }
+}
+@keyframes home-badge {
+  0%, 100% { scale: 1; }
+  30% { scale: 1.12; }
+}
+@keyframes home-lock-in {
+  0% { opacity: 0; translate: 0 -10px; scale: 0.6; }
+  60% { opacity: 1; translate: 0 2px; scale: 1.1; }
+  100% { opacity: 1; translate: 0 0; scale: 1; }
+}
+@keyframes home-deal-in {
+  from { opacity: 0; translate: 0 8px; }
+  to { opacity: 1; translate: 0 0; }
+}
+@keyframes home-shackle {
+  0%, 100% { translate: 0 0; }
+  35% { translate: 0 -3px; }
+  70% { translate: 0 0.6px; }
+}
+@keyframes home-scale-tilt {
+  0%, 100% { rotate: 0deg; }
+  25% { rotate: -11deg; }
+  55% { rotate: 8deg; }
+  80% { rotate: -3deg; }
+}
+@keyframes home-bubble {
+  0%, 100% { scale: 1; rotate: 0deg; }
+  40% { scale: 1.18; rotate: -7deg; }
+}
+@keyframes home-wiggle {
+  0%, 100% { rotate: 0deg; scale: 1; }
+  30% { rotate: -12deg; scale: 1.15; }
+  60% { rotate: 8deg; scale: 1.1; }
+}
+@keyframes home-ping {
+  75%, 100% { scale: 2.6; opacity: 0; }
+}
+@keyframes home-skeleton {
+  to { translate: 100% 0; }
+}
+@keyframes home-task-new {
+  0% { opacity: 0; translate: 0 -14px; box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+  25% { opacity: 1; translate: 0 0; box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.35); }
+  100% { opacity: 1; translate: 0 0; box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+}
+@keyframes home-shine {
+  0% { translate: -160% 0; }
+  24%, 100% { translate: 260% 0; }
+}
+@keyframes home-blob-a {
+  to { transform: translate3d(5rem, 3rem, 0) scale(1.15); }
+}
+@keyframes home-blob-b {
+  to { transform: translate3d(-6rem, -2rem, 0) scale(1.1); }
+}
+@keyframes home-orb-a {
+  to { transform: translate3d(9rem, 2.5rem, 0) scale(1.2); }
+}
+@keyframes home-orb-b {
+  to { transform: translate3d(-8rem, -3rem, 0) scale(1.15); }
+}
+
+/* ---------- Статичные стили (действуют и без анимаций) ---------- */
+
+/* Маркер под «любой задачи». */
+.home-hl-mark {
+  position: absolute;
+  left: -2%;
+  bottom: -0.14em;
+  width: 104%;
+  height: 0.3em;
+  overflow: visible;
+  pointer-events: none;
+}
+.home-hl-mark path {
+  fill: none;
+  stroke: #f59e0b;
+  stroke-opacity: 0.6;
+  stroke-width: 3;
+  stroke-linecap: round;
+}
+
+/* Подсветка сетки за курсором: видна только с мышью и анимациями. */
+.home-spotlight,
+.home-spot-glow {
+  display: none;
+}
+
+/* «Четыре шага»: полоска сверху карточки и номер. */
+.home-step-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, #6366f1, #a78bfa);
+  transform-origin: left center;
+}
+.home-step-num {
+  --home-num-dim: #e0e7ff;
+  --home-num-lit: #4f46e5;
+  --home-num-end: #a5b4fc;
+  color: var(--home-num-end);
+}
+.dark .home-step-num {
+  --home-num-dim: rgba(99, 102, 241, 0.25);
+  --home-num-lit: #a5b4fc;
+  --home-num-end: rgba(129, 140, 248, 0.6);
+}
+
+/* Плашка переключателя «Заказчикам / Исполнителям». */
+.home-tab-pill {
+  position: absolute;
+  top: 0.25rem;
+  bottom: 0.25rem;
+  left: 0;
+  border-radius: 0.5rem;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08), 0 1px 3px rgba(15, 23, 42, 0.06);
+  transition: transform 0.4s var(--home-ease-out), width 0.4s var(--home-ease-out);
+}
+.dark .home-tab-pill {
+  background: #334155;
+}
+
+/* Галочки в «Деньги защищены»: путь рисуется штрихом. */
+.home-check path {
+  stroke-dasharray: 24;
+}
+
+/* Карточки категорий и заданий: transition вместо transition-all Tailwind. */
+.home-cat,
+.home-lift {
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    background-color 0.2s ease,
+    translate 0.3s var(--home-ease-out),
+    transform 0.3s var(--home-ease-out);
+}
+.home-cat {
+  isolation: isolate;
+}
+/* Мягкий блик за курсором. */
+.home-cat::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  background: radial-gradient(220px circle at var(--gx, 50%) var(--gy, 50%), rgba(99, 102, 241, 0.12), transparent 70%);
+}
+.dark .home-cat::after {
+  background: radial-gradient(220px circle at var(--gx, 50%) var(--gy, 50%), rgba(129, 140, 248, 0.16), transparent 70%);
+}
+
+/* Кольцо вспышки у значка — на ::after, чтобы не перезапускать анимацию
+   появления самого значка, когда курсор уходит. */
+.home-trust-ic {
+  position: relative;
+}
+.home-trust-ic::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+/* «Прямо сейчас» и метка свежего задания. */
+.home-live-dot {
+  position: relative;
+  display: inline-block;
+  flex-shrink: 0;
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 9999px;
+  background: #10b981;
+}
+
+.home-skeleton {
+  position: relative;
+  overflow: hidden;
+}
+
+/* Плюсик FAQ: поворот по состоянию, а не по [open] — при закрытии
+   FaqItem сразу ставит .is-closing, пока ответ ещё сворачивается. */
+.home-faq[open]:not(.is-closing) .home-faq-plus {
+  rotate: 45deg;
+}
+
+/* Мягкие пятна света в «Для специалистов» и финальном баннере. */
+.home-blob,
+.home-orb {
+  position: absolute;
+  border-radius: 9999px;
+  pointer-events: none;
+  filter: blur(64px);
+}
+.home-blob {
+  width: 22rem;
+  height: 22rem;
+}
+.home-blob-indigo {
+  top: -9rem;
+  left: -7rem;
+  background: #a5b4fc;
+  opacity: 0.45;
+}
+.home-blob-amber {
+  bottom: -10rem;
+  right: -6rem;
+  background: #fcd34d;
+  opacity: 0.35;
+}
+.dark .home-blob-indigo {
+  background: #6366f1;
+  opacity: 0.22;
+}
+.dark .home-blob-amber {
+  background: #f59e0b;
+  opacity: 0.1;
+}
+.home-orb {
+  width: 18rem;
+  height: 18rem;
+}
+.home-orb-a {
+  top: -8rem;
+  left: 8%;
+  background: #a5b4fc;
+  opacity: 0.35;
+}
+.home-orb-b {
+  bottom: -9rem;
+  right: 10%;
+  background: #fbbf24;
+  opacity: 0.3;
+}
+
+.home-shine {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+/* ---------- Анимации: только если пользователь не просил меньше движения ---------- */
+@media (prefers-reduced-motion: no-preference) {
+  /* Первый экран: элементы поднимаются по очереди при загрузке. */
+  .home-in {
+    animation: home-rise 0.8s var(--home-ease-out) var(--d, 0ms) backwards;
+  }
+  .home-in-card {
+    animation-name: home-card-in;
+    animation-duration: 1s;
+  }
+
+  .home-drift {
+    animation: home-drift 24s var(--home-ease-in-out) infinite alternate;
+    will-change: transform;
+  }
+  .home-drift-slow {
+    animation: home-drift 32s var(--home-ease-in-out) infinite alternate;
+  }
+  .home-breathe {
+    animation: home-breathe 7s ease-in-out infinite alternate;
+    will-change: transform, opacity;
+  }
+  .home-float {
+    animation: home-float 7s ease-in-out infinite;
+  }
+  /* Первый экран за краем или вкладка в фоне — ничего не крутим. */
+  .home-hero[data-paused] *,
+  .home-hero[data-paused] *::after {
+    animation-play-state: paused !important;
+  }
+
+  .home-shimmer-text {
+    background-image: linear-gradient(90deg, #fcd34d 0%, #fb923c 25%, #fde68a 50%, #fb923c 75%, #fcd34d 100%);
+    background-size: 200% 100%;
+    animation: home-text-shimmer 9s linear infinite;
+  }
+  .home-hl-mark path {
+    stroke-dasharray: 1;
+    animation: home-draw-1 0.9s var(--home-ease-out) 0.85s backwards;
+  }
+
+  /* Пример сделки. */
+  .home-deal {
+    animation: home-deal-in 0.5s var(--home-ease-out) backwards;
+  }
+  .home-deal.is-leaving {
+    opacity: 0;
+    translate: 0 -6px;
+    transition: opacity 0.35s ease, translate 0.35s ease;
+  }
+  .home-check-pop,
+  .home-pop-in {
+    animation: home-pop 0.5s var(--home-ease-out) backwards;
+  }
+  .home-step-dot.is-next {
+    animation: home-ring 1.6s ease-out infinite;
+  }
+  .home-amount-frozen {
+    animation: home-ring-green 1.2s ease-out;
+  }
+  .home-badge-pulse {
+    animation: home-badge 1.2s ease-out;
+  }
+  .home-lock-in {
+    animation: home-lock-in 0.6s var(--home-ease-out) backwards;
+  }
+
+  /* Появление при прокрутке. */
+  [data-reveal]:not([data-inview]) .home-rv,
+  .home-rv[data-reveal]:not([data-inview]) {
+    opacity: 0;
+  }
+  [data-reveal][data-inview] .home-rv,
+  .home-rv[data-reveal][data-inview] {
+    animation: home-rise 0.7s var(--home-ease-out) var(--d, 0ms) backwards;
+  }
+  [data-reveal][data-inview] .home-rv-side {
+    animation-name: home-side;
+  }
+  .home-rv-zoom[data-reveal][data-inview] {
+    animation-name: home-zoom;
+  }
+
+  /* Полоса доверия: значки «выпрыгивают» по очереди, галочка в щите рисуется. */
+  [data-reveal][data-inview] .home-trust-ic {
+    animation: home-pop 0.6s var(--home-ease-out) calc(var(--d, 0ms) + 120ms) backwards;
+  }
+  .home-trust-shield .home-trust-ic path:last-child {
+    stroke-dasharray: 10;
+  }
+  [data-reveal][data-inview] .home-trust-shield .home-trust-ic path:last-child {
+    animation: home-draw-10 0.5s ease-out calc(var(--d, 0ms) + 550ms) backwards;
+  }
+
+  /* «Четыре шага»: полоска заполняется, номер загорается — по цепочке. */
+  [data-reveal]:not([data-inview]) .home-step-bar {
+    transform: scaleX(0);
+  }
+  [data-reveal][data-inview] .home-step-bar {
+    animation: home-bar 0.6s var(--home-ease-in-out) calc(var(--i, 0) * 0.45s + 0.3s) backwards;
+  }
+  [data-reveal][data-inview] .home-step-num {
+    animation: home-num 1.2s ease calc(var(--i, 0) * 0.45s + 0.6s) backwards;
+  }
+
+  /* «Деньги защищены»: галочки рисуются после появления пункта. */
+  [data-reveal]:not([data-inview]) .home-check path {
+    stroke-dashoffset: 24;
+  }
+  [data-reveal][data-inview] .home-check path {
+    animation: home-draw-24 0.5s ease-out calc(var(--d, 0ms) + 380ms) backwards;
+  }
+
+  /* Свежие задания. */
+  .home-live-dot::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: inherit;
+    animation: home-ping 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;
+  }
+  .home-skeleton::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    translate: -100% 0;
+    background: linear-gradient(90deg, transparent, rgba(148, 163, 184, 0.18), transparent);
+    animation: home-skeleton 1.4s ease-in-out infinite;
+  }
+  .home-task-new {
+    animation: home-task-new 1.6s var(--home-ease-out) backwards;
+  }
+
+  .home-blob-indigo {
+    animation: home-blob-a 16s ease-in-out infinite alternate;
+    will-change: transform;
+  }
+  .home-blob-amber {
+    animation: home-blob-b 19s ease-in-out infinite alternate;
+    will-change: transform;
+  }
+  .home-orb-a {
+    animation: home-orb-a 14s ease-in-out infinite alternate;
+    will-change: transform;
+  }
+  .home-orb-b {
+    animation: home-orb-b 17s ease-in-out infinite alternate;
+    will-change: transform;
+  }
+
+  /* Блик пробегает по кнопке раз в несколько секунд. */
+  .home-shine::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 1;
+    width: 55%;
+    pointer-events: none;
+    background: linear-gradient(100deg, transparent 0%, var(--home-shine, rgba(255, 255, 255, 0.6)) 50%, transparent 100%);
+    translate: -160% 0;
+    animation: home-shine 5.5s var(--home-ease-in-out) 2.2s infinite;
+  }
+  .home-shine-indigo {
+    --home-shine: rgba(99, 102, 241, 0.22);
+  }
+  .home-shine-indigo::after {
+    animation-delay: 3.4s;
+  }
+}
+
+/* Эффекты «за курсором» и наведения — только мышь: на телефоне :hover
+   «залипает» после касания. */
+@media (prefers-reduced-motion: no-preference) and (hover: hover) and (pointer: fine) {
+  .home-spotlight,
+  .home-spot-glow {
+    display: block;
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: var(--spot, 0);
+    transition: opacity 0.5s ease;
+  }
+  .home-spotlight {
+    background-image:
+      linear-gradient(rgba(165, 180, 252, 0.5) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(165, 180, 252, 0.5) 1px, transparent 1px);
+    background-size: 44px 44px;
+    -webkit-mask-image: radial-gradient(240px circle at var(--mx, 50%) var(--my, 50%), #000, transparent 75%);
+    mask-image: radial-gradient(240px circle at var(--mx, 50%) var(--my, 50%), #000, transparent 75%);
+  }
+  .home-spot-glow {
+    background: radial-gradient(440px circle at var(--mx, 50%) var(--my, 50%), rgba(129, 140, 248, 0.16), transparent 65%);
+  }
+  .home-card-tilt {
+    transform: perspective(1100px) rotateX(calc(var(--py, 0) * -4deg)) rotateY(calc(var(--px, 0) * 6deg));
+    transition: transform 0.6s var(--home-ease-out);
+  }
+
+  .home-cat:hover {
+    translate: 0 -4px;
+    transform: perspective(800px) rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg));
+  }
+  .home-cat:hover .home-cat-ic svg {
+    animation: home-wiggle 0.6s var(--home-ease-out);
+  }
+  .home-lift:hover {
+    translate: 0 -3px;
+  }
+
+  .home-trust-lock:hover .home-trust-ic path {
+    animation: home-shackle 0.6s var(--home-ease-out);
+  }
+  .home-trust-shield:hover .home-trust-ic::after {
+    animation: home-flash 0.8s ease-out;
+  }
+  .home-trust-shield:hover .home-trust-ic svg {
+    animation: home-bubble 0.6s var(--home-ease-out);
+  }
+  .home-trust-scale:hover .home-trust-ic svg {
+    animation: home-scale-tilt 0.9s var(--home-ease-out);
+  }
+  .home-trust-chat:hover .home-trust-ic svg {
+    animation: home-bubble 0.6s var(--home-ease-out);
+  }
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .home-cat:hover::after {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-tab-pill,
+  .home-faq-plus {
+    transition: none;
+  }
+}
+
+/* На печати всё видно сразу. */
+@media print {
+  .home-rv,
+  .home-in {
+    opacity: 1 !important;
+    animation: none !important;
+  }
+}
