@@ -165,7 +165,7 @@ python -c "import sentry_sdk; from app.core.error_tracking import init_sentry; i
 В Sentry должно появиться сообщение «ДЕЛО: проверка Sentry». Персональные
 данные (IP, заголовки, тела запросов, аргументы задач, почта в тексте ошибок)
 не отправляются — см. `backend/app/core/error_tracking.py`. На VPS —
-UPDATE_GUIDE.md, раздел «Мониторинг и уведомления».
+[UPDATE_GUIDE.md](UPDATE_GUIDE.md), раздел «Мониторинг и уведомления».
 
 ---
 
@@ -293,7 +293,7 @@ alembic upgrade head
 - [ ] Настроить backup PostgreSQL (cron) — на VPS: `bash scripts/backup.sh --install`
 - [ ] Настроить SSL сертификаты (Let's Encrypt)
 - [ ] Настроить firewall (открыть только 80, 443)
-- [ ] Настроить мониторинг — на VPS: `bash scripts/monitor.sh --setup` и внешняя проверка (UPDATE_GUIDE.md)
+- [ ] Настроить мониторинг — на VPS: `bash scripts/monitor.sh --setup` и внешняя проверка ([UPDATE_GUIDE.md](UPDATE_GUIDE.md))
 - [ ] Провести нагрузочное тестирование
 - [ ] Настроить CDN для статики (опционально)
 

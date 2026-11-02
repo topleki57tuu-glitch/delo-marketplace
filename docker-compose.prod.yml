@@ -53,7 +53,7 @@ x-backend-env: &backend-env
   # Куда возвращать пользователя после оплаты. Без переменной возврат
   # уходил на пустой путь и платёж не подтверждался автоматически.
   YOOMONEY_RETURN_PATH: ${YOOMONEY_RETURN_PATH:-/profile}
-  # Ошибки в Sentry — если задан SENTRY_DSN (UPDATE_GUIDE.md, «Мониторинг»).
+  # Ошибки в Sentry — если задан SENTRY_DSN (docs/UPDATE_GUIDE.md, «Мониторинг»).
   # Раньше переменная сюда не передавалась, и включить Sentry на VPS было
   # нельзя. Что уходит и почему без персональных данных —
   # backend/app/core/error_tracking.py. Трассировка производительности по

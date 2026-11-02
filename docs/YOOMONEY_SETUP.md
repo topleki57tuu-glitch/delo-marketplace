@@ -1,112 +1,152 @@
-# ЮMoney Integration Guide
+# Подключение ЮMoney к приложению ДЕЛО
 
-## Интеграция платежной системы ЮMoney (бывший Яндекс.Деньги)
+## Что уже реализовано:
 
-ЮMoney — российская платежная система для приема платежей от физических лиц.
-
----
-
-## 🎯 Зачем нужен ЮMoney?
-
-### Преимущества:
-- ✅ Российская платежная система (работает всегда)
-- ✅ Низкие комиссии (от 2%)
-- ✅ Прием платежей с карт без эквайринга
-- ✅ Простая интеграция через API
-- ✅ Вебхуки для автоматического зачисления
-- ✅ Без НДС для ИП/самозанятых
-
-### Сравнение с ЮKassa:
-| Критерий | ЮMoney | ЮKassa |
-|----------|---------|---------|
-| Комиссия | 2-3% | 2.8-3.5% |
-| Для юрлиц | ❌ | ✅ |
-| Для ИП/физлиц | ✅ | ❌ |
-| Эквайринг | Не нужен | Нужен |
-| Международные карты | ❌ | ✅ |
-
-**Выбор**: ЮMoney подходит для ИП и самозанятых, ЮKassa — для ООО.
+✅ Backend интеграция (`backend/app/integrations/yoomoney.py`)
+✅ API endpoints для создания и подтверждения платежей
+✅ Вебхук для автоматического зачисления
+✅ Frontend компонент для оплаты (`PaymentModal.jsx`)
 
 ---
 
-## 📦 Регистрация и настройка
+## Шаги для активации ЮMoney:
 
-### 1. Создание кошелька ЮMoney
+### 1. Регистрация и получение API ключей
 
-1. Зарегистрируйтесь на [yoomoney.ru](https://yoomoney.ru/)
-2. Пройдите идентификацию (загрузите паспорт)
-3. Подтвердите email и телефон
-4. Получите свой номер кошелька (410011234567890)
+1. **Зарегистрируйте кошелек ЮMoney**:
+   - Перейдите на https://yoomoney.ru/
+   - Создайте личный кошелек
+   - Пройдите идентификацию (потребуется паспорт)
 
-### 2. Создание приложения
+2. **Создайте приложение**:
+   - Откройте https://yoomoney.ru/myservices/online/create
+   - Выберите тип "Кошелек для приема платежей"
+   - Укажите название: "ДЕЛО Marketplace"
+   - Redirect URI: `https://ваш-домен.ru/payments/callback` (или http://localhost:3000/payments/callback для dev)
+   - Запросите права (scope):
+     - `account-info` - информация о счете
+     - `operation-history` - история операций
+     - `payment-p2p` **не запрашивайте**: это право на переводы С кошелька, для приёма оплаты через форму оно не нужно, а утёкший токен с ним позволяет вывести все деньги
 
-1. Перейдите в [Мои приложения](https://yoomoney.ru/myservices/online/create)
-2. Нажмите **"Зарегистрировать приложение"**
-3. Заполните форму:
-   - **Название**: ДЕЛО Marketplace
-   - **Описание**: Маркетплейс для поиска специалистов
-   - **Redirect URI**: `https://yourdomain.com/api/payments/oauth/yoomoney`
-   - **Права доступа** (scope):
-     - `account-info` — информация о счете
-     - `operation-history` — история операций
-     - `payment-p2p` — переводы между счетами (опционально)
+3. **Получите Client ID**:
+   - После создания приложения скопируйте `client_id`
 
-4. Получите **Client ID**
+---
 
-### 3. Получение Access Token
+### 2. Получение Access Token
 
-**Вариант A: Через OAuth (рекомендуется)**
+Access Token нужен для работы с API. Получить его можно через OAuth:
+
+**Способ 1: Через браузер (рекомендуется)**
+
+1. Откройте URL (замените YOUR_CLIENT_ID и YOUR_REDIRECT_URI):
+
+```
+https://yoomoney.ru/oauth/authorize?client_id=YOUR_CLIENT_ID&response_type=code&redirect_uri=YOUR_REDIRECT_URI&scope=account-info operation-history
+```
+
+2. Авторизуйтесь и разрешите доступ
+3. Вас перенаправит на `YOUR_REDIRECT_URI?code=XXXXXX`
+4. Скопируйте `code` из URL
+5. Обменяйте code на token через POST запрос:
 
 ```bash
-# 1. Откройте в браузере (замените YOUR_CLIENT_ID):
-https://yoomoney.ru/oauth/authorize?client_id=YOUR_CLIENT_ID&response_type=code&redirect_uri=https://yourdomain.com/api/payments/oauth/yoomoney&scope=account-info%20operation-history
-
-# 2. Разрешите доступ → получите code в redirect URL
-
-# 3. Обменяйте code на token:
 curl -X POST https://yoomoney.ru/oauth/token \
-  -d "code=YOUR_CODE" \
-  -d "client_id=YOUR_CLIENT_ID" \
-  -d "grant_type=authorization_code" \
-  -d "redirect_uri=https://yourdomain.com/api/payments/oauth/yoomoney"
-
-# Ответ:
-{
-  "access_token": "410011234567890.ABCDEF1234567890ABCDEF1234567890",
-  "token_type": "bearer"
-}
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "code=XXXXXX&client_id=YOUR_CLIENT_ID&grant_type=authorization_code&redirect_uri=YOUR_REDIRECT_URI"
 ```
 
-**Вариант B: Через настройки (быстрый способ для тестирования)**
+6. В ответе получите `access_token` - это ваш постоянный токен
 
-1. Перейдите в [Настройки приложения](https://yoomoney.ru/myservices/online)
-2. Найдите свое приложение
-3. Нажмите **"Получить токен для отладки"**
-4. Скопируйте access_token
+**Способ 2: Временный токен для тестов**
 
-### 4. Настройка environment variables
-
-```bash
-# .env
-YOOMONEY_CLIENT_ID=your_client_id_here
-YOOMONEY_ACCESS_TOKEN=410011234567890.ABCDEF1234567890ABCDEF1234567890
-YOOMONEY_REDIRECT_URI=https://yourdomain.com/api/payments/oauth/yoomoney
-YOOMONEY_NOTIFICATION_SECRET=your_secret_for_webhooks
-```
-
-**ВАЖНО**: Access token привязан к вашему кошельку и дает доступ к операциям. Храните его в секрете!
+Для тестов можно использовать токен из https://yoomoney.ru/myservices/online/token, но он действует ограниченное время.
 
 ---
 
-## 🚀 Использование API
+### 3. Настройка Environment Variables
 
-### Проверка подключения
+Добавьте в `backend/.env`:
 
 ```bash
-curl -X GET http://localhost:8000/payments/status
+# ЮMoney настройки
+YOOMONEY_ACCESS_TOKEN=ваш_access_token_из_шага_2
+YOOMONEY_CLIENT_ID=ваш_client_id
+YOOMONEY_REDIRECT_URI=https://ваш-домен.ru/payments/callback
+YOOMONEY_NOTIFICATION_SECRET=любая_случайная_строка_для_вебхуков
 ```
 
-Ответ:
+**Генерация notification_secret:**
+```bash
+python3 -c "import secrets; print(secrets.token_urlsafe(32))"
+```
+
+---
+
+### 4. Настройка вебхуков (обязательно для автоматического зачисления)
+
+Вебхуки позволяют автоматически зачислять деньги при успешной оплате без ручной проверки.
+**Без вебхука зачисление возможно только вручную — кнопкой «Проверить оплату».**
+
+1. Зайдите в настройки приложения на https://yoomoney.ru/myservices/online
+2. Укажите URL для уведомлений:
+   ```
+   https://ваш-домен.ru/payments/webhook/yoomoney
+   ```
+   Требования ЮMoney: **только HTTPS и только публичный домен.** На `localhost`
+   уведомления не придут — это ограничение их стороны, для разработки вебхук
+   не проверить без туннеля (ngrok и подобное).
+3. Включите HTTP-уведомления
+4. Укажите `YOOMONEY_NOTIFICATION_SECRET` из вашего .env — **тот же** секрет
+   задаётся и в кабинете ЮMoney. Если значения разойдутся, вебхук будет
+   отвечать 403 «Invalid signature», и это будет выглядеть как атака, хотя
+   на деле просто разные строки.
+
+**Как работает вебхук:**
+- Пользователь оплачивает через ЮMoney
+- ЮMoney отправляет POST запрос на ваш webhook URL
+- Backend проверяет подпись и автоматически зачисляет деньги
+- Пользователю приходит уведомление "Баланс пополнен"
+
+### 4.1. Возврат пользователя после оплаты (`successURL`)
+
+Раньше `successURL` в платёжной форме был пустым: пользователь оставался на
+сайте ЮMoney и в приложение не возвращался. Зачисление тогда зависело от того,
+нажмёт ли он кнопку «Проверить оплату» сам — если закрывал вкладку, деньги
+уходили в никуда до обращения в поддержку.
+
+Теперь адрес возврата собирается автоматически из двух переменных:
+
+| Переменная | Назначение | Пример |
+|---|---|---|
+| `FRONTEND_URL` | Адрес фронтенда приложения | `https://delo.example.ru` |
+| `YOOMONEY_RETURN_PATH` | Страница, куда вернуть (по умолчанию `/profile`) | `/profile` |
+
+Пользователь возвращается на `{FRONTEND_URL}{YOOMONEY_RETURN_PATH}?payment=return`,
+и страница профиля сама вызывает `POST /payments/confirm`. Данные платежа
+берутся из `sessionStorage` — их сохраняет окно пополнения перед открытием
+формы оплаты.
+
+Если `FRONTEND_URL` не задан, `successURL` остаётся пустым (поведение как
+раньше — остаться у ЮMoney), а ручная кнопка продолжает работать. То есть
+незаданная переменная ничего не ломает, просто возвращает прежнее неудобство.
+
+---
+
+### 5. Тестирование
+
+1. **Перезапустите backend**:
+```bash
+cd backend
+uvicorn main:app --reload
+```
+
+2. **Проверьте статус интеграции**:
+```bash
+curl http://localhost:8000/payments/status
+```
+
+Должен вернуть:
 ```json
 {
   "yookassa": {"configured": false},
@@ -114,349 +154,125 @@ curl -X GET http://localhost:8000/payments/status
 }
 ```
 
-### Создание платежа
+3. **Тест создания платежа**:
+   - Откройте приложение
+   - Нажмите "Пополнить баланс"
+   - Введите сумму (минимум 100 ₽)
+   - Нажмите "Перейти к оплате"
+   - Должно открыться окно ЮMoney с формой оплаты
 
-**Frontend:**
-```javascript
-// Пользователь вводит сумму пополнения
-const amount = 1000; // 1000 рублей
-
-const response = await fetch('/api/payments/create?provider=yoomoney', {
-  method: 'POST',
-  headers: {
-    'Authorization': `Bearer ${token}`,
-    'Content-Type': 'application/json',
-    'X-CSRF-Token': csrfToken
-  },
-  body: JSON.stringify({ amount })
-});
-
-const data = await response.json();
-// {
-//   "provider": "yoomoney",
-//   "payment_id": "delo_123_a4f3d8e1",
-//   "confirmation_url": "https://yoomoney.ru/quickpay/confirm?..."
-// }
-
-// Редирект пользователя на страницу оплаты
-window.location.href = data.confirmation_url;
-```
-
-### Проверка и зачисление платежа
-
-После оплаты пользователь возвращается на ваш сайт.
-
-**Вариант 1: Ручная проверка (polling)**
-
-```javascript
-// После возврата с формы оплаты
-const response = await fetch(`/api/payments/confirm?payment_id=${paymentId}&provider=yoomoney`, {
-  method: 'POST',
-  headers: {
-    'Authorization': `Bearer ${token}`,
-    'X-CSRF-Token': csrfToken
-  }
-});
-
-const result = await response.json();
-// {
-//   "status": "success",
-//   "credited": true,
-//   "new_balance": 11000
-// }
-```
-
-**Вариант 2: Вебхук (автоматически)**
-
-Настроен endpoint `/api/payments/webhook/yoomoney` — ЮMoney автоматически отправит уведомление о платеже.
+4. **Тест оплаты (sandbox)**:
+   - Используйте тестовую карту: `5555 5555 5555 4477`
+   - Любой CVV и срок действия в будущем
+   - После оплаты вернитесь в приложение
+   - Нажмите "Проверить статус платежа"
+   - Баланс должен пополниться
 
 ---
 
-## 🔔 Настройка вебхуков
+## Режимы работы:
 
-Вебхуки позволяют автоматически зачислять платежи без проверки со стороны клиента.
+### Development (без вебхуков)
+- Пользователь платит через ЮMoney
+- Возвращается в приложение
+- Вручную нажимает "Проверить статус"
+- Backend проверяет payment_id в истории операций ЮMoney
+- Если оплата найдена - зачисляет деньги
 
-### 1. Генерация secret для проверки подписи
-
-```bash
-# Сгенерируйте случайную строку
-openssl rand -hex 32
-# Сохраните в .env:
-YOOMONEY_NOTIFICATION_SECRET=your_generated_secret_here
-```
-
-### 2. Настройка в ЮMoney
-
-1. Перейдите в [Настройки приложения](https://yoomoney.ru/myservices/online)
-2. Найдите раздел **"HTTP-уведомления"**
-3. Укажите URL: `https://yourdomain.com/api/payments/webhook/yoomoney`
-4. Включите уведомления
-5. Укажите ваш **notification_secret**
-
-### 3. Тестирование вебхука
-
-ЮMoney отправляет POST запрос с параметрами:
-- `notification_type=p2p-incoming`
-- `operation_id=123456789`
-- `amount=1000.00`
-- `currency=643`
-- `datetime=2024-01-15T12:30:00Z`
-- `sender=410011987654321`
-- `codepro=false`
-- `label=delo_123_a4f3d8e1`
-- `sha1_hash=...` (подпись)
-
-Backend проверяет подпись и автоматически зачисляет средства.
+### Production (с вебхуками)
+- Пользователь платит через ЮMoney
+- ЮMoney автоматически отправляет вебхук на ваш сервер
+- Backend проверяет подпись и зачисляет деньги
+- Пользователю приходит push-уведомление
+- Ручная проверка не требуется
 
 ---
 
-## 💻 Пример использования
+## Безопасность:
 
-### Полный flow пополнения баланса
+### ✅ Что реализовано:
+- Проверка подписи вебхуков (SHA-1 hash)
+- Защита от дублирования платежей (PaymentRecord)
+- Проверка владельца платежа (user_id в metadata)
+- CSRF защита на всех endpoint'ах
+- Логирование всех транзакций
 
-**1. Frontend: Форма пополнения**
-
-```jsx
-function DepositForm() {
-  const [amount, setAmount] = useState(1000);
-  const [loading, setLoading] = useState(false);
-
-  const handleDeposit = async () => {
-    setLoading(true);
-    
-    try {
-      const response = await fetch('/api/payments/create?provider=yoomoney', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-          'X-CSRF-Token': csrfToken
-        },
-        body: JSON.stringify({ amount })
-      });
-      
-      const data = await response.json();
-      
-      // Сохраняем payment_id для последующей проверки
-      localStorage.setItem('pending_payment_id', data.payment_id);
-      
-      // Редирект на форму оплаты ЮMoney
-      window.location.href = data.confirmation_url;
-      
-    } catch (error) {
-      alert('Ошибка создания платежа');
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div>
-      <h2>Пополнение баланса</h2>
-      <input 
-        type="number" 
-        value={amount} 
-        onChange={e => setAmount(Number(e.target.value))}
-        min="100"
-        step="100"
-      />
-      <button onClick={handleDeposit} disabled={loading}>
-        {loading ? 'Создание платежа...' : `Пополнить на ${amount} ₽`}
-      </button>
-      <p className="text-sm text-gray-600">
-        Оплата через ЮMoney (комиссия 0%)
-      </p>
-    </div>
-  );
-}
-```
-
-**2. Frontend: Страница возврата после оплаты**
-
-```jsx
-function PaymentReturnPage() {
-  const [status, setStatus] = useState('checking');
-  
-  useEffect(() => {
-    const paymentId = localStorage.getItem('pending_payment_id');
-    
-    if (!paymentId) {
-      setStatus('error');
-      return;
-    }
-    
-    // Проверяем статус платежа
-    const checkPayment = async () => {
-      const response = await fetch(
-        `/api/payments/confirm?payment_id=${paymentId}&provider=yoomoney`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'X-CSRF-Token': csrfToken
-          }
-        }
-      );
-      
-      const result = await response.json();
-      
-      if (result.credited) {
-        setStatus('success');
-        localStorage.removeItem('pending_payment_id');
-        // Обновляем баланс в UI
-        updateBalance(result.new_balance);
-      } else if (result.status === 'pending') {
-        setStatus('pending');
-      } else {
-        setStatus('error');
-      }
-    };
-    
-    checkPayment();
-  }, []);
-  
-  return (
-    <div>
-      {status === 'checking' && <p>Проверка платежа...</p>}
-      {status === 'success' && (
-        <div className="success">
-          <h2>✅ Платеж успешно завершен!</h2>
-          <p>Средства зачислены на ваш баланс</p>
-          <button onClick={() => navigate('/profile')}>
-            Перейти в профиль
-          </button>
-        </div>
-      )}
-      {status === 'pending' && (
-        <div className="warning">
-          <h2>⏳ Платеж в обработке</h2>
-          <p>Средства будут зачислены в течение нескольких минут</p>
-        </div>
-      )}
-      {status === 'error' && (
-        <div className="error">
-          <h2>❌ Ошибка платежа</h2>
-          <p>Платеж не был завершен. Попробуйте снова.</p>
-        </div>
-      )}
-    </div>
-  );
-}
-```
+### ⚠️ Важно:
+- Храните `YOOMONEY_ACCESS_TOKEN` в секрете
+- Используйте HTTPS на production
+- Регулярно проверяйте баланс ЮMoney кошелька
+- Настройте alerts на критичные ошибки
 
 ---
 
-## 🔧 Troubleshooting
+## Комиссии ЮMoney:
 
-### Ошибка: "ЮMoney not configured"
+- **Прием платежей**: 2% + 15 ₽ (с карты)
+- **P2P переводы**: 0.5-3% (зависит от суммы)
+- **Минимальная сумма**: 10 ₽
+- **Максимум в месяц**: 600 000 ₽ (для неидентифицированных)
 
-**Проблема**: `YOOMONEY_ACCESS_TOKEN` не установлен
-
-**Решение**:
-```bash
-# Проверьте .env файл
-cat .env | grep YOOMONEY
-
-# Должно быть:
-YOOMONEY_ACCESS_TOKEN=410011234567890.ABC...
-
-# Перезапустите backend
-```
-
-### Ошибка: "Invalid signature" в вебхуке
-
-**Проблема**: Неверный `YOOMONEY_NOTIFICATION_SECRET`
-
-**Решение**:
-1. Проверьте что secret в `.env` совпадает с настройками в ЮMoney
-2. Убедитесь что secret передается в правильном формате (без пробелов)
-3. Проверьте логи backend: `tail -f logs/app.log`
-
-### Платеж не находится (check_payment возвращает not_found)
-
-**Причины**:
-1. Пользователь не завершил оплату
-2. Платеж еще обрабатывается (подождите 1-2 минуты)
-3. Неверный `label` (должен быть уникальным)
-
-**Решение**:
-- Проверьте историю операций в личном кабинете ЮMoney
-- Используйте вебхуки для надежного зачисления
-
-### Тестирование без реального платежа
-
-**ЮMoney не предоставляет sandbox**. Для тестирования:
-1. Используйте демо-пополнение (`/wallet/deposit`) в dev окружении
-2. Создайте тестовый кошелек с минимальной суммой
-3. Делайте реальные переводы на копейки (10-50 руб)
+После идентификации лимиты снимаются.
 
 ---
 
-## 📊 Мониторинг платежей
+## FAQ:
 
-### Получение информации о счете
+**Q: Можно ли принимать платежи без идентификации?**
+A: Да, но с лимитами. Для полноценной работы пройдите идентификацию.
 
-```python
-from app.integrations.yoomoney import yoomoney_client
+**Q: Работает ли с иностранными картами?**
+A: Нет, только российские карты и кошельки ЮMoney.
 
-info = yoomoney_client.get_account_info()
-print(f"Баланс: {info['balance']} RUB")
-print(f"Статус: {info['account_status']}")
-```
+**Q: Как вывести деньги с ЮMoney?**
+A: Через "Вывод на карту" в личном кабинете ЮMoney (комиссия 3% + 45 ₽).
 
-### Логи платежей
+**Q: Можно ли использовать несколько кошельков?**
+A: Нет, один access_token = один кошелек.
 
-Все операции логируются в `logs/app.log`:
-```
-[INFO] ЮMoney payment delo_123_a4f3d8e1 credited: 1000.00 RUB to user 123
-[WARNING] Invalid ЮMoney webhook signature
-[ERROR] ЮMoney account-info failed: HTTP 401
-```
-
-### Dashboard для мониторинга
-
-Используйте личный кабинет ЮMoney:
-- История операций
-- Статистика платежей
-- Выгрузка в Excel
+**Q: Что делать если токен истек?**
+A: Токен выданный через OAuth не истекает. Если используете временный из админки - получите постоянный через OAuth.
 
 ---
 
-## 🎯 Production Checklist
+## Troubleshooting:
 
-**Infrastructure:**
-- [ ] YOOMONEY_ACCESS_TOKEN настроен в production .env
-- [ ] YOOMONEY_NOTIFICATION_SECRET сгенерирован и настроен
-- [ ] Вебхук URL добавлен в настройки ЮMoney приложения
-- [ ] HTTPS настроен (обязательно для вебхуков)
+### Ошибка "ЮMoney не настроен"
+- Проверьте что `YOOMONEY_ACCESS_TOKEN` установлен в .env
+- Перезапустите backend
 
-**Security:**
-- [ ] Access token хранится в секретах (не в коде)
-- [ ] Проверка подписи вебхуков включена
-- [ ] Rate limiting на endpoints платежей
+### Платеж не зачисляется
+- Проверьте что платеж завершен в ЮMoney
+- Проверьте логи backend: `tail -f backend.log | grep yoomoney`
+- Проверьте что payment_id совпадает
 
-**Monitoring:**
-- [ ] Логирование всех платежных операций
-- [ ] Alerting на failed webhooks
-- [ ] Daily reconciliation (сверка с ЮMoney)
+### Вебхук не работает
+- Проверьте что URL доступен извне (не localhost)
+- Проверьте подпись: совпадает ли `YOOMONEY_NOTIFICATION_SECRET`
+- Проверьте логи nginx/backend на ошибки 403/500
 
-**Testing:**
-- [ ] Проверен полный flow пополнения
-- [ ] Протестированы вебхуки
-- [ ] Проверена идемпотентность (повторные зачисления)
+### "Invalid signature" в вебхуке
+- Проверьте что `YOOMONEY_NOTIFICATION_SECRET` совпадает с указанным в настройках приложения ЮMoney
+- Проверьте что вебхук приходит именно от ЮMoney (IP whitelist)
 
 ---
 
-## 🚀 Результат
+## Следующие шаги после настройки:
 
-После настройки ЮMoney:
-- ✅ Прием платежей от физлиц с карт Visa/Mastercard/МИР
-- ✅ Автоматическое зачисление через вебхуки
-- ✅ Комиссия 2-3% (дешевле чем эквайринг)
-- ✅ Работает для ИП и самозанятых
-- ✅ Российская платежная система (надежность)
+1. ✅ Удалить демо-endpoint `/wallet/deposit` на production
+2. ✅ Настроить мониторинг балансов
+3. ✅ Добавить логику возвратов (refunds)
+4. ✅ Интегрировать с выводом средств (withdrawals)
+5. ✅ Добавить email-уведомления о пополнениях
 
-**API Endpoints:**
-- `GET /payments/status` — проверка подключения
-- `POST /payments/create?provider=yoomoney` — создать платеж
-- `POST /payments/confirm?provider=yoomoney` — проверить и зачислить
-- `POST /payments/webhook/yoomoney` — вебхук от ЮMoney
+---
+
+## Контакты поддержки ЮMoney:
+
+- Техподдержка: https://yoomoney.ru/page?id=536887
+- Документация API: https://yoomoney.ru/docs/wallet
+- Телефон: 8 800 250-66-99
+
+---
+
+**Готово! ЮMoney подключен к вашему приложению 🎉**

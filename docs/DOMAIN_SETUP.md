@@ -95,7 +95,7 @@ bash scripts/vps_deploy.sh
 9. Предлагает насыпать демо-данные (по умолчанию — нет).
 10. Предлагает включить ночные резервные копии и проверки сайта каждые
     5 минут (`bash scripts/backup.sh --install`, по умолчанию — да). Подробнее
-    и про уведомления в Telegram — UPDATE_GUIDE.md.
+    и про уведомления в Telegram — [UPDATE_GUIDE.md](UPDATE_GUIDE.md).
 
 ### www
 
@@ -164,8 +164,8 @@ bash scripts/admin_access.sh
 
 ## 5. Чего делать не нужно
 
-- **Не трогать `DOMAIN_SETUP_delomaster_online.md`, `nginx-delomaster.conf`,
-  `deploy-manual.txt`.** Это старая дорога (nginx + systemd) под другой домен и
+- **Не трогать старые инструкции из `docs/archive/`: `DOMAIN_SETUP_delomaster_online.md`,
+  `legacy/nginx-delomaster.conf`, `legacy/deploy-manual.txt`.** Это старая дорога (nginx + systemd) под другой домен и
   другой IP (`92.53.96.169` — сейчас парковка Timeweb). Она конфликтует с
   Docker/Caddy: оба претендуют на один `server_name` и порты 80/443.
 - **Не вписывать `VITE_API_URL`.** Фронтенд ходит относительными путями

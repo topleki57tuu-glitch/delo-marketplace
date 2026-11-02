@@ -267,7 +267,7 @@ fi
 echo ""
 echo "==> Резервные копии и мониторинг"
 # Копия каждую ночь (база, файлы, .env — с проверкой восстановлением) и
-# проверки каждые 5 минут. Подробнее — UPDATE_GUIDE.md.
+# проверки каждые 5 минут. Подробнее — docs/UPDATE_GUIDE.md.
 if [ -f /etc/cron.d/delo-marketplace ]; then
     echo "    уже включены (список копий: bash scripts/backup.sh --list)"
 else
