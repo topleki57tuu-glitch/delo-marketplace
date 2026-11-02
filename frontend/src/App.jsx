@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, Suspense, lazy } from 'react';
 import { BrowserRouter, Routes, Route, Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from './store/authStore';
+import { useShallow } from 'zustand/react/shallow';
 import { useTasksStore } from './store/tasksStore';
 import { useToast } from './components/Toast';
 import { NotificationBell } from './components/NotificationBell';
@@ -569,7 +570,10 @@ export default function App() {
 
   // Используем tasksStore вместо локального state
   const fetchTasks = useTasksStore(state => state.fetchTasks);
-  const tasks = useTasksStore(state => state.getAllTasks());
+  // getAllTasks() каждый раз собирает новый массив. Zustand 5 сравнивает
+  // результат селектора по ссылке, и без useShallow это бесконечный цикл
+  // перерисовок (Maximum update depth exceeded).
+  const tasks = useTasksStore(useShallow(state => state.getAllTasks()));
   const loading = useTasksStore(state => state.loading);
 
   const [authModalOpen, setAuthModalOpen] = useState(false);

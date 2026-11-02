@@ -11,7 +11,14 @@ const localStorageMock = {
   removeItem: vi.fn(),
   clear: vi.fn(),
 };
-global.localStorage = localStorageMock;
+// В Vitest 5 присваивание глобалу доходит до window jsdom, а у него
+// localStorage — только геттер: прямое присваивание падает с TypeError.
+// Наборы с @vitest-environment node window не имеют — для них мок кладём в globalThis.
+Object.defineProperty(typeof window !== 'undefined' ? window : globalThis, 'localStorage', {
+  value: localStorageMock,
+  configurable: true,
+  writable: true,
+});
 
 beforeAll(() => {
   // Setup перед всеми тестами

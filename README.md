@@ -42,7 +42,7 @@
 
 ## Быстрый старт (локально)
 
-Нужны Python 3.13 (как в CI и Docker-образе) и Node.js 20.19+ (или 22.12+).
+Нужны Python 3.13 и Node.js 22.12+ — те же версии, что в CI и Docker-образах.
 
 ```bash
 git clone https://github.com/topleki57tuu-glitch/delo-marketplace.git
@@ -75,9 +75,10 @@ npm run dev
 
 ### Демо-аккаунты
 
-Пароль у всех общий. `seed_demo.py` берёт его из `DEMO_PASSWORD`, а если
-переменная не задана — генерирует случайный и сохраняет в
-`backend/demo_password.txt` (файл в `.gitignore`).
+У заказчиков и специалистов пароль общий: `seed_demo.py` берёт его из
+`DEMO_PASSWORD`, а если переменная не задана — генерирует случайный. У
+модератора пароль отдельный — из `ADMIN_PASSWORD` или тоже сгенерированный.
+Оба сохраняются в `backend/demo_password.txt` (файл в `.gitignore`).
 
 - **Заказчики:** anna@delo.ru, dmitry@delo.ru, olga@delo.ru
 - **Специалисты:** igor@delo.ru, maria@delo.ru, alexey@delo.ru, elena@delo.ru, sergey@delo.ru
