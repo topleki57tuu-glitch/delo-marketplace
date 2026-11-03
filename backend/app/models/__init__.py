@@ -2,7 +2,7 @@ import json
 from datetime import datetime
 from enum import Enum as PyEnum
 from sqlalchemy import (
-    Column, Integer, String, Float, Boolean, Text, Index,
+    Column, Integer, BigInteger, String, Float, Boolean, Text, Index,
     Enum as SqlaEnum, LargeBinary as SqlaLargeBinary, DateTime
 )
 from app.core.database import Base
@@ -425,3 +425,66 @@ class Order(Base):
     platform_fee = Column(Integer, default=0)  # комиссия 5%
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+# ============================================================================
+# TELEGRAM-БОТ (app/telegram/)
+# ============================================================================
+
+class TelegramChat(Base):
+    """Чат с ботом: фильтры «Радара заказов» и привязка к аккаунту сайта.
+
+    Раньше подписки лежали в subscriptions.json внутри контейнера бота и
+    молча обнулялись при каждом его пересоздании. Теперь — в базе, вместе с
+    резервными копиями.
+
+    user_id пуст, пока человек не привязал аккаунт («Профиль → Настройки →
+    Подключить Telegram»): радар работает и без аккаунта, личные уведомления —
+    только с ним. Один аккаунт — один чат (unique).
+    """
+    __tablename__ = "telegram_chats"
+    chat_id = Column(BigInteger, primary_key=True, autoincrement=False)
+    user_id = Column(Integer, nullable=True, unique=True, index=True)
+    linked_at = Column(DateTime, nullable=True)
+    # Радар: пустые categories — все категории; city — подстрока города
+    # (удалённые задания приходят при любом городе).
+    radar_enabled = Column(Boolean, nullable=False, default=True)
+    categories = Column(Text, nullable=True)  # "design,development"
+    min_budget = Column(Integer, nullable=False, default=0)
+    city = Column(String, nullable=True)
+    # Личные уведомления: отклики, сообщения, статусы сделок и заказов.
+    # notify_since — с какого момента слать: при привязке и при повторном
+    # включении бот не присылает то, что накопилось раньше.
+    notify_enabled = Column(Boolean, nullable=False, default=True)
+    notify_since = Column(DateTime, nullable=True)
+    # Чего бот ждёт следующим сообщением: "city" — название города.
+    awaiting = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class TelegramLinkToken(Base):
+    """Одноразовая ссылка привязки: t.me/<бот>?start=link_<токен>.
+
+    Хранится только SHA-256 токена — утечка таблицы не даёт привязать чужой
+    аккаунт. Живёт 15 минут, после использования удаляется.
+    """
+    __tablename__ = "telegram_link_tokens"
+    token_hash = Column(String(64), primary_key=True)
+    user_id = Column(Integer, nullable=False, index=True)
+    expires_at = Column(DateTime, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class TelegramDelivery(Base):
+    """Что бот уже отправил: kind "n" — уведомление, "t" — задание радара.
+
+    Отдельная таблица, а не флаг в notifications/tasks: таблицы сайта и их
+    ответы API не меняются. Бот выбирает свежие записи, которых здесь нет, —
+    поэтому ничего не теряется ни при перезапуске бота, ни если транзакции
+    зафиксировались не по порядку id. Старые строки бот чистит сам.
+    """
+    __tablename__ = "telegram_deliveries"
+    kind = Column(String(1), primary_key=True)
+    object_id = Column(Integer, primary_key=True, autoincrement=False)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
