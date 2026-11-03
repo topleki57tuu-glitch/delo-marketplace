@@ -345,20 +345,20 @@ Message Queue (RabbitMQ/Kafka)
 
 | Слой | Технология | Версия | Назначение |
 |------|-----------|--------|-----------|
-| **Frontend** | React | 18.x | UI framework |
-| | Vite | 5.x | Build tool |
-| | React Router | 6.x | SPA routing |
-| **Backend** | FastAPI | 0.115.x | REST API framework |
+| **Frontend** | React | 19.x | UI framework |
+| | Vite | 8.x | Build tool |
+| | React Router | 7.x | SPA routing |
+| **Backend** | FastAPI | 0.162.x | REST API framework |
 | | SQLAlchemy | 2.x | ORM |
 | | Pydantic | 2.x | Validation |
-| | python-jose | 3.x | JWT |
-| | bcrypt | 4.x | Password hashing |
+| | PyJWT | 2.x | JWT |
+| | bcrypt | 5.x | Password hashing |
 | | Alembic | 1.x | Migrations |
 | | Sentry SDK | 2.x | Error monitoring |
 | **Database** | PostgreSQL | 15+ | Production DB |
 | | SQLite | 3.x | Development DB |
 | **Cache** | Redis | 7+ | Rate limit, cache |
-| **Bot** | python-telegram-bot | 21.x | Telegram integration |
+| **Bot** | Python stdlib (urllib) | — | Telegram Bot API |
 | **Deploy** | Docker | 20.x | Containerization |
 | | Nginx | 1.25+ | Reverse proxy |
 

@@ -36,11 +36,16 @@ x-backend-env: &backend-env
   TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
   # Счётчики лимитов в общем Redis, иначе они живут в памяти каждого воркера
   REDIS_URL: redis://redis:6379/0
+  # Почта: восстановление пароля и подтверждение адреса (docs/UPDATE_GUIDE.md,
+  # «Почта (SMTP) и подтверждение адреса»). Пока SMTP не задан, подтверждения
+  # нет и вывод денег его не требует. EMAIL_VERIFICATION_REQUIRED=0 снимает
+  # требование и при настроенной почте.
   SMTP_HOST: ${SMTP_HOST:-}
   SMTP_PORT: ${SMTP_PORT:-587}
   SMTP_USER: ${SMTP_USER:-}
   SMTP_PASS: ${SMTP_PASS:-}
   SMTP_FROM: ${SMTP_FROM:-}
+  EMAIL_VERIFICATION_REQUIRED: ${EMAIL_VERIFICATION_REQUIRED:-}
   YOOKASSA_SHOP_ID: ${YOOKASSA_SHOP_ID:-}
   YOOKASSA_SECRET_KEY: ${YOOKASSA_SECRET_KEY:-}
   # ЮMoney — провайдер по умолчанию в POST /payments/create. Без этих

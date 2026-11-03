@@ -343,7 +343,12 @@ function UsersTable({ token, onError }) {
                 users.map((u) => (
                   <tr key={u.id} className={`hover:bg-slate-50 dark:hover:bg-slate-700/30 ${loading ? 'opacity-60' : ''}`}>
                     <td className="px-4 py-3 text-slate-500 dark:text-slate-400">{u.id}</td>
-                    <td className="px-4 py-3 text-slate-900 dark:text-white">{u.email}</td>
+                    <td className="px-4 py-3 text-slate-900 dark:text-white">
+                      {u.email}
+                      {u.email_verified === false && (
+                        <span className="block text-xs text-amber-600 dark:text-amber-400">почта не подтверждена</span>
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-slate-600 dark:text-slate-300">
                       <Link to={`/specialist/${u.id}`} className="hover:text-indigo-600 dark:hover:text-indigo-400">{u.name || '—'}</Link>
                     </td>

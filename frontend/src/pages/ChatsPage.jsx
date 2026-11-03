@@ -66,8 +66,8 @@ export default function ChatsPage({ user, token, onOpenAuth }) {
     loadChats();
 
     // Список (и счётчики непрочитанного) обновляем раз в 30 секунд. В
-    // зависимостях — id, а не весь user: App перечитывает профиль каждые
-    // 5 секунд, и эффект перезапускался, запрашивая /chats каждые 5 секунд.
+    // зависимостях — id, а не весь user: App регулярно перечитывает профиль,
+    // и эффект перезапускался, запрашивая /chats при каждом опросе.
     const interval = setInterval(loadChats, 30000);
     return () => clearInterval(interval);
   }, [token, user?.id]);

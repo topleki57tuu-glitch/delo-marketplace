@@ -470,4 +470,6 @@ if ! cron_installed; then
     echo "Резервные копии по расписанию не включены: bash scripts/backup.sh --install"
 elif ! alert_configured; then
     echo "Уведомления о сбоях в Telegram не настроены: bash scripts/monitor.sh --setup"
+elif ! offsite_configured; then
+    echo "Копии хранятся только на этом сервере. Выгрузка в облако: bash scripts/offsite.sh --setup"
 fi

@@ -5,6 +5,7 @@ import { ToastProvider } from './components/Toast.jsx'
 import { DialogProvider } from './components/DialogProvider.jsx'
 import { installCsrfFetch, primeCsrfToken } from './utils/csrf.js'
 import { installSessionRefresh } from './utils/session.js'
+import { installProfileSync } from './utils/profileSync.js'
 import { installChunkReload } from './utils/chunkReload.js'
 import { initTheme } from './utils/theme.js'
 import './index.css'
@@ -16,6 +17,9 @@ primeCsrfToken()
 // Продление сессии — поверх CSRF-обёртки, чтобы повтор запроса тоже получил
 // CSRF-заголовок (см. utils/session.js).
 installSessionRefresh()
+// После оплаты, покупки или вывода баланс в шапке обновляется сразу, а не
+// со следующим опросом профиля (см. utils/profileSync.js).
+installProfileSync()
 // После деплоя открытая вкладка может просить чанки старой сборки.
 installChunkReload()
 // Тема: класс .dark уже поставил скрипт в index.html, здесь подключаем

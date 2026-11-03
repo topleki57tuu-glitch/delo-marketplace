@@ -129,6 +129,8 @@ def main():
         ("POST", "/notifications/read-all", None, c_tok, "POST /notifications/read-all"),
         ("POST", "/verification/submit", {"full_name": "X", "passport": "1234 567890"}, c_tok, "POST /verification/submit"),
         ("POST", "/ai/task-helper", {"prompt": "привет"}, c_tok, "POST /ai/task-helper"),
+        ("POST", "/auth/verify-email", {"token": "x"}, None, "POST /auth/verify-email (подтверждение почты)"),
+        ("POST", "/auth/resend-verification", None, c_tok, "POST /auth/resend-verification (письмо ещё раз)"),
     ]
 
     print("\n--- Запросы без заголовка X-CSRF-Token ---")

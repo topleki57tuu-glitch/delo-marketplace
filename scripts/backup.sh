@@ -26,8 +26,10 @@
 # копией: ни restore.sh, ни мониторинг её не учитывают.
 #
 # Копии лежат на том же сервере: от неудачного обновления и случайного
-# удаления они спасают, от потери сервера — нет. Регулярно скачивайте свежую
-# копию к себе (команда — в docs/UPDATE_GUIDE.md).
+# удаления они спасают, от потери сервера — нет. Для этого — облачное
+# хранилище: после bash scripts/offsite.sh --setup каждая полная копия без
+# метки сама выгружается туда, зашифрованной. Не выгрузилась — копия на
+# сервере всё равно готова, а сбой покажет scripts/monitor.sh.
 #
 # Служебные ключи (ими пользуется сам проект):
 #   --cron         запуск по расписанию: при ошибке — уведомление в Telegram
@@ -438,6 +440,15 @@ do_backup() {
 
     prune_old
     log "Готово: $dir ($(du -sh "$dir" | cut -f1), $(( $(date +%s) - started )) с)"
+
+    # Копия вне сервера. Копии с меткой (перед обновлением, перед
+    # восстановлением) не выгружаются: они нужны здесь и сейчас, а выгрузка
+    # задержала бы обновление.
+    if [ "$kind" = "full" ] && [ -z "$TAG" ] && offsite_configured; then
+        if ! DELO_BACKUP_LOCK_HELD=1 bash "$APP_DIR/scripts/offsite.sh" --push "$name"; then
+            log "ВНИМАНИЕ: копия не выгружена в облачное хранилище (причина выше). Повторить: bash scripts/offsite.sh"
+        fi
+    fi
 }
 
 case "$MODE" in
@@ -471,6 +482,7 @@ case "$MODE" in
         do_backup
         echo ""
         echo "Уведомления о сбоях в Telegram: bash scripts/monitor.sh --setup"
+        offsite_configured || echo "Копии вне сервера (зашифрованные, в облако): bash scripts/offsite.sh --setup"
         echo "Скачать копию к себе (на компьютере, в PowerShell):"
         echo "  scp -r root@$(curl -fsS -m 5 ifconfig.me 2>/dev/null || echo IP-сервера):$BACKUP_DIR/$(complete_backups | tail -n 1) ."
         ;;

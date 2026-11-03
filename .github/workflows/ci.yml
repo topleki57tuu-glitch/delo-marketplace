@@ -221,7 +221,8 @@ jobs:
             security/check_admin_access \
             security/check_task_address_privacy \
             security/check_sentry_privacy \
-            security/check_input_limits
+            security/check_input_limits \
+            security/check_email_verification
           do
             echo "::group::$suite"
             python "tests/${suite}.py"
@@ -936,10 +937,10 @@ jobs:
         run: |
           shellcheck --version | head -n 2
           shellcheck -x scripts/ops_common.sh scripts/backup.sh scripts/restore.sh \
-            scripts/monitor.sh scripts/vps_update.sh \
+            scripts/monitor.sh scripts/vps_update.sh scripts/offsite.sh \
             tests/ops/run_ops_tests.sh tests/ops/fake-bin/docker
 
-      - name: Backup, restore, monitor, update and rollback
+      - name: Backup, offsite copy, restore, monitor, update and rollback
         env:
           FAKE_PGHOST: localhost
           FAKE_PGPORT: "5432"

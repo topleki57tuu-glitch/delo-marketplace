@@ -1,8 +1,8 @@
 # shellcheck shell=bash
 # ============================================================================
 # Общие функции скриптов обслуживания VPS: backup.sh, restore.sh, monitor.sh,
-# vps_update.sh. Подключается через `. scripts/ops_common.sh` и сам по себе
-# ничего не делает.
+# offsite.sh, vps_update.sh. Подключается через `. scripts/ops_common.sh` и
+# сам по себе ничего не делает.
 #
 # Переопределяемые переменные окружения (для проверки на стенде и особых
 # установок; на VPS ничего задавать не нужно):
@@ -26,10 +26,11 @@ die() { FAIL_REASON="$*"; log "ОШИБКА: $*" >&2; exit 1; }
 
 # Значение ключа из .env. Файл не исполняем через `source`: в .env бывают
 # значения с пробелами и `$`, и `set -u` уронил бы скрипт на любой из них.
-# Последнее вхождение побеждает — как у docker compose.
+# Последнее вхождение побеждает — как у docker compose. DELO_ENV_FILE —
+# прочитать другой файл того же вида (копию .env из резервной копии).
 env_get() {
     local key="$1" default="${2:-}" line
-    line="$(grep -E "^[[:space:]]*${key}=" "$APP_DIR/.env" 2>/dev/null | tail -n 1 || true)"
+    line="$(grep -E "^[[:space:]]*${key}=" "${DELO_ENV_FILE:-$APP_DIR/.env}" 2>/dev/null | tail -n 1 || true)"
     if [ -z "$line" ]; then
         printf '%s' "$default"
         return 0
@@ -131,6 +132,28 @@ human_size() {
 # Свободное место (байты) на разделе, где лежит каталог.
 free_bytes() {
     df -PB1 "$1" 2>/dev/null | awk 'NR == 2 { print $4 }'
+}
+
+# --- Копии -------------------------------------------------------------------
+
+# Последняя готовая полная копия без метки — ночная или сделанная вручную
+# (имя каталога в BACKUP_DIR). Имя начинается с даты: сортировка по имени —
+# это сортировка по времени.
+latest_full_backup() {
+    local d n
+    [ -d "$BACKUP_DIR" ] || return 0
+    for d in "$BACKUP_DIR"/*/; do
+        n="$(basename "$d")"
+        [[ "$n" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}_[0-9]{6}$ ]] || continue
+        [ -f "$d/OK" ] || continue
+        grep -qx 'kind=full' "$d/manifest.txt" 2> /dev/null || continue
+        echo "$n"
+    done | sort | tail -n 1
+}
+
+# Выгрузка копий в облачное хранилище настроена (scripts/offsite.sh --setup).
+offsite_configured() {
+    [ -n "$(env_get BACKUP_S3_BUCKET)" ] && [ -n "$(env_get BACKUP_S3_ENDPOINT)" ]
 }
 
 # Идёт обновление или восстановление (флаг ставят vps_update.sh и

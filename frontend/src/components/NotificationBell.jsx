@@ -9,6 +9,7 @@ import {
     IconStar,
 } from './icons.jsx';
 import { parseServerDate } from '../utils/format.js';
+import { useVisiblePolling } from '../utils/useVisiblePolling.js';
 
 // Используем относительные пути (проксируются vite → backend:8000)
 // Значения — компоненты иконок, а не строки: они рендерятся как JSX-потомок
@@ -67,11 +68,12 @@ export const NotificationBell = ({ token }) => {
     };
 
     useEffect(() => {
-        if (!token) return;
-        fetchNotifications();
-        const interval = setInterval(fetchNotifications, 15000);
-        return () => clearInterval(interval);
+        if (token) fetchNotifications();
     }, [token]);
+
+    // Раз в 15 секунд, пока вкладка на экране; в фоне — пауза, при
+    // возвращении на вкладку — сразу свежие уведомления.
+    useVisiblePolling(fetchNotifications, 15000, { enabled: Boolean(token) });
 
     useEffect(() => {
         const handler = (e) => {

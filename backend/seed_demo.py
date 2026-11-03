@@ -132,6 +132,10 @@ def main():
             terms_accepted_at=NOW,
             pd_consent_at=NOW,
             legal_version=LEGAL_VERSION,
+            # Адреса демо-аккаунтов вымышленные — письмо на них не дойдёт.
+            # Считаем их подтверждёнными, иначе с почтой на сервере демо-
+            # исполнители не смогли бы показать вывод денег.
+            email_verified_at=NOW,
         )
         if skills:
             u.skills = "[" + ", ".join(f'"{s}"' for s in skills) + "]"

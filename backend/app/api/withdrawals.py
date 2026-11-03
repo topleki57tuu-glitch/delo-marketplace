@@ -19,6 +19,7 @@ from app.core.database import get_db
 from app.core.enums import enum_value
 from app.core.csrf import verify_csrf
 from app.core.money import claim, credit_balance, debit_balance
+from app.core import email_verification
 from app.core.security import (
     oauth2_scheme, decode_token, is_admin,
     encrypt_sensitive, decrypt_sensitive, mask_requisites,
@@ -107,6 +108,12 @@ def create_withdrawal(
 
     if req.amount < MIN_WITHDRAWAL:
         raise HTTPException(400, f"Минимальная сумма вывода — {MIN_WITHDRAWAL} ₽")
+
+    # Деньги выводит только владелец почты аккаунта: по ней восстанавливается
+    # пароль, и чужой адрес при регистрации не должен давать доступ к выплатам.
+    # Требование включается само, когда на сервере настроена почта
+    # (см. app/core/email_verification.py).
+    email_verification.require_verified(user)
 
     # Замораживаем сумму сразу, чтобы её нельзя было потратить до решения модератора.
     # Списание атомарное: проверка «хватит ли денег» входит в сам UPDATE

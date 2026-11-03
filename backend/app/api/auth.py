@@ -3,9 +3,10 @@ import logging
 import os
 import secrets
 from datetime import datetime, timedelta, timezone
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
-from jose import JWTError, jwt
+import jwt
+from jwt import PyJWTError as JWTError
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 from app.core.database import get_db
@@ -20,10 +21,12 @@ from app.core.security import (
 from app.core.csrf import verify_csrf
 from app.core.money import claim
 from app.core.email import EmailNotConfigured, send_email_sync
+from app.core import email_verification
 from app.core.legal import CONSENT_REQUIRED_MESSAGE, LEGAL_VERSION
 from app.models import User, PasswordResetToken, RefreshToken, UserRole
 from app.schemas import (
-    UserCreate, ForgotPasswordRequest, ResetPasswordRequest, RefreshTokenRequest
+    UserCreate, ForgotPasswordRequest, ResetPasswordRequest, RefreshTokenRequest,
+    VerifyEmailRequest,
 )
 
 router = APIRouter(tags=["Authentication"])
@@ -31,7 +34,13 @@ router = APIRouter(tags=["Authentication"])
 logger = logging.getLogger(__name__)
 
 @router.post("/register/")
-def register(user: UserCreate, request: Request, db: Session = Depends(get_db), _csrf: None = Depends(verify_csrf)):
+def register(
+    user: UserCreate,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    _csrf: None = Depends(verify_csrf),
+):
     rate_limit(request, "register", limit=5, window_sec=3600)
     # Без согласия аккаунт не создаём: иначе мы начали бы обрабатывать
     # персональные данные (email, имя) без правового основания. Проверка
@@ -63,7 +72,25 @@ def register(user: UserCreate, request: Request, db: Session = Depends(get_db), 
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
-    return {"message": "Успешная регистрация", "user_id": new_user.id}
+
+    resp = {"message": "Успешная регистрация", "user_id": new_user.id}
+    # Письмо для подтверждения почты уходит после ответа (фоновая задача):
+    # почтовый сервер может думать несколько секунд, а регистрация от него
+    # не зависит — не дошло письмо, его можно запросить снова из профиля.
+    if email_verification.email_configured():
+        background_tasks.add_task(
+            email_verification.send_quietly,
+            new_user.email,
+            email_verification.verification_link(new_user),
+        )
+        resp["verification_email_sent"] = True
+    else:
+        resp["verification_email_sent"] = False
+        # Стенд разработчика без почты: ссылку отдаём в ответе, как
+        # dev_reset_link при сбросе пароля, — флоу можно проверить руками.
+        if not settings.IS_PRODUCTION:
+            resp["dev_verify_link"] = email_verification.verification_link(new_user)
+    return resp
 
 # Хэш случайной строки для выравнивания времени ответа при неизвестном email.
 _DUMMY_PASSWORD_HASH = hash_password(secrets.token_urlsafe(16))
@@ -328,3 +355,72 @@ def reset_password(req: ResetPasswordRequest, db: Session = Depends(get_db), _cs
     ).update({"used": True}, synchronize_session=False)
     db.commit()
     return {"message": "Пароль обновлён, войдите с новым паролем"}
+
+
+# ---------------------------------------------------------------------------
+# Подтверждение почты (app/core/email_verification.py)
+# ---------------------------------------------------------------------------
+
+@router.post("/auth/verify-email")
+def verify_email(req: VerifyEmailRequest, db: Session = Depends(get_db), _csrf: None = Depends(verify_csrf)):
+    """Подтвердить почту по токену из письма.
+
+    Вход не нужен: ссылку часто открывают на телефоне, где человек на сайт
+    не входил. Право даёт сам токен — его получил только владелец ящика.
+    Повторное подтверждение — не ошибка: ссылку открывают дважды, а
+    почтовые сервисы иногда сами «проверяют» ссылки из писем.
+    """
+    payload = email_verification.read_token(req.token)
+    if payload and payload.get("expired"):
+        raise HTTPException(400, "Ссылка устарела. Войдите на сайт и нажмите «Отправить письмо ещё раз».")
+    if not payload:
+        raise HTTPException(400, "Ссылка недействительна. Скопируйте её из письма целиком или запросите новое письмо.")
+    try:
+        user_id = int(payload["sub"])
+    except (TypeError, ValueError):
+        raise HTTPException(400, "Ссылка недействительна. Скопируйте её из письма целиком или запросите новое письмо.")
+    user = db.query(User).filter(User.id == user_id).first()
+    # Адрес в ссылке должен совпадать с адресом аккаунта: ссылка подтверждает
+    # конкретный ящик, а не «аккаунт с этим номером».
+    if not user or normalize_email(user.email) != normalize_email(payload.get("email")):
+        raise HTTPException(400, "Ссылка недействительна. Запросите новое письмо в профиле.")
+    if user.email_verified_at is None:
+        user.email_verified_at = datetime.utcnow()
+        db.commit()
+        return {"message": "Почта подтверждена", "email": user.email, "already_verified": False}
+    return {"message": "Почта уже подтверждена", "email": user.email, "already_verified": True}
+
+
+@router.post("/auth/resend-verification")
+def resend_verification(
+    request: Request,
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db),
+    _csrf: None = Depends(verify_csrf),
+):
+    """Отправить письмо со ссылкой ещё раз (нужен вход)."""
+    from app.core.security import decode_token
+    payload = decode_token(token)
+    user = db.query(User).filter(User.id == int(payload.get("sub"))).first()
+    if not user:
+        raise HTTPException(404, "Пользователь не найден")
+    if user.email_verified_at is not None:
+        return {"message": "Почта уже подтверждена", "already_verified": True}
+
+    # Не чаще трёх писем в час на аккаунт: кнопку жмут по нескольку раз,
+    # а почтовые сервисы за поток одинаковых писем помечают отправителя
+    # как спамера — и тогда не доходят уже никакие письма сайта.
+    rate_limit(request, f"verify-resend:{user.id}", limit=3, window_sec=3600)
+
+    try:
+        dev_link = email_verification.send(user)
+    except EmailNotConfigured:
+        raise HTTPException(503, "Отправка писем на сайте пока не настроена. Напишите в поддержку.")
+    except Exception as exc:  # noqa: BLE001 — причину пишем в журнал, человеку — понятный текст
+        logger.warning("Письмо для подтверждения почты не отправлено: %s", exc)
+        raise HTTPException(502, "Не удалось отправить письмо. Попробуйте через несколько минут.")
+
+    resp = {"message": f"Письмо отправлено на {user.email}", "already_verified": False}
+    if dev_link:
+        resp["dev_verify_link"] = dev_link
+    return resp

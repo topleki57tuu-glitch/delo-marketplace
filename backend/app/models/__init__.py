@@ -77,6 +77,9 @@ class User(Base):
     terms_accepted_at = Column(DateTime, nullable=True)
     pd_consent_at = Column(DateTime, nullable=True)
     legal_version = Column(String, nullable=True)
+    # Когда пользователь подтвердил почту по ссылке из письма; NULL — не
+    # подтверждена. См. app/core/email_verification.py.
+    email_verified_at = Column(DateTime, nullable=True)
 
     @property
     def is_pro_active(self) -> bool:
