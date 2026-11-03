@@ -23,8 +23,8 @@ frontend в CI, см. .github/workflows/ci.yml):
 ---------------
 1. Страницы (/, SPA-адреса, совпадающие с API, /index.html) — CSP без
    'unsafe-inline' в script-src и с хэшами всех встроенных скриптов
-   страницы, X-Frame-Options, nosniff, Referrer-Policy, Permissions-Policy,
-   HSTS; версия nginx не видна;
+   страницы, frame-ancestors только для веб-Telegram (без X-Frame-Options),
+   nosniff, Referrer-Policy, Permissions-Policy, HSTS; версия nginx не видна;
 2. скрипты, стили и шрифты — те же заголовки и прежнее кэширование;
 3. сжатие работает и для запроса через Caddy (с заголовком Via);
    распакованный ответ совпадает с исходным файлом;
@@ -94,7 +94,6 @@ def inline_script_hashes(html: str) -> list:
 
 
 SECURITY_HEADERS = {
-    "X-Frame-Options": lambda v: v.upper() == "DENY",
     "X-Content-Type-Options": lambda v: v.lower() == "nosniff",
     "Referrer-Policy": lambda v: v == "strict-origin-when-cross-origin",
     "Permissions-Policy": lambda v: "camera=()" in v and "microphone=()" in v and "geolocation=(self)" in v,
@@ -107,6 +106,11 @@ def check_security_headers(label: str, r: Resp) -> None:
         value = r.h(name)
         check(f"{label}: {name}", bool(value) and ok(value), value or "нет заголовка")
     check(f"{label}: Content-Security-Policy есть", bool(r.h("Content-Security-Policy")))
+    # Встраивание ограничивает CSP frame-ancestors. X-Frame-Options: DENY
+    # перекрыл бы его в части браузеров, и мини-приложение в веб-Telegram
+    # снова не открылось бы.
+    check(f"{label}: X-Frame-Options не отдаётся (мешал бы веб-Telegram)", not r.h("X-Frame-Options"),
+          r.h("X-Frame-Options") or "нет")
     server = r.h("Server")
     check(f"{label}: версия nginx не видна", not re.search(r"\d", server), f"Server: {server or '-'}")
 
@@ -143,7 +147,11 @@ check("CSP: Яндекс.Карты разрешены (script-src)", "https://a
 check("CSP: модули Яндекс.Карт с yastatic.net разрешены (script-src)", "https://yastatic.net" in script_src,
       " ".join(script_src))
 check("CSP: object-src 'none'", csp.get("object-src") == ["'none'"], str(csp.get("object-src")))
-check("CSP: frame-ancestors 'none'", csp.get("frame-ancestors") == ["'none'"], str(csp.get("frame-ancestors")))
+# Встроить сайт может только веб-версия Telegram (мини-приложение бота) —
+# ровно этот список: шире — кликджекинг, уже — веб-Telegram не откроет сайт.
+TELEGRAM_WEB = ["https://web.telegram.org", "https://webk.telegram.org", "https://webz.telegram.org"]
+check("CSP: frame-ancestors — только веб-Telegram", csp.get("frame-ancestors") == TELEGRAM_WEB,
+      str(csp.get("frame-ancestors")))
 check("CSP: base-uri 'self'", csp.get("base-uri") == ["'self'"], str(csp.get("base-uri")))
 check("CSP: form-action 'self'", csp.get("form-action") == ["'self'"], str(csp.get("form-action")))
 check("CSP: чат по WebSocket разрешён (connect-src)",
