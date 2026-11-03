@@ -17,7 +17,7 @@ python-dotenv==1.2.4
 # Разбор форм и загрузок файлов. До 0.0.30 — несколько способов «положить»
 # сервер специально собранным запросом (DoS).
 python-multipart==0.0.33
-websockets==16.0
+websockets==17.4
 requests==2.34.2
 psycopg2-binary==2.9.11
 bcrypt==5.0.0
