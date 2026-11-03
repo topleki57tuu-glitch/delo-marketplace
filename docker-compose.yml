@@ -47,6 +47,7 @@ services:
       CORS_ORIGINS: ${CORS_ORIGINS:-}
       FRONTEND_URL: ${FRONTEND_URL:-}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_BOT_USERNAME: ${TELEGRAM_BOT_USERNAME:-}
       # Счётчики лимитов в общем Redis, иначе они живут в памяти каждого воркера
       REDIS_URL: redis://redis:6379/0
       API_HOST: 0.0.0.0
@@ -68,19 +69,24 @@ services:
       - "80:80"
       - "3000:80"
 
+  # Telegram-бот (backend/app/telegram): тот же образ и та же база, что у backend.
   bot:
     build:
-      context: ./bot
+      context: ./backend
       dockerfile: Dockerfile
     container_name: marketplace_bot
     restart: unless-stopped
     depends_on:
-      - backend
+      postgres:
+        condition: service_healthy
     environment:
-      # bot.py читает TG_BOT_TOKEN / API_URL / FRONTEND_URL
-      TG_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
-      API_URL: http://backend:8000
+      DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-marketplace}:${POSTGRES_PASSWORD:?Задайте POSTGRES_PASSWORD в .env}@postgres:5432/${POSTGRES_DB:-marketplace_db}
+      SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY in .env (see .env.example)}
+      ENV: ${ENV:-production}
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+    command: python -m app.telegram.bot
 
 volumes:
   postgres_data:
