@@ -1,0 +1,55 @@
+# Dependabot раз в неделю проверяет зависимости и открывает PR с обновлениями.
+# Каждый такой PR проходит тот же CI, что и обычные изменения: зелёный — можно
+# сливать и выкатывать как обычно (deploy.bat).
+#
+# Мелкие обновления (minor и patch) собираются в один PR на папку, чтобы не
+# заваливать список PR. Крупные (major) приходят отдельными PR: в них бывают
+# несовместимые изменения — читайте описание и смотрите на CI.
+#
+# Срочные исправления уязвимостей приходят отдельно и сразу — для этого в
+# настройках репозитория (Settings → Code security) включите
+# «Dependabot alerts» и «Dependabot security updates».
+#
+# Базовые Docker-образы (python, node, postgres, redis, caddy) здесь нарочно
+# не отслеживаются: переход Postgres на новую major-версию требует переноса
+# данных, его нельзя делать простым PR.
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: /backend
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Moscow
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "backend"
+    groups:
+      backend-minor-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Moscow
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "frontend"
+    groups:
+      frontend-minor-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+      timezone: Europe/Moscow
+    commit-message:
+      prefix: "ci"
+    groups:
+      github-actions:
+        patterns: ["*"]

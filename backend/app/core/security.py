@@ -4,7 +4,8 @@ import time
 import secrets
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Optional, Dict, List
-from jose import JWTError, jwt
+import jwt
+from jwt import PyJWTError as JWTError
 from fastapi import HTTPException, Request, Depends, status
 from fastapi.security import OAuth2PasswordBearer
 from app.core.config import settings

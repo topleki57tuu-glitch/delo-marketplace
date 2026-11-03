@@ -37,7 +37,7 @@ from app.api import (
     products_router
 )
 from file_utils import UPLOAD_DIR
-from jose import jwt
+import jwt
 
 # Ошибки — в Sentry, если в окружении задан SENTRY_DSN. Что именно уходит и
 # почему без персональных данных — app/core/error_tracking.py.
