@@ -11,6 +11,8 @@ import AuthModal from './components/AuthModal.jsx';
 import { SESSION_EXPIRED_EVENT } from './utils/session';
 import ConsentGate from './components/ConsentGate.jsx';
 import RouteMeta from './components/RouteMeta.jsx';
+import { useVisiblePolling } from './utils/useVisiblePolling';
+import { PROFILE_STALE_EVENT } from './utils/profileSync';
 
 // Eager load только критичные страницы
 import HomePage from './pages/HomePage';
@@ -39,6 +41,8 @@ const NotFoundPage = lazy(() => import('./pages/NotFoundPage'));
 const HelpPage = lazy(() => import('./pages/HelpPage'));
 const LegalPage = lazy(() => import('./pages/LegalPage'));
 
+const PROFILE_POLL_MS = 30000;
+
 export default function App() {
   const { token, user, login, logout, updateUser } = useAuthStore();
   const { addToast } = useToast();
@@ -54,7 +58,7 @@ export default function App() {
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authModalMode, setAuthModalMode] = useState('login');
 
-  // Профиль опрашивается каждые 5 секунд, поэтому без логов в консоль:
+  // Профиль опрашивается регулярно, поэтому без логов в консоль:
   // раньше здесь печатался весь профиль — email, телефон, баланс — по три
   // строки на каждый опрос. 401 сюда не доходит: просроченный токен
   // продлевает обёртка над fetch (utils/session.js).
@@ -85,16 +89,20 @@ export default function App() {
     }
   }, [token]);
 
-  // Добавляем setInterval для периодического обновления профиля
+  // Профиль (баланс, роль, PRO, подтверждение почты) освежаем раз в 30
+  // секунд и только пока вкладка на экране. Раньше опрос шёл каждые 5 секунд
+  // даже из забытых фоновых вкладок — 12 запросов в минуту на человека.
+  // Вернулись на вкладку — профиль перечитывается сразу: оплатили в соседней
+  // вкладке — баланс уже свежий.
+  useVisiblePolling(fetchUserProfile, PROFILE_POLL_MS, { enabled: Boolean(token) });
+
+  // Оплатили задание, купили товар, вывели деньги — баланс в шапке
+  // обновляется сразу, не дожидаясь опроса (см. utils/profileSync.js).
   useEffect(() => {
-    if (!token) return;
-
-    const interval = setInterval(() => {
-      fetchUserProfile();
-    }, 5000); // Обновляем каждые 5 секунд
-
-    return () => clearInterval(interval);
-  }, [token]);
+    const onStale = () => fetchUserProfile();
+    window.addEventListener(PROFILE_STALE_EVENT, onStale);
+    return () => window.removeEventListener(PROFILE_STALE_EVENT, onStale);
+  }, []);
 
   const handleOpenAuth = (mode = 'login') => {
     setAuthModalMode(mode);

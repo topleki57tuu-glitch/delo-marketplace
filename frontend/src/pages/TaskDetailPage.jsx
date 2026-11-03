@@ -45,7 +45,7 @@ export default function TaskDetailPage({ user, token, onOpenAuth }) {
   const [canReview, setCanReview] = useState(false);
 
   // Для запроса спора нужны только id и права зрителя, а не весь объект user:
-  // App перечитывает профиль каждые 5 секунд, и зависимость от user
+  // App регулярно перечитывает профиль, и зависимость от user
   // перезагружала бы страницу задания при каждом опросе.
   const viewerId = user?.id;
   const viewerIsAdmin = !!user?.is_admin;

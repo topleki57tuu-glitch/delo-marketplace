@@ -45,7 +45,7 @@ function isExpired(token, now = Date.now()) {
   return at !== null && at <= now + EXPIRY_SKEW_MS;
 }
 
-function bearerOf(input, init) {
+export function bearerOf(input, init) {
   try {
     const source = init?.headers || (typeof Request !== 'undefined' && input instanceof Request ? input.headers : undefined);
     const value = new Headers(source).get('Authorization');
@@ -55,7 +55,7 @@ function bearerOf(input, init) {
   }
 }
 
-function sameOriginPath(input) {
+export function sameOriginPath(input) {
   const raw = typeof input === 'string' ? input : input instanceof URL ? input.href : input?.url;
   if (!raw) return null;
   try {

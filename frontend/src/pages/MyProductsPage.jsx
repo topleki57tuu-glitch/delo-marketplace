@@ -26,8 +26,8 @@ export default function MyProductsPage({ onOpenAuth }) {
 
   const [deleting, setDeleting] = useState({});
 
-  // В зависимостях — id, а не весь user: профиль в App перечитывается каждые
-  // 5 секунд, и список товаров перезагружался вместе с ним.
+  // В зависимостях — id, а не весь user: профиль в App перечитывается
+  // регулярно, и список товаров перезагружался вместе с ним.
   const userId = user?.id;
   useEffect(() => {
     if (token && userId) {
