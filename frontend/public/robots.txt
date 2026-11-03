@@ -11,6 +11,7 @@ Disallow: /admin
 Disallow: /create-task
 Disallow: /create-product
 Disallow: /reset
+Disallow: /verify-email
 Disallow: /products/*/edit
 # API и служебные пути
 Disallow: /uploads/

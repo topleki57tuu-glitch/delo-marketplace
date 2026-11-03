@@ -100,7 +100,12 @@ export default function AuthModal({ isOpen, mode, onClose, onLoginSuccess }) {
         const data = await res.json();
         if (!res.ok) throw new Error(apiErrorMessage(data, 'Ошибка регистрации'));
 
-        addToast('Регистрация успешна! Выполняется вход...', 'success');
+        addToast(
+          data.verification_email_sent
+            ? `Регистрация успешна! Письмо для подтверждения почты отправлено на ${email}`
+            : 'Регистрация успешна! Выполняется вход...',
+          'success',
+        );
         // Auto-login
         const loginForm = new URLSearchParams();
         loginForm.append('username', email);

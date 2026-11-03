@@ -324,6 +324,8 @@ def list_users(
             "role": u.role.value,
             "balance": u.balance or 0,
             "verified": u.verified,
+            # Подтвердил ли почту по ссылке из письма
+            "email_verified": u.email_verified_at is not None,
             # Действующая подписка — чтобы админ не принял истёкшую за живую
             "is_pro": u.is_pro_active,
             "pro_until": u.pro_until.isoformat() if u.pro_until else None,

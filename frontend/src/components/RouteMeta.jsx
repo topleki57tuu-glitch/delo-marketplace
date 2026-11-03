@@ -27,6 +27,7 @@ const STATIC_TITLES = {
   '/admin/dashboard': 'Панель модератора',
   '/help': 'Помощь',
   '/reset': 'Новый пароль',
+  '/verify-email': 'Подтверждение почты',
   ...Object.fromEntries(LEGAL_DOCS.map((d) => [legalHref(d.slug), d.title])),
 };
 

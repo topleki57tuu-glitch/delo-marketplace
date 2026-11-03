@@ -17,6 +17,7 @@ from app.core.security import (
 )
 from app.models import User, Review, Task, Transaction, UserRole, TaskStatus, RefreshToken
 from app.core.legal import CONSENT_REQUIRED_MESSAGE, LEGAL_VERSION
+from app.core import email_verification
 from app.schemas import ProfileUpdate, PasswordChangeRequest, LegalConsentRequest
 
 router = APIRouter(tags=["Users"])
@@ -142,6 +143,15 @@ def get_profile(token: str = Depends(oauth2_scheme), db: Session = Depends(get_d
         # сейчас. Не совпадают — фронтенд просит принять документы заново.
         "legal_version": user.legal_version,
         "legal_version_required": LEGAL_VERSION,
+        # Подтверждение почты (app/core/email_verification.py):
+        # email_verified — перешёл ли человек по ссылке из письма;
+        # email_verification_available — можно ли сейчас получить письмо
+        #   (без настроенной почты полоску «Подтвердите почту» не показываем);
+        # email_verification_required — нужен ли подтверждённый адрес для
+        #   вывода денег.
+        "email_verified": email_verification.is_verified(user),
+        "email_verification_available": email_verification.can_send(),
+        "email_verification_required": email_verification.required(),
     }
 
 

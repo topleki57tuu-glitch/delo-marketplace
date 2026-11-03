@@ -221,7 +221,8 @@ jobs:
             security/check_admin_access \
             security/check_task_address_privacy \
             security/check_sentry_privacy \
-            security/check_input_limits
+            security/check_input_limits \
+            security/check_email_verification
           do
             echo "::group::$suite"
             python "tests/${suite}.py"

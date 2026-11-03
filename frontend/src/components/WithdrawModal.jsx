@@ -4,6 +4,8 @@ import { useToast } from './Toast';
 import { useAuthStore } from '../store/authStore';
 import { IconCard, IconCatElectronics, IconClose } from '../components/icons.jsx';
 import { apiErrorMessage } from '../utils/apiError';
+import { withdrawalNeedsEmail } from '../utils/emailVerification';
+import { ResendVerificationButton } from './EmailVerificationBanner.jsx';
 
 const MIN_AMOUNT = 500;
 
@@ -20,7 +22,7 @@ const METHODS = [
  */
 export const WithdrawModal = ({ balance = 0, onClose, onCreated }) => {
   const toast = useToast();
-  const { token } = useAuthStore();
+  const { token, user } = useAuthStore();
 
   const [amount, setAmount] = useState('');
   const [method, setMethod] = useState('card');
@@ -33,7 +35,10 @@ export const WithdrawModal = ({ balance = 0, onClose, onCreated }) => {
   const numericAmount = Number(amount) || 0;
   const tooSmall = numericAmount > 0 && numericAmount < MIN_AMOUNT;
   const tooBig = numericAmount > balance;
-  const canSubmit = numericAmount >= MIN_AMOUNT && !tooBig && requisites.trim().length >= 5 && !loading;
+  // Сервер всё равно ответит 403, но лучше сказать заранее, чем после
+  // того, как человек ввёл сумму и номер карты.
+  const needsEmail = withdrawalNeedsEmail(user);
+  const canSubmit = numericAmount >= MIN_AMOUNT && !tooBig && requisites.trim().length >= 5 && !loading && !needsEmail;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -86,6 +91,15 @@ export const WithdrawModal = ({ balance = 0, onClose, onCreated }) => {
             <IconClose />
           </button>
         </div>
+
+        {needsEmail && (
+          <div role="alert" className="p-3 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 text-sm text-amber-900 dark:text-amber-200 space-y-2">
+            <p>
+              Чтобы выводить деньги, подтвердите почту <b className="break-all">{user.email}</b> — перейдите по ссылке из письма.
+            </p>
+            <ResendVerificationButton />
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>

@@ -240,6 +240,10 @@ class RefreshTokenRequest(BaseModel):
     сюда можно было бы прислать мегабайты на разбор подписи."""
     refresh_token: str = Field(..., min_length=1, max_length=4096)
 
+class VerifyEmailRequest(BaseModel):
+    """Токен из ссылки в письме (app/core/email_verification.py)."""
+    token: str = Field(..., min_length=1, max_length=4096)
+
 class ResetPasswordRequest(BaseModel):
     token: str
     new_password: str

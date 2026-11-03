@@ -10,6 +10,7 @@ import NavigationBar from './components/NavigationBar.jsx';
 import AuthModal from './components/AuthModal.jsx';
 import { SESSION_EXPIRED_EVENT } from './utils/session';
 import ConsentGate from './components/ConsentGate.jsx';
+import EmailVerificationBanner from './components/EmailVerificationBanner.jsx';
 import RouteMeta from './components/RouteMeta.jsx';
 import { useVisiblePolling } from './utils/useVisiblePolling';
 import { PROFILE_STALE_EVENT } from './utils/profileSync';
@@ -29,6 +30,7 @@ const SpecialistsPage = lazy(() => import('./pages/SpecialistsPage'));
 const MyTasksPage = lazy(() => import('./pages/MyTasksPage'));
 const DisputesPage = lazy(() => import('./pages/DisputesPage'));
 const ResetPasswordPage = lazy(() => import('./pages/ResetPasswordPage'));
+const VerifyEmailPage = lazy(() => import('./pages/VerifyEmailPage'));
 const ChatsPage = lazy(() => import('./pages/ChatsPage'));
 const AdminDashboardPage = lazy(() => import('./pages/AdminDashboardPage'));
 const ProductsPage = lazy(() => import('./pages/ProductsPage'));
@@ -157,6 +159,8 @@ export default function App() {
             onLogout={logout}
           />
 
+          <EmailVerificationBanner />
+
           <main id="main-content" className="flex-1">
             <Suspense fallback={<PageLoader />}>
               <Routes>
@@ -271,6 +275,7 @@ export default function App() {
                   element={<MyTasksPage onOpenAuth={handleOpenAuth} />}
                 />
                 <Route path="/reset" element={<ResetPasswordPage />} />
+                <Route path="/verify-email" element={<VerifyEmailPage />} />
                 <Route path="/help" element={<HelpPage />} />
                 <Route path="/legal/:doc" element={<LegalPage />} />
                 <Route
