@@ -116,10 +116,6 @@ delo-marketplace/
 │   ├── package.json           # npm зависимости
 │   └── vite.config.js         # Vite конфигурация
 │
-├── bot/                        # Telegram бот
-│   ├── bot.py                 # Точка входа бота
-│   └── requirements.txt       # Python зависимости
-│
 ├── docs/                       # Документация
 │   ├── ARCHITECTURE_DIAGRAM.md
 │   ├── TASK_STATES_DIAGRAM.md

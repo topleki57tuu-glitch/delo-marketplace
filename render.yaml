@@ -29,6 +29,10 @@ services:
         fromDatabase:
           name: marketplace-postgres
           property: connectionString
+      # Токен Telegram-бота (как у marketplace-bot): по нему сайт узнаёт имя
+      # бота для кнопок «Подключить Telegram» и «Заказы в Telegram».
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
 
       # ---- Приём платежей (ЮMoney) ------------------------------------
       # Читаются напрямую через os.getenv (app/integrations/yoomoney.py),
@@ -107,6 +111,10 @@ services:
         fromDatabase:
           name: marketplace-postgres
           property: connectionString
+      # Как у backend (набор переменных обязан совпадать —
+      # tests/security/check_celery_tasks.py).
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
       - key: YOOMONEY_ACCESS_TOKEN
         sync: false
       - key: YOOMONEY_CLIENT_ID
@@ -150,6 +158,10 @@ services:
         fromDatabase:
           name: marketplace-postgres
           property: connectionString
+      # Как у backend (набор переменных обязан совпадать —
+      # tests/security/check_celery_tasks.py).
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
       - key: YOOMONEY_ACCESS_TOKEN
         sync: false
       - key: YOOMONEY_CLIENT_ID
@@ -183,32 +195,32 @@ services:
           name: marketplace-backend
           property: host
 
-  # ---------------- TELEGRAM BOT (Радар заказов) ----------------
-  # type: web, а не worker: бот поднимает собственный health-сервер на $PORT
-  # (bot/bot.py), иначе Render считает сервис мёртвым.
-  #
-  # ВНИМАНИЕ: подписки радара лежат в файле `subscriptions.json` внутри
-  # контейнера. На Render файловая система эфемерна — при каждом деплое
-  # файл исчезает, и все подписки обнуляются. Для сохранности нужен
-  # persistent disk (на бесплатном плане недоступен) либо перенос
-  # хранилища в базу. Сейчас — как есть.
+  # ---------------- TELEGRAM BOT (уведомления и радар заказов) ----------------
+  # Код бота — в backend (app/telegram), данные — в общей базе, так что
+  # подписки переживают деплой. type: web, а не worker: бот поднимает
+  # health-сервер на $PORT, иначе Render считает сервис мёртвым.
+  # SECRET_KEY боту не нужен для подписи, но без него конфигурация
+  # production не загружается — отдельное случайное значение безопасно.
   - type: web
     name: marketplace-bot
     runtime: python
-    buildCommand: cd bot && pip install -r requirements.txt
-    startCommand: cd bot && python bot.py
+    buildCommand: cd backend && pip install -r requirements.txt
+    startCommand: cd backend && python -m app.telegram.bot
     envVars:
-      # Токен от @BotFather.
-      - key: TG_BOT_TOKEN
+      - key: PYTHON_VERSION
+        value: 3.13.12
+      # Токен от @BotFather (docs/TELEGRAM_BOT.md). Тот же токен задайте и
+      # у marketplace-backend — по нему сайт строит ссылки на бота.
+      - key: TELEGRAM_BOT_TOKEN
         sync: false
-      # Без этой переменной бот уйдёт на захардкоженный дефолт
-      # (delos-backend.onrender.com) — то есть в чужое окружение, и будет
-      # молча работать не с той базой. Поэтому адрес берём из сервиса.
-      - key: API_URL
-        fromService:
-          type: web
-          name: marketplace-backend
-          property: hostport
+      - key: ENV
+        value: production
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: marketplace-postgres
+          property: connectionString
       - key: FRONTEND_URL
         fromService:
           type: web

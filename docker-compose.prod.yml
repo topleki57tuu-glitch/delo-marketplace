@@ -33,7 +33,13 @@ x-backend-env: &backend-env
   # admin@delo.ru, а почта при регистрации не подтверждается — права
   # модератора получал любой, кто первым занял этот адрес.
   ADMIN_EMAILS: ${ADMIN_EMAILS:?Set ADMIN_EMAILS in .env (comma-separated)}
+  # Telegram-бот (backend/app/telegram, docs/TELEGRAM_BOT.md). Токен нужен и
+  # боту, и backend: сайт по нему узнаёт имя бота для ссылок t.me/…
+  # TELEGRAM_BOT_USERNAME — только если getMe с сервера недоступен;
+  # TELEGRAM_API_URL — свой адрес Bot API (по умолчанию api.telegram.org).
   TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+  TELEGRAM_BOT_USERNAME: ${TELEGRAM_BOT_USERNAME:-}
+  TELEGRAM_API_URL: ${TELEGRAM_API_URL:-}
   # Счётчики лимитов в общем Redis, иначе они живут в памяти каждого воркера
   REDIS_URL: redis://redis:6379/0
   # Почта: восстановление пароля и подтверждение адреса (docs/UPDATE_GUIDE.md,
@@ -192,19 +198,29 @@ services:
     depends_on:
       - backend
 
+  # Telegram-бот: личные уведомления и радар новых заказов. Образ тот же,
+  # что у backend, — бот читает ту же базу (таблицы telegram_*), Celery и
+  # HTTP-вызовы к backend ему не нужны. Без TELEGRAM_BOT_TOKEN контейнер
+  # просто ждёт. Проверка здоровья — оба цикла бота живы (app/telegram/health.py).
   bot:
     build:
-      context: ./bot
+      context: ./backend
       dockerfile: Dockerfile
     container_name: marketplace_bot
     restart: unless-stopped
     logging: *default-logging
     depends_on:
-      - backend
+      postgres:
+        condition: service_healthy
     environment:
-      TG_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
-      API_URL: http://backend:8000
-      FRONTEND_URL: ${FRONTEND_URL}
+      <<: *backend-env
+    command: python -m app.telegram.bot
+    healthcheck:
+      test: ["CMD", "python", "-m", "app.telegram.health"]
+      interval: 60s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
 
 volumes:
   postgres_data:

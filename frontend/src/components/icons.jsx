@@ -75,6 +75,7 @@ import {
   Rocket,
   Scale,
   Search,
+  Send,
   Settings,
   Shield,
   ShieldCheck,
@@ -224,6 +225,8 @@ export const IconMail = createIcon(Mail);
 export const IconMailOpen = createIcon(MailOpen);
 export const IconInbox = createIcon(Inbox);
 export const IconLink = createIcon(LinkIcon);
+// Бумажный самолётик — узнаваемый знак Telegram (своего логотипа в lucide нет).
+export const IconTelegram = createIcon(Send);
 export const IconFolder = createIcon(FolderOpen);
 export const IconCalendar = createIcon(Calendar);
 export const IconGlobe = createIcon(Globe);

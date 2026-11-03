@@ -26,8 +26,10 @@
 - PRO-подписка, верификация документов, уведомления, светлая и тёмная тема;
 - админ-панель: статистика, пользователи, споры, заявки на вывод и верификацию.
 
-**Telegram-бот** — «Радар заказов»: присылает новые задачи по выбранным
-категориям, городу и минимальной цене (`/start`, `/radar`, `/my`, `/stop`).
+**Telegram-бот** — радар заказов (новые задачи по категориям, бюджету и
+городу) и личные уведомления с сайта: отклики, сообщения, оплата, статусы
+сделок. Аккаунт привязывается в «Профиль → Настройки». Подключение —
+[docs/TELEGRAM_BOT.md](docs/TELEGRAM_BOT.md).
 
 ## Технологии
 
@@ -127,9 +129,8 @@ python tests/repro_payment_cycle.py
 ## Структура
 
 ```
-backend/     FastAPI: app/api (роутеры), app/core (настройки, безопасность), миграции Alembic
+backend/     FastAPI: app/api (роутеры), app/core (настройки, безопасность), app/telegram (бот), миграции Alembic
 frontend/    React + Vite: src/pages, src/components, src/store (Zustand)
-bot/         Telegram-бот
 deploy/      конфигурация Caddy
 scripts/     развёртывание, обновление, бэкапы, мониторинг
 tests/       e2e- и регресс-наборы для бэкенда
@@ -142,4 +143,4 @@ docs/        документация; docs/archive — отчёты прошл�
   [руководство пользователя (PDF)](docs/ДЕЛО_Руководство_пользователя.pdf)
 - Для разработчиков: [FAQ](docs/FAQ.md), [участие в разработке](docs/CONTRIBUTING.md),
   [архитектура](docs/ARCHITECTURE_DIAGRAM.md), [состояния задачи](docs/TASK_STATES_DIAGRAM.md),
-  [Celery и Redis](docs/CELERY_REDIS_SETUP.md), [аудит безопасности, ноябрь 2026](docs/SECURITY_AUDIT_2026-11.md)
+  [Celery и Redis](docs/CELERY_REDIS_SETUP.md), [Telegram-бот](docs/TELEGRAM_BOT.md), [аудит безопасности, ноябрь 2026](docs/SECURITY_AUDIT_2026-11.md)

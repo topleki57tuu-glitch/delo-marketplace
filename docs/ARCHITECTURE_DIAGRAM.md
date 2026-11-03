@@ -9,7 +9,7 @@
 │                                                                       │
 │  ┌──────────────────┐         ┌──────────────────┐                 │
 │  │   React SPA      │         │  Telegram Bot    │                 │
-│  │  (Vite + React)  │         │  (Python-telegram)│                │
+│  │  (Vite + React)  │         │  (app/telegram)  │                 │
 │  │                  │         │                   │                 │
 │  │  • Vite dev:3000 │         │  • Уведомления   │                 │
 │  │  • Production:80 │         │  • Радар заказов │                 │
@@ -165,7 +165,7 @@ User → React SPA
              │
              ├─→ validate role = "customer"
              ├─→ save Task (status="open")
-             ├─→ notify Telegram subscribers
+             ├─→ радар Telegram-бота разошлёт подписчикам
              └─→ return task_id
              
 Специалист → GET /tasks/ (фильтры: category, city, search)
@@ -358,7 +358,7 @@ Message Queue (RabbitMQ/Kafka)
 | **Database** | PostgreSQL | 15+ | Production DB |
 | | SQLite | 3.x | Development DB |
 | **Cache** | Redis | 7+ | Rate limit, cache |
-| **Bot** | Python stdlib (urllib) | — | Telegram Bot API |
+| **Bot** | Telegram Bot API (requests) | — | Радар и уведомления, `backend/app/telegram` ([TELEGRAM_BOT.md](TELEGRAM_BOT.md)) |
 | **Deploy** | Docker | 20.x | Containerization |
 | | Nginx | 1.25+ | Reverse proxy |
 

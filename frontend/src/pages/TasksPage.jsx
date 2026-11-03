@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import { TaskMap } from '../components/TaskMap';
 import CityInput from '../components/CityInput';
+import TelegramRadarLink from '../components/TelegramRadarLink.jsx';
 import PageHero, { PageBody } from '../components/PageHero.jsx';
 import { Spinner, StateCard } from '../components/PageState.jsx';
 import { IconCatBeauty, IconCatBusiness, IconCatCleaning, IconCatDelivery, IconCatDesign, IconCatDevelopment, IconCatEvents, IconCatOther, IconCatPhotoVideo, IconCatRepairs, IconCatTutoring, IconCatWriting, IconBriefcase, IconFilter, IconGlobe, IconLightning, IconMap, IconMessages, IconPin, IconSearch } from '../components/icons.jsx';
@@ -102,6 +103,7 @@ export default function TasksPage({
         subtitle="Выбирайте задачу и предлагайте свою цену. Оплата заказчика резервируется до приёмки работы."
         actions={
           <>
+            <TelegramRadarLink />
             <button
               type="button"
               onClick={toggleMap}
