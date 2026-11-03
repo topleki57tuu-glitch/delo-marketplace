@@ -96,6 +96,7 @@ docker compose -f docker-compose.prod.yml logs --tail 20 bot
 | `Telegram не принял токен (401)` | в `.env` неверный токен | проверьте строку `TELEGRAM_BOT_TOKEN` |
 | `TELEGRAM_BOT_TOKEN не задан` | токена нет | шаг 2 |
 | на сайте нет кнопок Telegram | backend не видит токен | `docker compose -f docker-compose.prod.yml up -d backend` |
+| в веб-версии Telegram вместо сайта «не позволяет установить соединение» | сайт запрещает встраивать себя во фрейм | разрешено только `web.telegram.org` — строка `frame-ancestors` в `frontend/nginx-security-headers.conf` |
 | контейнер `bot` в статусе unhealthy | завис один из потоков бота | `docker compose -f docker-compose.prod.yml restart bot`, затем журнал |
 
 Мониторинг (`scripts/monitor.sh`) может слать оповещения через этого же бота —

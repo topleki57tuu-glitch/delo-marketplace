@@ -667,7 +667,7 @@ jobs:
             -v "$PWD/nginx-security-headers.conf:/etc/nginx/snippets/delo-security-headers.conf:ro" \
             nginx:alpine nginx -t
 
-      # Заголовки безопасности (CSP, HSTS, X-Frame-Options) и сжатие — на
+      # Заголовки безопасности (CSP, HSTS, frame-ancestors) и сжатие — на
       # настоящем образе фронтенда, собранном тем же Dockerfile, что и на VPS.
       # Именно образ, а не конфиг рядом со статикой: путь, по которому
       # Dockerfile кладёт файл с заголовками, тоже часть проверки.
