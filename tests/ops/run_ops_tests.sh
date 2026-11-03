@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
 # ============================================================================
 # Проверка скриптов обслуживания VPS без Docker и без сервера:
-# scripts/backup.sh, restore.sh, monitor.sh, vps_update.sh.
+# scripts/backup.sh, restore.sh, monitor.sh, offsite.sh, vps_update.sh.
 #
 #   bash tests/ops/run_ops_tests.sh
 #
 # docker подменяется tests/ops/fake-bin/docker: команды compose выполняются
 # на локальном PostgreSQL и в локальном sh. Telegram и /health/db —
-# tests/ops/fake_services.py. Код приложения — одноразовый git-репозиторий
+# tests/ops/fake_services.py, облачное хранилище S3 — tests/ops/fake_s3.py
+# (с настоящей проверкой подписи). Код приложения — одноразовый git-репозиторий
 # во временном каталоге (снимок рабочей копии, с незакоммиченными правками):
 # рабочая копия и её .git не трогаются.
 #
@@ -28,7 +29,12 @@ OUT="$WORK/out.txt"
 DB=delo_ops_test
 PGU=marketplace
 export FAKE_PGHOST="${FAKE_PGHOST:-/tmp}" FAKE_PGPORT="${FAKE_PGPORT:-5432}" FAKE_PGPASSWORD="${FAKE_PGPASSWORD:-ci_password}"
-PORT="$(python3 -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')"
+free_port() { python3 -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])'; }
+PORT="$(free_port)"
+S3PORT="$(free_port)"
+while [ "$S3PORT" = "$PORT" ]; do S3PORT="$(free_port)"; done
+S3DIR="$WORK/s3"
+S3URL="http://127.0.0.1:$S3PORT"
 
 export BACKUP_DIR="$WORK/backups" STATE_DIR="$WORK/state" LOG_DIR="$WORK/log" \
     CRON_FILE="$WORK/cron.d/delo-marketplace" LOGROTATE_FILE="$WORK/logrotate.d/delo-marketplace" \
@@ -120,8 +126,21 @@ env_put() {
 }
 
 newest() { find "$BACKUP_DIR" -mindepth 1 -maxdepth 1 -type d -name "$1" -printf '%f\n' 2> /dev/null | sort | tail -n 1; }
+# Последняя готовая полная копия без метки — та, что выгружает offsite.sh.
+latest_full() {
+    local d n
+    for d in "$BACKUP_DIR"/*/; do
+        n="$(basename "$d")"
+        [[ "$n" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}_[0-9]{6}$ ]] && [ -f "$d/OK" ] && grep -qx kind=full "$d/manifest.txt" && echo "$n"
+    done | sort | tail -n 1
+}
+# Объект в поддельном хранилище (префикс delo) и их число.
+s3obj() { printf '%s/objects/delo/%s' "$S3DIR" "$1"; }
+s3_count() { find "$S3DIR/objects/delo" -maxdepth 1 -name '*.tar.enc' 2> /dev/null | wc -l; }
+no_offsite_tmp() { [ -z "$(find "$BACKUP_DIR" -maxdepth 1 -name '.offsite-*')" ]; }
 
 FAKE_PID=""
+S3_PID=""
 FINISHED=0
 cleanup() {
     local rc=$?
@@ -132,6 +151,7 @@ cleanup() {
     fi
     [ ! -s "$FAILS" ] || ci_annotate error "$(head -c 60000 "$FAILS")"
     [ -n "$FAKE_PID" ] && kill "$FAKE_PID" 2> /dev/null
+    [ -n "$S3_PID" ] && kill "$S3_PID" 2> /dev/null
     for d in $(dbs_like "${DB}%" 2> /dev/null) $(dbs_like 'delo_verify_%' 2> /dev/null); do
         psql_ -d postgres -c "DROP DATABASE IF EXISTS \"$d\"" > /dev/null 2>&1
     done
@@ -145,6 +165,10 @@ section "Подготовка"
 python3 "$REPO/tests/ops/fake_services.py" "$PORT" "$FAKE" &
 FAKE_PID=$!
 for _ in $(seq 1 50); do curl -fsS -o /dev/null "http://127.0.0.1:$PORT/health/db" 2> /dev/null && break; sleep 0.1; done
+python3 "$REPO/tests/ops/fake_s3.py" "$S3PORT" "$S3DIR" &
+S3_PID=$!
+# Без подписи хранилище отвечает 403 — значит, уже слушает.
+for _ in $(seq 1 50); do curl -sS -o /dev/null "$S3URL/" 2> /dev/null && break; sleep 0.1; done
 
 # На сервере pg_dump и pg_restore работают внутри контейнера postgres, то есть
 # той же версии, что и база. Здесь так же: клиент более новой версии пишет
@@ -495,6 +519,218 @@ expect "  ...сообщение ушло от бота сайта" grep -q '"tok
 env_put TELEGRAM_BOT_TOKEN ""
 env_put ALERT_TELEGRAM_BOT_TOKEN 111:alerts
 env_put ALERT_TELEGRAM_CHAT_ID 42
+
+# --- offsite.sh --------------------------------------------------------------
+
+section "offsite.sh: без настройки"
+run offsite.sh
+expect "выгрузка отказывается" [ "$RC" -ne 0 ]
+expect "  ...и подсказывает --setup" has "bash scripts/offsite.sh --setup"
+run monitor.sh
+expect "мониторинг: «вне сервера» не настроено — не сбой" has "· вне сервера"
+
+section "offsite.sh --setup: подключение хранилища"
+(cd "$APP" && printf '4\n%s\nru-test-1\ndelo-backups\nops-access\nops-secret\n\nда\n' "$S3URL" \
+    | bash scripts/offsite.sh --setup) > "$OUT" 2>&1
+RC=$?
+L1="$(latest_full)"
+PASS_OK="$(env_line BACKUP_ENCRYPTION_PASSPHRASE)"
+expect "настройка проходит" [ "$RC" -eq 0 ]
+expect "  ...доступ проверен: запись, чтение, список, удаление" has "✓ удаление"
+expect "  ...бакет и ключ в .env" grep -qx "BACKUP_S3_BUCKET=delo-backups" "$APP/.env"
+expect "  ...секретный ключ в .env" grep -qx "BACKUP_S3_SECRET_KEY=ops-secret" "$APP/.env"
+expect "  ...создана фраза шифрования" sh -c "grep -qE '^BACKUP_ENCRYPTION_PASSPHRASE=[0-9a-f]{40}\$' '$APP/.env'"
+expect "  ...и показана, чтобы её сохранить" has "$PASS_OK"
+expect "  ...секретный ключ не напечатан" sh -c "! grep -q 'ops-secret' '$OUT'"
+expect ".env по-прежнему 600" [ "$(stat -c %a "$APP/.env")" = "600" ]
+expect "последняя копия выгружена сразу" [ -s "$(s3obj "$L1.tar.enc")" ]
+expect "  ...зашифрованной (openssl, Salted__)" sh -c "head -c 8 '$(s3obj "$L1.tar.enc")' | grep -q Salted__"
+expect "  ...секретов из .env в ней не прочитать" sh -c "! grep -qa 'ops-test-not-a-secret' '$(s3obj "$L1.tar.enc")'"
+expect "  ...рядом контрольная сумма" sh -c "cd '$S3DIR/objects/delo' && sha256sum -c --quiet '$L1.tar.enc.sha256'"
+expect "  ...итог записан для мониторинга" grep -q "^ok .* $L1\$" "$BACKUP_DIR/offsite_status"
+expect "пробный объект удалён" [ ! -e "$(s3obj .offsite-probe)" ]
+expect "временных файлов не осталось" no_offsite_tmp
+run monitor.sh
+expect "мониторинг: ✓ вне сервера" has "✓ вне сервера"
+(cd "$APP" && printf '4\n%s\nru-test-1\ndelo-backups\nops-access\nwrong-secret\n' "$S3URL" \
+    | bash scripts/offsite.sh --setup) > "$OUT" 2>&1
+RC=$?
+expect "повторная настройка с неверным ключом — отказ" [ "$RC" -ne 0 ]
+expect "  ...с ответом хранилища" has "SignatureDoesNotMatch"
+expect "  ...прежние настройки не тронуты" grep -qx "BACKUP_S3_SECRET_KEY=ops-secret" "$APP/.env"
+
+section "offsite.sh: полная копия выгружается сама"
+run backup.sh
+L2="$(latest_full)"
+expect "копия проходит" [ "$RC" -eq 0 ]
+expect "  ...и сразу выгружается" [ -s "$(s3obj "$L2.tar.enc")" ]
+expect "  ...это видно в журнале копии" has "выгружено: delo/$L2.tar.enc"
+N0="$(s3_count)"
+run backup.sh --db-only --quick
+expect "копия «только база» не выгружается" [ "$(s3_count)" -eq "$N0" ]
+run backup.sh --quick --tag manual
+expect "копия с меткой не выгружается" [ "$(s3_count)" -eq "$N0" ]
+find "$BACKUP_DIR" -mindepth 1 -maxdepth 1 -type d -name '*-manual' -exec rm -rf {} +
+
+section "offsite.sh --list"
+run offsite.sh --list
+expect "показывает выгруженные копии" has "$L2"
+expect "  ...и как скачать" has "offsite.sh --get"
+
+section "offsite.sh --get: копия из хранилища"
+mv "$BACKUP_DIR/$L2" "$WORK/local-copy"
+run offsite.sh --get latest
+expect "скачивает последнюю" [ "$RC" -eq 0 ]
+expect "  ...файл в файл как была" diff -r "$WORK/local-copy" "$BACKUP_DIR/$L2"
+expect "  ...подсказывает восстановление" has "bash scripts/restore.sh $L2"
+run backup.sh --verify "$L2"
+expect "  ...и проходит проверку восстановлением" [ "$RC" -eq 0 ]
+run offsite.sh --get "$L2"
+expect "копия уже есть на сервере — отказ" [ "$RC" -ne 0 ]
+expect "  ...с объяснением" has "уже есть на сервере"
+expect "временных файлов не осталось" no_offsite_tmp
+rm -rf "$WORK/local-copy"
+
+section "offsite.sh --get: неверная фраза, повреждённый файл"
+rm -rf "${BACKUP_DIR:?}/$L2"
+env_put BACKUP_ENCRYPTION_PASSPHRASE "wrong-passphrase-123"
+run offsite.sh --get "$L2"
+expect "неверная фраза — отказ" [ "$RC" -ne 0 ]
+expect "  ...и прямо говорит про фразу" has "не та фраза"
+expect "  ...копия не появилась" [ ! -e "$BACKUP_DIR/$L2" ]
+env_put BACKUP_ENCRYPTION_PASSPHRASE "$PASS_OK"
+cp "$(s3obj "$L2.tar.enc")" "$WORK/object.bak"
+printf 'x' >> "$(s3obj "$L2.tar.enc")"
+run offsite.sh --get "$L2"
+expect "повреждённый файл — отказ" [ "$RC" -ne 0 ]
+expect "  ...по контрольной сумме" has "контрольная сумма не сходится"
+mv "$WORK/object.bak" "$(s3obj "$L2.tar.enc")"
+run offsite.sh --get "$L2"
+expect "целый файл скачивается" [ "$RC" -eq 0 ]
+expect "временных файлов не осталось" no_offsite_tmp
+
+section "offsite.sh: сбой выгрузки -> уведомление"
+tg_reset
+touch "$S3DIR/deny_all"
+run backup.sh --cron
+L3="$(latest_full)"
+expect "копия на сервере всё равно готова" [ "$RC" -eq 0 ]
+expect "  ...а выгрузка — нет, причина в журнале" has "AccessDenied"
+expect "итог выгрузки: failed" grep -q "^failed .* $L3: " "$BACKUP_DIR/offsite_status"
+expect "временных файлов не осталось" no_offsite_tmp
+run monitor.sh --cron
+expect "мониторинг сразу присылает уведомление" tg_has "Копия не выгружена в облачное хранилище"
+expect "  ...с причиной" tg_has "AccessDenied"
+run monitor.sh
+expect "--status: ✗ вне сервера" has "✗ вне сервера"
+rm -f "$S3DIR/deny_all"
+run offsite.sh
+expect "повтор вручную выгружает последнюю копию" [ "$RC" -eq 0 ]
+expect "  ...ту, что не выгрузилась" [ -s "$(s3obj "$L3.tar.enc")" ]
+run monitor.sh --cron
+expect "мониторинг: «снова в порядке»" tg_has "Снова в порядке — копии вне сервера"
+
+section "offsite.sh: свежая копия не выгружена"
+NF="$(date -d '+1 hour' '+%Y-%m-%d_%H%M%S')"
+mkdir -p "$BACKUP_DIR/$NF"
+echo "kind=full" > "$BACKUP_DIR/$NF/manifest.txt"
+date -Iseconds > "$BACKUP_DIR/$NF/OK"
+run monitor.sh
+expect "только что снятая ещё выгружается — не сбой" has "· вне сервера"
+touch -d '4 hours ago' "$BACKUP_DIR/$NF/OK"
+run monitor.sh
+expect "не выгружена за 3 часа — сбой" has "✗ вне сервера"
+expect "  ...с именем копии" has "$NF"
+rm -rf "${BACKUP_DIR:?}/$NF"
+
+section "offsite.sh: срок хранения в хранилище"
+for d in 01 02 03 04; do
+    printf 'old' > "$(s3obj "2020-01-${d}_000000.tar.enc")"
+    printf 'sum' > "$(s3obj "2020-01-${d}_000000.tar.enc.sha256")"
+done
+printf 'чужой файл' > "$(s3obj notes.txt)"
+run offsite.sh
+expect "выгрузка проходит" [ "$RC" -eq 0 ]
+expect "копии старше 30 дней удалены (и их суммы)" [ -z "$(find "$S3DIR/objects/delo" -name '2020-01-*')" ]
+expect "  ...с записью в журнале" has "удалена из хранилища"
+expect "чужие объекты не тронуты" [ -f "$(s3obj notes.txt)" ]
+expect "свежие копии на месте" [ -f "$(s3obj "$L1.tar.enc")" ]
+env_put BACKUP_OFFSITE_KEEP_DAYS 0
+printf 'old' > "$(s3obj "2020-01-01_000000.tar.enc")"
+run offsite.sh
+expect "BACKUP_OFFSITE_KEEP_DAYS=0 — ничего не удаляется" [ -f "$(s3obj "2020-01-01_000000.tar.enc")" ]
+env_put BACKUP_OFFSITE_KEEP_DAYS 30
+touch "$S3DIR/deny_delete"
+run offsite.sh
+expect "ключ без права удалять: выгрузка всё равно успешна" [ "$RC" -eq 0 ]
+expect "  ...и предупреждает" has "не удаляются"
+expect "  ...итог — ok" grep -q "^ok " "$BACKUP_DIR/offsite_status"
+rm -f "$S3DIR/deny_delete" "$(s3obj "2020-01-01_000000.tar.enc")" "$(s3obj notes.txt)"
+
+section "offsite.sh: большая копия частями, повтор после сбоя"
+head -c $((6 * 1024 * 1024)) /dev/urandom > "$FAKE_UPLOADS/big.bin"
+: > "$S3DIR/requests.log"
+S3_PART_MB=5 run backup.sh
+LB="$(latest_full)"
+expect "копия проходит" [ "$RC" -eq 0 ]
+expect "выгружается частями" grep -q "?uploads= 200" "$S3DIR/requests.log"
+expect "  ...и собирается целиком" [ "$(stat -c %s "$(s3obj "$LB.tar.enc")")" -gt $((6 * 1024 * 1024)) ]
+mv "$BACKUP_DIR/$LB" "$WORK/local-copy"
+run offsite.sh --get "$LB"
+expect "  ...и скачивается такой же" diff -r "$WORK/local-copy" "$BACKUP_DIR/$LB"
+rm -rf "$WORK/local-copy" "$FAKE_UPLOADS/big.bin"
+echo 1 > "$S3DIR/flaky"
+run offsite.sh
+expect "хранилище ответило 503 — повтор, выгрузка проходит" [ "$RC" -eq 0 ]
+expect "  ...503 действительно был" grep -q " 503$" "$S3DIR/requests.log"
+
+section "offsite.sh --test"
+run offsite.sh --test
+expect "доступ есть" [ "$RC" -eq 0 ]
+expect "  ...все четыре действия" has "✓ удаление"
+env_put BACKUP_S3_SECRET_KEY wrong-secret
+run offsite.sh --test
+expect "неверный секретный ключ — отказ" [ "$RC" -ne 0 ]
+expect "  ...с подсказкой, что не так" has "секретный ключ (BACKUP_S3_SECRET_KEY)"
+env_put BACKUP_S3_SECRET_KEY ops-secret
+
+section "offsite.sh: сервер пропал — восстановление на новом"
+NEWB="$WORK/new-server-backups"
+mv "$APP/.env" "$WORK/env.saved"
+(cd "$APP" && printf 'n\n' | BACKUP_DIR="$NEWB" bash scripts/offsite.sh --setup) > "$OUT" 2>&1
+RC=$?
+expect "нет .env и это не восстановление — отказ" [ "$RC" -ne 0 ]
+expect "  ...с подсказкой про установку" has "vps_deploy.sh"
+expect "  ...и .env не создан" [ ! -e "$APP/.env" ]
+(cd "$APP" && printf 'y\n4\n%s\nru-test-1\ndelo-backups\nops-access\nops-secret\n%s\n' "$S3URL" "old;phrase-1234" \
+    | BACKUP_DIR="$NEWB" bash scripts/offsite.sh --setup) > "$OUT" 2>&1
+RC=$?
+expect "фраза с «;» — отказ (vps_deploy.sh читает .env как shell)" [ "$RC" -ne 0 ]
+expect "  ...с объяснением, какие знаки можно" has "без пробелов, кавычек и «;»"
+expect "  ...и заготовка .env удалена" [ ! -e "$APP/.env" ]
+(cd "$APP" && printf 'y\n4\n%s\nru-test-1\ndelo-backups\nops-access\nops-secret\n%s\n%s\n' "$S3URL" "$PASS_OK" "$PASS_OK" \
+    | BACKUP_DIR="$NEWB" bash scripts/offsite.sh --setup) > "$OUT" 2>&1
+RC=$?
+expect "настройка с прежней фразой проходит" [ "$RC" -eq 0 ]
+expect "  ...и подсказывает скачать копию" has "offsite.sh --get latest"
+(cd "$APP" && BACKUP_DIR="$NEWB" bash scripts/offsite.sh --get latest) < /dev/null > "$OUT" 2>&1
+RC=$?
+expect "последняя копия скачана" [ "$RC" -eq 0 ]
+expect "  ...готова к восстановлению" [ -f "$NEWB/$LB/OK" ]
+expect ".env взят из копии: прежний SECRET_KEY" grep -qx "SECRET_KEY=ops-test-not-a-secret" "$APP/.env"
+expect "  ...настройки хранилища на месте" grep -qx "BACKUP_S3_SECRET_KEY=ops-secret" "$APP/.env"
+expect "  ...права 600" [ "$(stat -c %a "$APP/.env")" = "600" ]
+# shellcheck disable=SC2016  # $1 раскрывает вложенный bash, а не этот
+expect "  ...читается как shell, как в vps_deploy.sh" bash -c 'set -euo pipefail; set -a; . "$1"; set +a' _ "$APP/.env"
+expect "  ...подсказывает установку и восстановление" has "bash scripts/restore.sh $LB"
+rm -f "$APP/.env"
+mv "$WORK/env.saved" "$APP/.env"
+rm -rf "$NEWB"
+# Дальше хранилище не нужно.
+for k in BACKUP_S3_ENDPOINT BACKUP_S3_REGION BACKUP_S3_BUCKET BACKUP_S3_PREFIX BACKUP_S3_ACCESS_KEY \
+    BACKUP_S3_SECRET_KEY BACKUP_ENCRYPTION_PASSPHRASE BACKUP_OFFSITE_KEEP_DAYS; do
+    env_put "$k"
+done
 
 # --- vps_update.sh -----------------------------------------------------------
 

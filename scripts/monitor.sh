@@ -21,6 +21,9 @@
 #   сертификат  до окончания меньше 14 дней. Caddy продлевает его за 30 дней,
 #               так что это значит: продление сломалось.
 #   копии       последней ночной копии больше 26 часов (если копии включены)
+#   вне сервера выгрузка копии в облачное хранилище не удалась, или свежая
+#               копия не выгружена за 3 часа (если выгрузка настроена:
+#               scripts/offsite.sh --setup)
 #
 # Пока идёт обновление или восстановление (vps_update.sh, restore.sh),
 # проверки по расписанию пропускаются.
@@ -186,19 +189,6 @@ check_cert() {
     return 0
 }
 
-# Последняя готовая ночная копия (полная, без метки) — имя каталога.
-latest_full_backup() {
-    local d n
-    [ -d "$BACKUP_DIR" ] || return 0
-    for d in "$BACKUP_DIR"/*/; do
-        n="$(basename "$d")"
-        [[ "$n" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}_[0-9]{6}$ ]] || continue
-        [ -f "$d/OK" ] || continue
-        grep -qx 'kind=full' "$d/manifest.txt" 2> /dev/null || continue
-        echo "$n"
-    done | sort | tail -n 1
-}
-
 check_backups() {
     local name age since_install
     if ! grep -qs 'backup.sh' "$CRON_FILE"; then
@@ -224,7 +214,45 @@ check_backups() {
     return 0
 }
 
-CHECKS="site containers disk cert backups"
+# Копии вне сервера (scripts/offsite.sh). Выгрузка идёт сразу после копии,
+# так что свежая копия, не выгруженная за OFFSITE_GRACE_HOURS, — сбой.
+OFFSITE_GRACE_HOURS=3
+
+check_offsite() {
+    local status="" ts="" rest="" name when age now
+    if ! offsite_configured; then
+        MSG="выгрузка в облако не настроена — копии только на этом сервере: bash scripts/offsite.sh --setup"
+        return 2
+    fi
+    now="$(date +%s)"
+    if [ -f "$BACKUP_DIR/offsite_status" ]; then
+        read -r status ts rest < "$BACKUP_DIR/offsite_status" || true
+    fi
+    if [ "$status" = "failed" ]; then
+        [[ "$ts" =~ ^[0-9]+$ ]] || ts="$now"
+        MSG="Копия не выгружена в облачное хранилище ($(duration $((now - ts))) назад): $rest. Повторить: bash scripts/offsite.sh"
+        return 1
+    fi
+    name="$(latest_full_backup)"
+    if [ -z "$name" ]; then
+        MSG="готовых копий пока нет"
+        return 2
+    fi
+    when="$(awk -v n="$name" '$1 == n { t = $2 } END { print t }' "$BACKUP_DIR/offsite_uploaded" 2> /dev/null)"
+    if [[ "$when" =~ ^[0-9]+$ ]]; then
+        MSG="последняя — $name (выгружена $(duration $((now - when))) назад)"
+        return 0
+    fi
+    age=$((now - $(stat -c %Y "$BACKUP_DIR/$name/OK")))
+    if [ "$age" -gt $((OFFSITE_GRACE_HOURS * 3600)) ]; then
+        MSG="Свежая копия $name не выгружена в облачное хранилище (снята $(duration "$age") назад). Выгрузить: bash scripts/offsite.sh"
+        return 1
+    fi
+    MSG="свежая копия $name ещё выгружается"
+    return 2
+}
+
+CHECKS="site containers disk cert backups offsite"
 
 title() {
     case "$1" in
@@ -233,6 +261,7 @@ title() {
         disk) echo "диск" ;;
         cert) echo "сертификат" ;;
         backups) echo "копии" ;;
+        offsite) echo "копии вне сервера" ;;
     esac
 }
 
@@ -244,6 +273,7 @@ title_padded() {
         disk) echo "диск       " ;;
         cert) echo "сертификат " ;;
         backups) echo "копии      " ;;
+        offsite) echo "вне сервера" ;;
     esac
 }
 
