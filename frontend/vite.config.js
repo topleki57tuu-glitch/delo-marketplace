@@ -104,6 +104,8 @@ export default defineConfig({
         },
       },
       '/orders': 'http://localhost:8000',
+      // Привязка аккаунта к Telegram-боту (backend/app/api/telegram.py).
+      '/telegram': 'http://localhost:8000',
       '/ws': {
         target: 'ws://localhost:8000',
         ws: true,
