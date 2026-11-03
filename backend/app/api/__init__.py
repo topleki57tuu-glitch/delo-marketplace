@@ -14,6 +14,7 @@ from app.api.verification import router as verification_router
 from app.api.withdrawals import router as withdrawals_router
 from app.api.admin import router as admin_router
 from app.api.products import router as products_router
+from app.api.telegram import router as telegram_router
 
 __all__ = [
     "auth_router",
@@ -31,5 +32,6 @@ __all__ = [
     "verification_router",
     "withdrawals_router",
     "admin_router",
-    "products_router"
+    "products_router",
+    "telegram_router",
 ]

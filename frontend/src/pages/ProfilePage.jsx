@@ -272,7 +272,7 @@ export default function ProfilePage({ user, token, onUpdateUser, onLogout, onOpe
           />
         )}
 
-        {tab === 'settings' && <SettingsTab user={user} passwordForm={passwordForm} onLogout={onLogout} />}
+        {tab === 'settings' && <SettingsTab user={user} token={token} passwordForm={passwordForm} onLogout={onLogout} />}
 
         {tab === 'admin' && isAdmin && <AdminTab token={token} onUpdateUser={onUpdateUser} />}
       </PageBody>
