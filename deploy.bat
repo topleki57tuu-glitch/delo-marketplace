@@ -69,6 +69,7 @@ echo   Status:  status-server.bat
 echo   Undo:    rollback.bat
 echo   Logs:    logs.bat
 echo   Shell:   server-shell.bat
+echo   Backup:  download-backup.bat
 echo ================================================
 echo.
 pause

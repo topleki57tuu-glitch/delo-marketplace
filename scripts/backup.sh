@@ -37,6 +37,8 @@
 #   --quick        проверка без восстановления: контрольные суммы и
 #                  оглавление дампа
 #   --tag МЕТКА    метка в имени каталога (pre-update-…, pre-restore)
+#   --latest       путь к последней полной копии — так её находит
+#                  download-backup.bat; копий нет — код 3
 #
 # Настройки в .env (необязательно):
 #   BACKUP_DIR=/var/backups/delo  BACKUP_KEEP_DAYS=7  BACKUP_KEEP_TAGGED=5
@@ -59,6 +61,7 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --install) MODE=install ;;
         --list) MODE=list ;;
+        --latest) MODE=latest ;;
         --verify)
             [ $# -ge 2 ] || die "укажите копию: bash scripts/backup.sh --verify ИМЯ (список: --list)"
             MODE=verify; TARGET="$2"; shift ;;
@@ -455,6 +458,22 @@ case "$MODE" in
     list)
         list_backups
         ;;
+    latest)
+        # В stdout — только путь: его читает download-backup.bat. Остальное —
+        # в stderr, человеку.
+        NAME="$(latest_full_backup)"
+        if [ -z "$NAME" ]; then
+            log "ОШИБКА: готовых полных копий нет. Сделать первую и включить ночные: bash scripts/backup.sh --install" >&2
+            exit 3
+        fi
+        AGE_H=$(( ($(date +%s) - $(stat -c %Y "$BACKUP_DIR/$NAME/OK")) / 3600 ))
+        if ! grep -qs 'backup.sh' "$CRON_FILE"; then
+            log "ВНИМАНИЕ: ночные копии не включены, эта снята $AGE_H ч назад. Включить: bash scripts/backup.sh --install" >&2
+        elif [ "$AGE_H" -ge "$(env_get MONITOR_BACKUP_HOURS 26)" ]; then
+            log "ВНИМАНИЕ: последняя копия снята $AGE_H ч назад — ночные копии не обновляются. Журнал: $LOG_DIR/delo-backup.log" >&2
+        fi
+        echo "$BACKUP_DIR/$NAME"
+        ;;
     verify)
         DIR="$(resolve_backup "$TARGET")"
         if [ -z "${DELO_BACKUP_LOCK_HELD:-}" ]; then
@@ -483,8 +502,8 @@ case "$MODE" in
         echo ""
         echo "Уведомления о сбоях в Telegram: bash scripts/monitor.sh --setup"
         offsite_configured || echo "Копии вне сервера (зашифрованные, в облако): bash scripts/offsite.sh --setup"
-        echo "Скачать копию к себе (на компьютере, в PowerShell):"
-        echo "  scp -r root@$(curl -fsS -m 5 ifconfig.me 2>/dev/null || echo IP-сервера):$BACKUP_DIR/$(complete_backups | tail -n 1) ."
+        echo "Скачать копию к себе: на компьютере — download-backup.bat (двойной щелчок)"
+        echo "  или вручную: scp -r root@$(curl -fsS -m 5 ifconfig.me 2>/dev/null || echo IP-сервера):$BACKUP_DIR/$(complete_backups | tail -n 1) ."
         ;;
     backup)
         do_backup
