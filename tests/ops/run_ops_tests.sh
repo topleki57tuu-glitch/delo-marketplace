@@ -286,6 +286,33 @@ expect "без файлов" [ ! -e "$BACKUP_DIR/$BT/uploads.tar.gz" ]
 expect "manifest: kind=db-only" grep -qx "kind=db-only" "$BACKUP_DIR/$BT/manifest.txt"
 expect "быстрая проверка отмечена" grep -q "не проверялось (--quick)" "$BACKUP_DIR/$BT/verify.txt"
 
+section "backup.sh --latest: путь для download-backup.bat"
+# stdout и stderr — порознь: bat читает из stdout только путь.
+latest_run() {
+    (cd "$APP" && bash scripts/backup.sh --latest) < /dev/null > "$WORK/latest.out" 2> "$OUT"
+    RC=$?
+}
+latest_run
+expect "завершается успешно" [ "$RC" -eq 0 ]
+expect "в stdout — только путь к последней полной копии" [ "$(cat "$WORK/latest.out")" = "$BACKUP_DIR/$B1" ]
+expect "  ...хотя копия с меткой (только база) новее" [ "$BT" \> "$B1" ]
+expect "ночные копии не включены — предупреждение" has "ночные копии не включены"
+echo "30 0 * * * root bash $APP/scripts/backup.sh --cron" > "$WORK/cron-latest"
+CRON_FILE="$WORK/cron-latest" latest_run
+expect "расписание есть, копия свежая — успешно" [ "$RC" -eq 0 ]
+expect "  ...и без предупреждений" [ ! -s "$OUT" ]
+touch -d '30 hours ago' "$BACKUP_DIR/$B1/OK"
+CRON_FILE="$WORK/cron-latest" latest_run
+expect "копия старше 26 часов — путь всё равно выдан" [ "$(cat "$WORK/latest.out")" = "$BACKUP_DIR/$B1" ]
+expect "  ...с предупреждением, сколько ей часов" has "снята 30 ч назад"
+touch "$BACKUP_DIR/$B1/OK"
+rm -f "$WORK/cron-latest"
+BACKUP_DIR="$WORK/no-backups" latest_run
+expect "копий нет — код 3" [ "$RC" -eq 3 ]
+expect "  ...stdout пуст" [ ! -s "$WORK/latest.out" ]
+expect "  ...подсказка, как сделать первую" has "bash scripts/backup.sh --install"
+expect "  ...и это не записано как сбой копии" [ ! -e "$WORK/no-backups/last_status" ]
+
 section "backup.sh: сбой по расписанию -> уведомление"
 tg_reset
 FAKE_PGDUMP_FAIL=1 run backup.sh --cron
