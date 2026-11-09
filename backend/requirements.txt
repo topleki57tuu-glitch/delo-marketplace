@@ -4,7 +4,7 @@ fastapi==0.162.0
 # уязвимостями (подмена заголовка Host и др.).
 starlette==1.10.0
 uvicorn==0.54.0
-sqlalchemy==2.1.6
+sqlalchemy==2.1.8
 # JWT — PyJWT. Раньше был python-jose: он почти не развивается, тянул за собой
 # пакет ecdsa с неисправленной уязвимостью и сам имел открытые уязвимости.
 PyJWT==2.15.1
@@ -12,7 +12,7 @@ PyJWT==2.15.1
 # Объявлен явно: раньше модуль приходил транзитивно (как extra у python-jose),
 # и смена extras молча ломала шифрование в рантайме, а не на сборке.
 cryptography==50.0.2
-pydantic[email]==2.14.2
+pydantic[email]==2.14.3
 python-dotenv==1.2.4
 # Разбор форм и загрузок файлов. До 0.0.30 — несколько способов «положить»
 # сервер специально собранным запросом (DoS).
@@ -40,6 +40,6 @@ redis==8.1.0
 # 'packaging'`. Поймал tests/security/check_celery_tasks.py при обновлении
 # celery 5.5.3 → 5.6.3. Заодно extra ограничивает redis версиями, которые
 # kombu поддерживает.
-celery[redis]==5.6.3
+celery[redis]==5.7.0
 alembic==1.20.1
-sentry-sdk[fastapi]==2.73.0
+sentry-sdk[fastapi]==2.74.0
