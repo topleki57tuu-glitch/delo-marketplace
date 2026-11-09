@@ -20,15 +20,15 @@
     "@tailwindcss/vite": "^4.3.3",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
-    "@vitejs/plugin-react": "^6.2.0",
+    "@vitejs/plugin-react": "^6.2.1",
     "date-fns": "^4.4.0",
     "jwt-decode": "^4.0.0",
-    "lucide-react": "^1.66.0",
+    "lucide-react": "^1.69.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "react-router-dom": "^7.18.5",
-    "tailwindcss": "^4.3.3",
-    "vite": "^8.3.5",
+    "tailwindcss": "^4.3.4",
+    "vite": "^8.3.6",
     "zustand": "^5.0.16"
   },
   "devDependencies": {
@@ -36,7 +36,7 @@
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.3",
     "@testing-library/user-event": "^14.6.8",
-    "@vitest/ui": "^5.0.5",
+    "@vitest/ui": "^5.1.0",
     "jsdom": "^30.1.3",
     "vite-plugin-compression2": "^2.5.4",
     "vitest": "^5.0.5"
